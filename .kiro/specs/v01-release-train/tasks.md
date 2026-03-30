@@ -18,13 +18,13 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Verify `LocalizationOutcome::boundary_pair` helper
     - _Requirements: 6.2, 6.3, 6.5_
 
-  - [ ]* 1.3 Write property test P14: JSON Serialization Determinism
+  - [ ] 1.3 Write property test P14: JSON Serialization Determinism
     - **Property 14: JSON Serialization Determinism**
     - Add `proptest` as dev-dependency to `faultline-types`
     - Generate random `AnalysisReport` values, serialize to JSON twice, assert byte-identical output
     - **Validates: Requirement 6.3**
 
-  - [ ]* 1.4 Write property test P15: AnalysisReport JSON Round-Trip
+  - [ ] 1.4 Write property test P15: AnalysisReport JSON Round-Trip
     - **Property 15: AnalysisReport JSON Round-Trip**
     - Generate random `AnalysisReport` values, serialize via `serde_json::to_string_pretty` then deserialize via `serde_json::from_str`, assert equality
     - **Validates: Requirement 6.5**
@@ -39,7 +39,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Add helper methods for common fixture scenarios: `exact_boundary(n)`, `with_labels(labels)`
     - _Requirements: 12.1_
 
-  - [ ]* 1.7 Write property test P3: Revision Sequence Boundary Invariant
+  - [ ] 1.7 Write property test P3: Revision Sequence Boundary Invariant
     - **Property 3: Revision Sequence Boundary Invariant**
     - Add `proptest` as dev-dependency to `faultline-fixtures` or `faultline-localization`
     - Generate sequences via builder, verify first == good, last == bad, length >= 2
@@ -62,7 +62,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Generate unique worktree paths using `{sha12}-{timestamp_ms}-{counter}`
     - _Requirements: 2.1, 2.8, 9.1, 9.2, 9.3, 9.4_
 
-  - [ ]* 3.3 Write property test P19: Worktree Path Uniqueness
+  - [ ] 3.3 Write property test P19: Worktree Path Uniqueness
     - **Property 19: Worktree Path Uniqueness**
     - Generate pairs of `CommitId`, call `unique_worktree_path` twice (even with same commit), assert distinct paths
     - **Validates: Requirement 9.4**
@@ -75,13 +75,13 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Populate all `ProbeObservation` fields
     - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-  - [ ]* 3.5 Write property test P1: Exit Code Classification
+  - [ ] 3.5 Write property test P1: Exit Code Classification
     - **Property 1: Exit Code Classification**
     - Add `proptest` as dev-dependency to `faultline-probe-exec`
     - Generate `(Option<i32>, bool)` pairs, verify `classify` returns correct `ObservationClass`
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6**
 
-  - [ ]* 3.6 Write property test P2: Observation Structural Completeness
+  - [ ] 3.6 Write property test P2: Observation Structural Completeness
     - **Property 2: Observation Structural Completeness**
     - Generate valid `ProbeSpec` + mock checkout, verify all `ProbeObservation` fields are populated
     - **Validates: Requirements 2.7, 4.7**
@@ -94,18 +94,18 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - `has_observation`, `get_observation`, `observation_list`, `sequence`, `max_probes` accessors
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9_
 
-  - [ ]* 3.8 Write property test P4: Binary Narrowing Selects Valid Midpoint
+  - [ ] 3.8 Write property test P4: Binary Narrowing Selects Valid Midpoint
     - **Property 4: Binary Narrowing Selects Valid Midpoint**
     - Add `proptest` as dev-dependency to `faultline-localization`
     - Generate sequences of length 3–50, record pass at first and fail at last, verify `next_probe()` returns a commit strictly between boundaries with no existing observation
     - **Validates: Requirement 3.1**
 
-  - [ ]* 3.9 Write property test P5: Adjacent Pass-Fail Yields FirstBad
+  - [ ] 3.9 Write property test P5: Adjacent Pass-Fail Yields FirstBad
     - **Property 5: Adjacent Pass-Fail Yields FirstBad**
     - Generate sequences, record pass at index i and fail at index i+1 with all between observed, verify `outcome()` returns `FirstBad` with correct `last_good` and `first_bad`
     - **Validates: Requirement 3.2**
 
-  - [ ]* 3.10 Write property test P10: FirstBad Requires Direct Evidence
+  - [ ] 3.10 Write property test P10: FirstBad Requires Direct Evidence
     - **Property 10: FirstBad Requires Direct Evidence**
     - Generate any session producing `FirstBad`, verify `last_good` has Pass observation and `first_bad` has Fail observation
     - **Validates: Requirements 3.9, 11.1**
@@ -117,7 +117,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - `save_report`: write `report.json`
     - _Requirements: 4.1, 4.2, 4.3, 4.5, 4.6_
 
-  - [ ]* 3.12 Write property test P11: Run Store Round-Trip
+  - [ ] 3.12 Write property test P11: Run Store Round-Trip
     - **Property 11: Run Store Round-Trip**
     - Add `proptest` as dev-dependency to `faultline-store`
     - Generate random `ProbeObservation`, save then load, verify equivalence
@@ -126,7 +126,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Use temp directories for isolation
     - **Validates: Requirements 4.2, 4.5, 4.6**
 
-  - [ ]* 3.13 Write property test P12: Run Store Resumability
+  - [ ] 3.13 Write property test P12: Run Store Resumability
     - **Property 12: Run Store Resumability**
     - Generate request + observations, call `prepare_run` twice, verify second `RunHandle.resumed == true`
     - Verify `load_observations` on second handle returns all observations from first run
@@ -147,14 +147,14 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Build and persist `AnalysisReport`
     - _Requirements: 3.1, 3.8, 4.4, 5.1, 10.1, 10.2, 10.3, 10.4, 10.5_
 
-  - [ ]* 3.16 Write property test P9: Probe Count Respects Max Probes
+  - [ ] 3.16 Write property test P9: Probe Count Respects Max Probes
     - **Property 9: Probe Count Respects Max Probes**
     - Add `proptest` as dev-dependency to `faultline-app`
     - Use mock port implementations (test doubles)
     - Generate small `max_probes` values (1–10), verify loop terminates within limit
     - **Validates: Requirement 3.8**
 
-  - [ ]* 3.17 Write property test P20: Boundary Validation Rejects Mismatched Classes
+  - [ ] 3.17 Write property test P20: Boundary Validation Rejects Mismatched Classes
     - **Property 20: Boundary Validation Rejects Mismatched Classes**
     - Use mock ports where good boundary returns Fail or bad boundary returns Pass
     - Verify `localize` returns `InvalidBoundary` error with expected/actual classes
@@ -170,35 +170,35 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - All-revisions-untestable scenario: every intermediate commit is `Skip` or `Indeterminate`
     - _Requirements: 12.3, 12.4, 12.5, 12.6_
 
-  - [ ]* 5.2 Write property test P6: Ambiguous Observations Yield SuspectWindow
+  - [ ] 5.2 Write property test P6: Ambiguous Observations Yield SuspectWindow
     - **Property 6: Ambiguous Observations Yield SuspectWindow**
     - Generate sessions with Skip or Indeterminate between pass/fail boundaries
     - Verify `outcome()` returns `SuspectWindow` with `SkippedRevision` and/or `IndeterminateRevision` in reasons
     - **Validates: Requirements 3.3, 3.4**
 
-  - [ ]* 5.3 Write property test P7: Non-Monotonic Evidence Yields Low Confidence
+  - [ ] 5.3 Write property test P7: Non-Monotonic Evidence Yields Low Confidence
     - **Property 7: Non-Monotonic Evidence Yields Low Confidence**
     - Generate observation sets where Fail index < Pass index
     - Verify `outcome()` includes `NonMonotonicEvidence` and confidence == `Confidence::low().score`
     - **Validates: Requirement 3.5**
 
-  - [ ]* 5.4 Write property test P8: Missing Boundary Yields Inconclusive
+  - [ ] 5.4 Write property test P8: Missing Boundary Yields Inconclusive
     - **Property 8: Missing Boundary Yields Inconclusive**
     - Generate sessions with only Pass (no Fail) or only Fail (no Pass)
     - Verify `outcome()` returns `Inconclusive` with `MissingPassBoundary` or `MissingFailBoundary`
     - **Validates: Requirements 3.6, 3.7**
 
-  - [ ]* 5.5 Write property test P21: Monotonic Window Narrowing
+  - [ ] 5.5 Write property test P21: Monotonic Window Narrowing
     - **Property 21: Monotonic Window Narrowing**
     - Generate observation sequences, record one at a time, verify candidate window size never increases
     - **Validates: Requirement 11.2**
 
-  - [ ]* 5.6 Write property test P22: SuspectWindow Confidence Cap
+  - [ ] 5.6 Write property test P22: SuspectWindow Confidence Cap
     - **Property 22: SuspectWindow Confidence Cap**
     - Generate sessions producing `SuspectWindow`, verify confidence score < 95 (`Confidence::high().score`)
     - **Validates: Requirement 11.3**
 
-  - [ ]* 5.7 Write property test P23: Observation Order Independence
+  - [ ] 5.7 Write property test P23: Observation Order Independence
     - **Property 23: Observation Order Independence**
     - Generate observation sets and `RevisionSequence`, record in multiple permutation orders, verify same `LocalizationOutcome`
     - **Validates: Requirement 11.4**
@@ -220,7 +220,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Produce `SurfaceSummary` with `total_changes`, `buckets`, `execution_surfaces`
     - _Requirements: 5.2, 5.3, 5.4, 5.5_
 
-  - [ ]* 7.3 Write property test P13: Surface Analysis Invariants
+  - [ ] 7.3 Write property test P13: Surface Analysis Invariants
     - **Property 13: Surface Analysis Invariants**
     - Add `proptest` as dev-dependency to `faultline-surface`
     - Generate random `PathChange` vectors, verify: (a) `total_changes` == input length, (b) every path in exactly one bucket, (c) bucket names match top-level dirs, (d) valid surface kinds, (e) `execution_surfaces` subset of input
@@ -259,18 +259,18 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - HTML-escape all dynamic content via `escape_html` function
     - _Requirements: 7.1, 7.2, 7.3, 7.5_
 
-  - [ ]* 11.2 Write property test P16: HTML Contains Required Data Consistent with JSON
+  - [ ] 11.2 Write property test P16: HTML Contains Required Data Consistent with JSON
     - **Property 16: HTML Contains Required Data Consistent with JSON**
     - Add `proptest` as dev-dependency to `faultline-render`
     - Generate random `AnalysisReport`, render HTML, verify it contains run_id, outcome type, boundary SHAs, one `<tr>` per observation
     - **Validates: Requirements 7.2, 7.4, 11.5**
 
-  - [ ]* 11.3 Write property test P17: HTML Escaping Correctness
+  - [ ] 11.3 Write property test P17: HTML Escaping Correctness
     - **Property 17: HTML Escaping Correctness**
     - Generate strings with `<`, `>`, `&`, `"`, `'`, verify `escape_html` replaces each with HTML entity
     - **Validates: Requirement 7.5**
 
-  - [ ]* 11.4 Write property test P18: HTML Is Self-Contained
+  - [ ] 11.4 Write property test P18: HTML Is Self-Contained
     - **Property 18: HTML Is Self-Contained**
     - Generate random `AnalysisReport`, render HTML, verify no `<link>`, `<script>`, or `<img>` tags with `http://` or `https://` URLs
     - **Validates: Requirement 7.3**
