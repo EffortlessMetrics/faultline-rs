@@ -9,3 +9,7 @@ authors.workspace = true
 faultline-codes = { path = "../faultline-codes" }
 faultline-ports = { path = "../faultline-ports" }
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = "3"

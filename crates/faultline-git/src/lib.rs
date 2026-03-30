@@ -154,7 +154,7 @@ impl HistoryPort for GitAdapter {
             if trimmed.is_empty() {
                 continue;
             }
-            let parts: Vec<&str> = trimmed.split('	').collect();
+            let parts: Vec<&str> = trimmed.split('\t').collect();
             let status_code = parts.first().copied().unwrap_or("");
             let status = if status_code.starts_with('A') {
                 ChangeStatus::Added
@@ -170,7 +170,9 @@ impl HistoryPort for GitAdapter {
                 ChangeStatus::Unknown
             };
             let path = match status {
-                ChangeStatus::Renamed => parts.get(2).or_else(|| parts.get(1)).copied().unwrap_or(""),
+                ChangeStatus::Renamed => {
+                    parts.get(2).or_else(|| parts.get(1)).copied().unwrap_or("")
+                }
                 _ => parts.get(1).copied().unwrap_or(""),
             };
             if !path.is_empty() {
@@ -215,5 +217,37 @@ impl CheckoutPort for GitAdapter {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // Feature: v01-release-train, Property 19: Worktree Path Uniqueness
+    // **Validates: Requirements 9.4**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_worktree_path_uniqueness(
+            sha_a in "[a-f0-9]{8,40}",
+            sha_b in "[a-f0-9]{8,40}",
+        ) {
+            let tmp = tempfile::tempdir().expect("create temp dir");
+            let adapter = GitAdapter {
+                repo_root: tmp.path().to_path_buf(),
+                scratch_root: tmp.path().join("scratch"),
+            };
+
+            let commit_a = CommitId(sha_a);
+            let commit_b = CommitId(sha_b);
+
+            let path_a = adapter.unique_worktree_path(&commit_a);
+            let path_b = adapter.unique_worktree_path(&commit_b);
+
+            prop_assert_ne!(path_a, path_b, "two calls to unique_worktree_path must return distinct paths, even for the same commit");
+        }
     }
 }

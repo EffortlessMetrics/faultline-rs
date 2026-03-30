@@ -6,68 +6,68 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
 
 ## Tasks
 
-- [ ] 1. Wave 0 — Contract Freeze: Types, Codes, Ports, and Fixture Builders
-  - [ ] 1.1 Finalize `faultline-codes` enums and derive traits
+- [x] 1. Wave 0 — Contract Freeze: Types, Codes, Ports, and Fixture Builders
+  - [x] 1.1 Finalize `faultline-codes` enums and derive traits
     - Ensure `ObservationClass`, `ProbeKind`, `AmbiguityReason`, `OperatorCode` all derive `Serialize`, `Deserialize`, `Debug`, `Clone`, `PartialEq`, `Eq`
     - Verify `Display` and `FromStr` impls for `ProbeKind` and `Display` for `AmbiguityReason`
     - _Requirements: 2.3, 2.4, 2.5, 2.6, 3.3, 3.4, 3.5_
 
-  - [ ] 1.2 Finalize `faultline-types` value objects and report model
+  - [x] 1.2 Finalize `faultline-types` value objects and report model
     - Ensure all structs (`CommitId`, `RevisionSpec`, `ProbeSpec`, `SearchPolicy`, `AnalysisRequest`, `RevisionSequence`, `ProbeObservation`, `Confidence`, `LocalizationOutcome`, `PathChange`, `SubsystemBucket`, `SurfaceSummary`, `RunHandle`, `CheckedOutRevision`, `AnalysisReport`) derive `Serialize + Deserialize + Debug + Clone + PartialEq + Eq`
     - Verify `stable_hash`, `now_epoch_seconds`, `ProbeSpec::fingerprint`, `AnalysisRequest::fingerprint` utility functions
     - Verify `LocalizationOutcome::boundary_pair` helper
     - _Requirements: 6.2, 6.3, 6.5_
 
-  - [ ] 1.3 Write property test P14: JSON Serialization Determinism
+  - [x] 1.3 Write property test P14: JSON Serialization Determinism
     - **Property 14: JSON Serialization Determinism**
     - Add `proptest` as dev-dependency to `faultline-types`
     - Generate random `AnalysisReport` values, serialize to JSON twice, assert byte-identical output
     - **Validates: Requirement 6.3**
 
-  - [ ] 1.4 Write property test P15: AnalysisReport JSON Round-Trip
+  - [x] 1.4 Write property test P15: AnalysisReport JSON Round-Trip
     - **Property 15: AnalysisReport JSON Round-Trip**
     - Generate random `AnalysisReport` values, serialize via `serde_json::to_string_pretty` then deserialize via `serde_json::from_str`, assert equality
     - **Validates: Requirement 6.5**
 
-  - [ ] 1.5 Finalize `faultline-ports` trait definitions
+  - [x] 1.5 Finalize `faultline-ports` trait definitions
     - Verify `HistoryPort`, `CheckoutPort`, `ProbePort`, `RunStorePort` trait signatures match design
     - Ensure all trait methods use `faultline_types::Result<T>` return types
     - _Requirements: 1.1, 1.4, 2.1, 2.8, 4.1, 4.2, 4.5, 4.6_
 
-  - [ ] 1.6 Implement `RevisionSequenceBuilder` in `faultline-fixtures`
+  - [x] 1.6 Implement `RevisionSequenceBuilder` in `faultline-fixtures`
     - Verify `push` and `build` methods produce valid `RevisionSequence` values
     - Add helper methods for common fixture scenarios: `exact_boundary(n)`, `with_labels(labels)`
     - _Requirements: 12.1_
 
-  - [ ] 1.7 Write property test P3: Revision Sequence Boundary Invariant
+  - [x] 1.7 Write property test P3: Revision Sequence Boundary Invariant
     - **Property 3: Revision Sequence Boundary Invariant**
     - Add `proptest` as dev-dependency to `faultline-fixtures` or `faultline-localization`
     - Generate sequences via builder, verify first == good, last == bad, length >= 2
     - **Validates: Requirements 1.4, 1.5**
 
-- [ ] 2. Checkpoint — Wave 0 complete
+- [x] 2. Checkpoint — Wave 0 complete
   - Ensure `cargo test -p faultline-codes -p faultline-types -p faultline-ports -p faultline-fixtures` passes. Ask the user if questions arise.
 
 - [ ] 3. Wave 1 — Thin Vertical Slice: Linearize → Checkout → Probe → Localize → JSON
-  - [ ] 3.1 Implement `GitAdapter` history linearization (`HistoryPort::linearize`)
+  - [x] 3.1 Implement `GitAdapter` history linearization (`HistoryPort::linearize`)
     - Resolve revisions via `git rev-parse --verify`
     - Verify ancestry via `git merge-base --is-ancestor`
     - Produce `RevisionSequence` via `git rev-list --reverse --ancestry-path [--first-parent]`
     - Ensure good commit is first, bad commit is last, sequence has >= 2 elements
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 1.6_
 
-  - [ ] 3.2 Implement `GitAdapter` checkout and cleanup (`CheckoutPort`)
+  - [x] 3.2 Implement `GitAdapter` checkout and cleanup (`CheckoutPort`)
     - `checkout_revision`: create disposable worktree via `git worktree add --detach --force` under `.faultline/scratch/`
     - `cleanup_checkout`: remove via `git worktree remove --force` with fallback to `fs::remove_dir_all`
     - Generate unique worktree paths using `{sha12}-{timestamp_ms}-{counter}`
     - _Requirements: 2.1, 2.8, 9.1, 9.2, 9.3, 9.4_
 
-  - [ ] 3.3 Write property test P19: Worktree Path Uniqueness
+  - [x] 3.3 Write property test P19: Worktree Path Uniqueness
     - **Property 19: Worktree Path Uniqueness**
     - Generate pairs of `CommitId`, call `unique_worktree_path` twice (even with same commit), assert distinct paths
     - **Validates: Requirement 9.4**
 
-  - [ ] 3.4 Implement `ExecProbeAdapter` (`ProbePort::run`)
+  - [x] 3.4 Implement `ExecProbeAdapter` (`ProbePort::run`)
     - Build command from `ProbeSpec::Exec` or `ProbeSpec::Shell` variants
     - Spawn process with worktree as working directory, capture stdout/stderr
     - Poll with 50ms sleep intervals, enforce timeout, kill on timeout
@@ -75,18 +75,18 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Populate all `ProbeObservation` fields
     - _Requirements: 2.2, 2.3, 2.4, 2.5, 2.6, 2.7_
 
-  - [ ] 3.5 Write property test P1: Exit Code Classification
+  - [x] 3.5 Write property test P1: Exit Code Classification
     - **Property 1: Exit Code Classification**
     - Add `proptest` as dev-dependency to `faultline-probe-exec`
     - Generate `(Option<i32>, bool)` pairs, verify `classify` returns correct `ObservationClass`
     - **Validates: Requirements 2.3, 2.4, 2.5, 2.6**
 
-  - [ ] 3.6 Write property test P2: Observation Structural Completeness
+  - [x] 3.6 Write property test P2: Observation Structural Completeness
     - **Property 2: Observation Structural Completeness**
     - Generate valid `ProbeSpec` + mock checkout, verify all `ProbeObservation` fields are populated
     - **Validates: Requirements 2.7, 4.7**
 
-  - [ ] 3.7 Implement `LocalizationSession` core logic
+  - [x] 3.7 Implement `LocalizationSession` core logic
     - `new`: validate non-empty sequence, build `index_by_commit` map
     - `record`: insert observation by index, reject unknown commits
     - `next_probe`: probe boundaries first, then binary narrowing (median unobserved between pass/fail)
@@ -94,30 +94,30 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - `has_observation`, `get_observation`, `observation_list`, `sequence`, `max_probes` accessors
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9_
 
-  - [ ] 3.8 Write property test P4: Binary Narrowing Selects Valid Midpoint
+  - [x] 3.8 Write property test P4: Binary Narrowing Selects Valid Midpoint
     - **Property 4: Binary Narrowing Selects Valid Midpoint**
     - Add `proptest` as dev-dependency to `faultline-localization`
     - Generate sequences of length 3–50, record pass at first and fail at last, verify `next_probe()` returns a commit strictly between boundaries with no existing observation
     - **Validates: Requirement 3.1**
 
-  - [ ] 3.9 Write property test P5: Adjacent Pass-Fail Yields FirstBad
+  - [x] 3.9 Write property test P5: Adjacent Pass-Fail Yields FirstBad
     - **Property 5: Adjacent Pass-Fail Yields FirstBad**
     - Generate sequences, record pass at index i and fail at index i+1 with all between observed, verify `outcome()` returns `FirstBad` with correct `last_good` and `first_bad`
     - **Validates: Requirement 3.2**
 
-  - [ ] 3.10 Write property test P10: FirstBad Requires Direct Evidence
+  - [x] 3.10 Write property test P10: FirstBad Requires Direct Evidence
     - **Property 10: FirstBad Requires Direct Evidence**
     - Generate any session producing `FirstBad`, verify `last_good` has Pass observation and `first_bad` has Fail observation
     - **Validates: Requirements 3.9, 11.1**
 
-  - [ ] 3.11 Implement `FileRunStore` (`RunStorePort`)
+  - [x] 3.11 Implement `FileRunStore` (`RunStorePort`)
     - `prepare_run`: create run directory keyed by request fingerprint, set `resumed` flag if exists, write `request.json`
     - `load_observations`: read `observations.json` or return empty vec
     - `save_observation`: upsert by commit ID, sort, rewrite `observations.json`
     - `save_report`: write `report.json`
     - _Requirements: 4.1, 4.2, 4.3, 4.5, 4.6_
 
-  - [ ] 3.12 Write property test P11: Run Store Round-Trip
+  - [x] 3.12 Write property test P11: Run Store Round-Trip
     - **Property 11: Run Store Round-Trip**
     - Add `proptest` as dev-dependency to `faultline-store`
     - Generate random `ProbeObservation`, save then load, verify equivalence
@@ -126,13 +126,13 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Use temp directories for isolation
     - **Validates: Requirements 4.2, 4.5, 4.6**
 
-  - [ ] 3.13 Write property test P12: Run Store Resumability
+  - [x] 3.13 Write property test P12: Run Store Resumability
     - **Property 12: Run Store Resumability**
     - Generate request + observations, call `prepare_run` twice, verify second `RunHandle.resumed == true`
     - Verify `load_observations` on second handle returns all observations from first run
     - **Validates: Requirement 4.3**
 
-  - [ ] 3.14 Implement `ReportRenderer` JSON output (`analysis.json`)
+  - [x] 3.14 Implement `ReportRenderer` JSON output (`analysis.json`)
     - Write `analysis.json` via `serde_json::to_string_pretty`
     - Create output directory if it doesn't exist
     - _Requirements: 6.1, 6.2, 6.3, 6.4_

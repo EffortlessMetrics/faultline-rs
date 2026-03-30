@@ -8,3 +8,6 @@ authors.workspace = true
 [dependencies]
 serde_json.workspace = true
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+faultline-codes = { path = "../faultline-codes" }

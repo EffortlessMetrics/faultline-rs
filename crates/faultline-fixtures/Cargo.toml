@@ -8,3 +8,6 @@ publish = false
 
 [dependencies]
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+proptest = { workspace = true }

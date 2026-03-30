@@ -10,3 +10,8 @@ serde.workspace = true
 serde_json.workspace = true
 faultline-ports = { path = "../faultline-ports" }
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+tempfile = "3"
+proptest = { workspace = true }
+faultline-codes = { path = "../faultline-codes" }
