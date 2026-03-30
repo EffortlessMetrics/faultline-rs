@@ -1,0 +1,28 @@
+[workspace]
+members = [
+  "crates/faultline-codes",
+  "crates/faultline-types",
+  "crates/faultline-localization",
+  "crates/faultline-surface",
+  "crates/faultline-ports",
+  "crates/faultline-app",
+  "crates/faultline-git",
+  "crates/faultline-probe-exec",
+  "crates/faultline-store",
+  "crates/faultline-render",
+  "crates/faultline-cli",
+  "crates/faultline-fixtures",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["OpenAI"]
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+thiserror = "1.0"

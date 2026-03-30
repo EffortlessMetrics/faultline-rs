@@ -1,0 +1,13 @@
+[package]
+name = "faultline-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+faultline-codes = { path = "../faultline-codes" }
+faultline-types = { path = "../faultline-types" }
+faultline-localization = { path = "../faultline-localization" }
+faultline-surface = { path = "../faultline-surface" }
+faultline-ports = { path = "../faultline-ports" }
