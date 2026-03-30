@@ -723,6 +723,391 @@ mod tests {
                     }
                 }
             }
+
+            // Feature: v01-release-train, Property 7: Non-Monotonic Evidence Yields Low Confidence
+            // **Validates: Requirement 3.5**
+            #[test]
+            fn prop_non_monotonic_evidence_yields_low_confidence(
+                n in 4usize..=20,
+                fail_frac in 0.0f64..1.0,
+                pass_frac in 0.0f64..1.0,
+                fill_selectors in prop::collection::vec(0u8..2, 20),
+            ) {
+                // We need fail_idx < pass_idx, both in the interior (1..n-1).
+                // Interior range has (n-2) slots: indices 1..=(n-2).
+                let interior_size = n - 2; // at least 2 since n >= 4
+                // Pick two distinct interior indices
+                let raw_a = (fail_frac * interior_size as f64).floor() as usize;
+                let raw_a = raw_a.min(interior_size - 1); // clamp to 0..interior_size-1
+                let raw_b = (pass_frac * interior_size as f64).floor() as usize;
+                let raw_b = raw_b.min(interior_size - 1);
+
+                // Ensure they are distinct; if equal, shift one
+                let (a, b) = if raw_a != raw_b {
+                    (raw_a, raw_b)
+                } else {
+                    // shift b up by 1, wrapping
+                    (raw_a, (raw_b + 1) % interior_size)
+                };
+
+                // Ensure fail_idx < pass_idx (in sequence order)
+                let (fail_interior, pass_interior) = if a < b { (a, b) } else { (b, a) };
+                let fail_idx = fail_interior + 1; // map back to sequence index
+                let pass_idx = pass_interior + 1;
+
+                // Build sequence
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Record boundary observations: Pass at first, Fail at last
+                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+
+                // Record non-monotonic pair: Fail at fail_idx, Pass at pass_idx
+                session.record(obs(&format!("commit-{fail_idx}"), ObservationClass::Fail)).unwrap();
+                session.record(obs(&format!("commit-{pass_idx}"), ObservationClass::Pass)).unwrap();
+
+                // Fill all remaining intermediate commits with Pass or Fail to ensure convergence
+                // (no unobserved commits between boundaries)
+                for idx in 1..(n - 1) {
+                    if idx == fail_idx || idx == pass_idx {
+                        continue; // already recorded
+                    }
+                    let selector = fill_selectors[idx % fill_selectors.len()];
+                    let class = if selector % 2 == 0 {
+                        ObservationClass::Pass
+                    } else {
+                        ObservationClass::Fail
+                    };
+                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                }
+
+                let outcome = session.outcome();
+
+                // The outcome must include NonMonotonicEvidence since fail_idx < pass_idx
+                match &outcome {
+                    LocalizationOutcome::SuspectWindow { reasons, confidence, .. } => {
+                        prop_assert!(
+                            reasons.contains(&AmbiguityReason::NonMonotonicEvidence),
+                            "expected NonMonotonicEvidence in reasons, got {:?}", reasons
+                        );
+                        prop_assert_eq!(
+                            confidence.score, Confidence::low().score,
+                            "expected confidence == Confidence::low() ({}), got {}",
+                            Confidence::low().score, confidence.score
+                        );
+                    }
+                    other => {
+                        // Could also be Inconclusive with NonMonotonicEvidence if boundaries
+                        // don't align. Check that NonMonotonicEvidence is present.
+                        match other {
+                            LocalizationOutcome::Inconclusive { reasons } => {
+                                // This can happen if the highest pass is at pass_idx and
+                                // there's no fail above it. Still must detect non-monotonic.
+                                // But we always have Fail at last commit (n-1) which is > pass_idx,
+                                // so this shouldn't happen. Fail if it does.
+                                prop_assert!(false,
+                                    "unexpected Inconclusive outcome: {:?}", reasons);
+                            }
+                            LocalizationOutcome::FirstBad { .. } => {
+                                prop_assert!(false,
+                                    "unexpected FirstBad outcome — non-monotonic evidence should prevent this");
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
+
+            // Feature: v01-release-train, Property 8: Missing Boundary Yields Inconclusive
+            // **Validates: Requirements 3.6, 3.7**
+            #[test]
+            fn prop_only_pass_yields_inconclusive_missing_fail_boundary(
+                n in 3usize..=15,
+                num_obs in 1usize..=15,
+                selectors in prop::collection::vec(0usize..1000, 15),
+            ) {
+                let n = n; // sequence length
+                let num_obs = num_obs.min(n); // can't observe more than n commits
+
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Pick num_obs distinct indices to observe, all as Pass
+                let mut indices: Vec<usize> = (0..n).collect();
+                // Fisher-Yates-ish shuffle using selectors
+                for i in (1..indices.len()).rev() {
+                    let j = selectors[i % selectors.len()] % (i + 1);
+                    indices.swap(i, j);
+                }
+                let chosen: Vec<usize> = indices[..num_obs].to_vec();
+
+                for &idx in &chosen {
+                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Pass)).unwrap();
+                }
+
+                let outcome = session.outcome();
+
+                match outcome {
+                    LocalizationOutcome::Inconclusive { reasons } => {
+                        prop_assert!(
+                            reasons.contains(&AmbiguityReason::MissingFailBoundary),
+                            "expected MissingFailBoundary in reasons, got {:?}", reasons
+                        );
+                    }
+                    other => {
+                        prop_assert!(false,
+                            "expected Inconclusive but got {:?}", other);
+                    }
+                }
+            }
+
+            // Feature: v01-release-train, Property 8: Missing Boundary Yields Inconclusive
+            // **Validates: Requirements 3.6, 3.7**
+            #[test]
+            fn prop_only_fail_yields_inconclusive_missing_pass_boundary(
+                n in 3usize..=15,
+                num_obs in 1usize..=15,
+                selectors in prop::collection::vec(0usize..1000, 15),
+            ) {
+                let n = n;
+                let num_obs = num_obs.min(n);
+
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Pick num_obs distinct indices to observe, all as Fail
+                let mut indices: Vec<usize> = (0..n).collect();
+                for i in (1..indices.len()).rev() {
+                    let j = selectors[i % selectors.len()] % (i + 1);
+                    indices.swap(i, j);
+                }
+                let chosen: Vec<usize> = indices[..num_obs].to_vec();
+
+                for &idx in &chosen {
+                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Fail)).unwrap();
+                }
+
+                let outcome = session.outcome();
+
+                match outcome {
+                    LocalizationOutcome::Inconclusive { reasons } => {
+                        prop_assert!(
+                            reasons.contains(&AmbiguityReason::MissingPassBoundary),
+                            "expected MissingPassBoundary in reasons, got {:?}", reasons
+                        );
+                    }
+                    other => {
+                        prop_assert!(false,
+                            "expected Inconclusive but got {:?}", other);
+                    }
+                }
+            }
+
+            // Feature: v01-release-train, Property 21: Monotonic Window Narrowing
+            // **Validates: Requirements 11.2**
+            #[test]
+            fn prop_monotonic_window_narrowing(
+                n in 3usize..=20,
+                transition_frac in 0.0f64..1.0,
+            ) {
+                // Pick a monotonic transition point: indices 0..=transition are Pass,
+                // indices transition+1..n are Fail. This models a real regression
+                // where the predicate is consistent (no non-monotonic evidence).
+                let transition = (transition_frac * (n - 1) as f64).floor() as usize;
+                let transition = transition.min(n - 2); // ensure at least one Fail after
+
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Helper: compute window size from current observations.
+                // Find highest-index Pass and lowest-index Fail above it.
+                // Window = fail_idx - pass_idx. If no such pair, window = full sequence length.
+                let compute_window = |sess: &LocalizationSession| -> usize {
+                    let mut highest_pass: Option<usize> = None;
+                    let mut fail_indices: Vec<usize> = Vec::new();
+                    for (idx, o) in &sess.observations {
+                        match o.class {
+                            ObservationClass::Pass => {
+                                highest_pass = Some(highest_pass.map_or(*idx, |p: usize| p.max(*idx)));
+                            }
+                            ObservationClass::Fail => {
+                                fail_indices.push(*idx);
+                            }
+                            _ => {}
+                        }
+                    }
+                    if let Some(hp) = highest_pass {
+                        if let Some(lf) = fail_indices.iter().copied().filter(|&f| f > hp).min() {
+                            return lf - hp;
+                        }
+                    }
+                    n // full sequence length as fallback
+                };
+
+                // Record Pass at first commit and Fail at last commit (establishing boundaries)
+                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+
+                let mut prev_window = compute_window(&session);
+
+                // Follow the binary narrowing order: use next_probe() to pick commits,
+                // then assign the correct monotonic class based on the transition point.
+                loop {
+                    let probe = session.next_probe();
+                    if probe.is_none() {
+                        break;
+                    }
+                    let probe_commit = probe.unwrap();
+                    let idx = *session.index_by_commit.get(&probe_commit).unwrap();
+
+                    let class = if idx <= transition {
+                        ObservationClass::Pass
+                    } else {
+                        ObservationClass::Fail
+                    };
+                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+
+                    let new_window = compute_window(&session);
+                    prop_assert!(
+                        new_window <= prev_window,
+                        "window expanded from {} to {} after recording commit-{} as {:?}",
+                        prev_window, new_window, idx, class
+                    );
+                    prev_window = new_window;
+                }
+
+                // Final window should be exactly 1 (adjacent pass/fail)
+                prop_assert_eq!(
+                    prev_window, 1,
+                    "final window should be 1 (exact boundary found), got {}",
+                    prev_window
+                );
+            }
+
+            // Feature: v01-release-train, Property 22: SuspectWindow Confidence Cap
+            // **Validates: Requirement 11.3**
+            #[test]
+            fn prop_suspect_window_confidence_cap(
+                n in 4usize..=20,
+                ambig_selectors in prop::collection::vec(0u8..3, 18),
+            ) {
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Record Pass at first, Fail at last
+                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+
+                // Fill intermediates with Skip or Indeterminate to force SuspectWindow
+                for i in 1..(n - 1) {
+                    let selector = ambig_selectors[i % ambig_selectors.len()];
+                    let class = if selector % 2 == 0 {
+                        ObservationClass::Skip
+                    } else {
+                        ObservationClass::Indeterminate
+                    };
+                    session.record(obs(&format!("commit-{i}"), class)).unwrap();
+                }
+
+                let outcome = session.outcome();
+
+                match outcome {
+                    LocalizationOutcome::SuspectWindow { confidence, .. } => {
+                        prop_assert!(
+                            confidence.score < Confidence::high().score,
+                            "SuspectWindow confidence {} must be < {} (Confidence::high().score)",
+                            confidence.score, Confidence::high().score
+                        );
+                    }
+                    other => {
+                        prop_assert!(false,
+                            "expected SuspectWindow but got {:?}", other);
+                    }
+                }
+            }
+
+            // Feature: v01-release-train, Property 6: Ambiguous Observations Yield SuspectWindow
+            // **Validates: Requirements 3.3, 3.4**
+            #[test]
+            fn prop_ambiguous_observations_yield_suspect_window(
+                n in 4usize..=20,
+                class_selectors in prop::collection::vec(0u8..2, 18),
+            ) {
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Record Pass at first commit, Fail at last commit
+                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+
+                // For each intermediate commit (indices 1..n-1), assign Skip or Indeterminate.
+                // Using only Skip/Indeterminate guarantees no additional Pass/Fail between
+                // boundaries, so the boundary pair stays at (0, n-1) and all intermediates
+                // are ambiguous.
+                let intermediate_count = n - 2;
+                let mut has_skip = false;
+                let mut has_indeterminate = false;
+
+                for i in 0..intermediate_count {
+                    let selector = class_selectors[i % class_selectors.len()];
+                    let class = if selector % 2 == 0 {
+                        ObservationClass::Skip
+                    } else {
+                        ObservationClass::Indeterminate
+                    };
+                    match class {
+                        ObservationClass::Skip => has_skip = true,
+                        ObservationClass::Indeterminate => has_indeterminate = true,
+                        _ => {}
+                    }
+                    let commit_idx = i + 1;
+                    session.record(obs(&format!("commit-{commit_idx}"), class)).unwrap();
+                }
+
+                let outcome = session.outcome();
+
+                match outcome {
+                    LocalizationOutcome::SuspectWindow { reasons, .. } => {
+                        // If any Skip was recorded, SkippedRevision must be in reasons
+                        if has_skip {
+                            prop_assert!(
+                                reasons.contains(&AmbiguityReason::SkippedRevision),
+                                "has_skip=true but SkippedRevision not in reasons: {:?}", reasons
+                            );
+                        }
+                        // If any Indeterminate was recorded, IndeterminateRevision must be in reasons
+                        if has_indeterminate {
+                            prop_assert!(
+                                reasons.contains(&AmbiguityReason::IndeterminateRevision),
+                                "has_indeterminate=true but IndeterminateRevision not in reasons: {:?}", reasons
+                            );
+                        }
+                    }
+                    other => {
+                        prop_assert!(false,
+                            "expected SuspectWindow but got {:?}", other);
+                    }
+                }
+            }
         }
     }
 }

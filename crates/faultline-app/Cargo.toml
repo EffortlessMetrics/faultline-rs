@@ -11,3 +11,6 @@ faultline-types = { path = "../faultline-types" }
 faultline-localization = { path = "../faultline-localization" }
 faultline-surface = { path = "../faultline-surface" }
 faultline-ports = { path = "../faultline-ports" }
+
+[dev-dependencies]
+proptest = { workspace = true }

@@ -48,7 +48,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
 - [x] 2. Checkpoint — Wave 0 complete
   - Ensure `cargo test -p faultline-codes -p faultline-types -p faultline-ports -p faultline-fixtures` passes. Ask the user if questions arise.
 
-- [ ] 3. Wave 1 — Thin Vertical Slice: Linearize → Checkout → Probe → Localize → JSON
+- [x] 3. Wave 1 — Thin Vertical Slice: Linearize → Checkout → Probe → Localize → JSON
   - [x] 3.1 Implement `GitAdapter` history linearization (`HistoryPort::linearize`)
     - Resolve revisions via `git rev-parse --verify`
     - Verify ancestry via `git merge-base --is-ancestor`
@@ -137,7 +137,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Create output directory if it doesn't exist
     - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-  - [ ] 3.15 Implement `FaultlineApp::localize` orchestration loop
+  - [x] 3.15 Implement `FaultlineApp::localize` orchestration loop
     - Wire `HistoryPort`, `CheckoutPort`, `ProbePort`, `RunStorePort`, `SurfaceAnalyzer`
     - Prepare run, load cached observations, linearize history
     - Create `LocalizationSession`, replay cached observations
@@ -147,48 +147,48 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Build and persist `AnalysisReport`
     - _Requirements: 3.1, 3.8, 4.4, 5.1, 10.1, 10.2, 10.3, 10.4, 10.5_
 
-  - [ ] 3.16 Write property test P9: Probe Count Respects Max Probes
+  - [x] 3.16 Write property test P9: Probe Count Respects Max Probes
     - **Property 9: Probe Count Respects Max Probes**
     - Add `proptest` as dev-dependency to `faultline-app`
     - Use mock port implementations (test doubles)
     - Generate small `max_probes` values (1–10), verify loop terminates within limit
     - **Validates: Requirement 3.8**
 
-  - [ ] 3.17 Write property test P20: Boundary Validation Rejects Mismatched Classes
+  - [x] 3.17 Write property test P20: Boundary Validation Rejects Mismatched Classes
     - **Property 20: Boundary Validation Rejects Mismatched Classes**
     - Use mock ports where good boundary returns Fail or bad boundary returns Pass
     - Verify `localize` returns `InvalidBoundary` error with expected/actual classes
     - **Validates: Requirements 10.1, 10.2, 10.3, 10.4**
 
-- [ ] 4. Checkpoint — Wave 1 complete (thin vertical slice works end-to-end)
+- [x] 4. Checkpoint — Wave 1 complete (thin vertical slice works end-to-end)
   - Ensure `cargo test` passes for all crates. Ask the user if questions arise.
 
 - [ ] 5. Wave 2 — Honest Localization: Skip, Timeout, SuspectWindow, Property Tests
-  - [ ] 5.1 Add unit test fixtures for localization edge cases
+  - [x] 5.1 Add unit test fixtures for localization edge cases
     - Timeout island scenario: one or more `Indeterminate` commits between boundaries → `SuspectWindow`
     - Non-monotonic predicate scenario: `Fail` before `Pass` in sequence → `SuspectWindow` with `NonMonotonicEvidence`, confidence low
     - All-revisions-untestable scenario: every intermediate commit is `Skip` or `Indeterminate`
     - _Requirements: 12.3, 12.4, 12.5, 12.6_
 
-  - [ ] 5.2 Write property test P6: Ambiguous Observations Yield SuspectWindow
+  - [x] 5.2 Write property test P6: Ambiguous Observations Yield SuspectWindow
     - **Property 6: Ambiguous Observations Yield SuspectWindow**
     - Generate sessions with Skip or Indeterminate between pass/fail boundaries
     - Verify `outcome()` returns `SuspectWindow` with `SkippedRevision` and/or `IndeterminateRevision` in reasons
     - **Validates: Requirements 3.3, 3.4**
 
-  - [ ] 5.3 Write property test P7: Non-Monotonic Evidence Yields Low Confidence
+  - [x] 5.3 Write property test P7: Non-Monotonic Evidence Yields Low Confidence
     - **Property 7: Non-Monotonic Evidence Yields Low Confidence**
     - Generate observation sets where Fail index < Pass index
     - Verify `outcome()` includes `NonMonotonicEvidence` and confidence == `Confidence::low().score`
     - **Validates: Requirement 3.5**
 
-  - [ ] 5.4 Write property test P8: Missing Boundary Yields Inconclusive
+  - [x] 5.4 Write property test P8: Missing Boundary Yields Inconclusive
     - **Property 8: Missing Boundary Yields Inconclusive**
     - Generate sessions with only Pass (no Fail) or only Fail (no Pass)
     - Verify `outcome()` returns `Inconclusive` with `MissingPassBoundary` or `MissingFailBoundary`
     - **Validates: Requirements 3.6, 3.7**
 
-  - [ ] 5.5 Write property test P21: Monotonic Window Narrowing
+  - [x] 5.5 Write property test P21: Monotonic Window Narrowing
     - **Property 21: Monotonic Window Narrowing**
     - Generate observation sequences, record one at a time, verify candidate window size never increases
     - **Validates: Requirement 11.2**
@@ -198,7 +198,7 @@ Implements the complete faultline v0.1 release across waves 0–7, following the
     - Generate sessions producing `SuspectWindow`, verify confidence score < 95 (`Confidence::high().score`)
     - **Validates: Requirement 11.3**
 
-  - [ ] 5.7 Write property test P23: Observation Order Independence
+  - [-] 5.7 Write property test P23: Observation Order Independence
     - **Property 23: Observation Order Independence**
     - Generate observation sets and `RevisionSequence`, record in multiple permutation orders, verify same `LocalizationOutcome`
     - **Validates: Requirement 11.4**

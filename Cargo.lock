@@ -168,6 +168,7 @@ dependencies = [
  "faultline-ports",
  "faultline-surface",
  "faultline-types",
+ "proptest",
 ]
 
 [[package]]
