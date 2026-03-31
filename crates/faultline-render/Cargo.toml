@@ -11,3 +11,4 @@ faultline-types = { path = "../faultline-types" }
 
 [dev-dependencies]
 faultline-codes = { path = "../faultline-codes" }
+proptest.workspace = true

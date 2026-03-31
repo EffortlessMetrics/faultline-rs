@@ -164,16 +164,20 @@ impl HistoryPort for GitAdapter {
                 ChangeStatus::Deleted
             } else if status_code.starts_with('R') {
                 ChangeStatus::Renamed
+            } else if status_code.starts_with('C') {
+                ChangeStatus::Unknown
             } else if status_code.starts_with('T') {
                 ChangeStatus::TypeChanged
             } else {
                 ChangeStatus::Unknown
             };
-            let path = match status {
-                ChangeStatus::Renamed => {
-                    parts.get(2).or_else(|| parts.get(1)).copied().unwrap_or("")
-                }
-                _ => parts.get(1).copied().unwrap_or(""),
+            // Rename (R###) and copy (C###) entries have two paths: source\tdest.
+            // Use the destination path for both.
+            let has_two_paths = status_code.starts_with('R') || status_code.starts_with('C');
+            let path = if has_two_paths {
+                parts.get(2).or_else(|| parts.get(1)).copied().unwrap_or("")
+            } else {
+                parts.get(1).copied().unwrap_or("")
             };
             if !path.is_empty() {
                 changes.push(PathChange {
@@ -249,5 +253,119 @@ mod tests {
 
             prop_assert_ne!(path_a, path_b, "two calls to unique_worktree_path must return distinct paths, even for the same commit");
         }
+    }
+
+    /// Helper: run a git command in a directory and return stdout.
+    fn git_cmd(dir: &std::path::Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git command failed to execute");
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    #[test]
+    fn changed_paths_detects_add_modify_delete_rename() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let repo = tmp.path();
+
+        // Init repo with an initial commit containing two files.
+        git_cmd(repo, &["init"]);
+        git_cmd(repo, &["config", "user.email", "test@test.com"]);
+        git_cmd(repo, &["config", "user.name", "Test"]);
+
+        std::fs::write(repo.join("keep.txt"), "keep").unwrap();
+        std::fs::write(repo.join("to_modify.txt"), "original").unwrap();
+        std::fs::write(repo.join("to_delete.txt"), "delete me").unwrap();
+        std::fs::write(repo.join("to_rename.txt"), "rename me").unwrap();
+        git_cmd(repo, &["add", "."]);
+        git_cmd(repo, &["commit", "-m", "initial"]);
+        let from_sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+
+        // Second commit: add, modify, delete, rename.
+        std::fs::write(repo.join("added.txt"), "new file").unwrap();
+        std::fs::write(repo.join("to_modify.txt"), "changed").unwrap();
+        std::fs::remove_file(repo.join("to_delete.txt")).unwrap();
+        std::fs::rename(repo.join("to_rename.txt"), repo.join("renamed.txt")).unwrap();
+        git_cmd(repo, &["add", "."]);
+        git_cmd(repo, &["commit", "-m", "changes"]);
+        let to_sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+
+        let adapter = GitAdapter::new(repo).expect("create adapter");
+        let changes = adapter
+            .changed_paths(&CommitId(from_sha), &CommitId(to_sha))
+            .expect("changed_paths");
+
+        // Verify we got the expected changes.
+        let added: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Added)
+            .collect();
+        assert!(
+            added.iter().any(|c| c.path == "added.txt"),
+            "should detect added.txt, got: {:?}",
+            added
+        );
+
+        let modified: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Modified)
+            .collect();
+        assert!(
+            modified.iter().any(|c| c.path == "to_modify.txt"),
+            "should detect to_modify.txt as modified, got: {:?}",
+            modified
+        );
+
+        let deleted: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Deleted)
+            .collect();
+        assert!(
+            deleted.iter().any(|c| c.path == "to_delete.txt"),
+            "should detect to_delete.txt as deleted, got: {:?}",
+            deleted
+        );
+
+        // Rename detection: git may detect as rename (R) or as delete+add.
+        // If detected as rename, the path should be the destination.
+        let renamed: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Renamed)
+            .collect();
+        if !renamed.is_empty() {
+            assert!(
+                renamed.iter().any(|c| c.path == "renamed.txt"),
+                "rename entry should use destination path, got: {:?}",
+                renamed
+            );
+        }
+    }
+
+    #[test]
+    fn changed_paths_empty_diff_returns_empty_vec() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let repo = tmp.path();
+
+        git_cmd(repo, &["init"]);
+        git_cmd(repo, &["config", "user.email", "test@test.com"]);
+        git_cmd(repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("file.txt"), "content").unwrap();
+        git_cmd(repo, &["add", "."]);
+        git_cmd(repo, &["commit", "-m", "initial"]);
+        let sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+
+        let adapter = GitAdapter::new(repo).expect("create adapter");
+        let changes = adapter
+            .changed_paths(&CommitId(sha.clone()), &CommitId(sha))
+            .expect("changed_paths");
+        assert!(changes.is_empty(), "same commit should yield no changes");
     }
 }

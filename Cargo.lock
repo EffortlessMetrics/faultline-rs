@@ -243,6 +243,7 @@ version = "0.1.0"
 dependencies = [
  "faultline-codes",
  "faultline-types",
+ "proptest",
  "serde_json",
 ]
 
@@ -264,6 +265,7 @@ name = "faultline-surface"
 version = "0.1.0"
 dependencies = [
  "faultline-types",
+ "proptest",
 ]
 
 [[package]]

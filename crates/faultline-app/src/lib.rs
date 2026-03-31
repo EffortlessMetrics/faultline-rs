@@ -370,6 +370,352 @@ mod tests {
         }
     }
 
+    // ── Tracking ProbePort (records probed commits) ─────────────────
+    struct TrackingProbe {
+        /// Maps commit ID string → ObservationClass to return.
+        overrides: std::collections::HashMap<String, ObservationClass>,
+        default_class: ObservationClass,
+        /// Records which commits were actually probed (in order).
+        probed: std::cell::RefCell<Vec<String>>,
+    }
+
+    impl ProbePort for TrackingProbe {
+        fn run(
+            &self,
+            checkout: &CheckedOutRevision,
+            _probe: &ProbeSpec,
+        ) -> faultline_types::Result<ProbeObservation> {
+            self.probed.borrow_mut().push(checkout.commit.0.clone());
+
+            let class = self
+                .overrides
+                .get(&checkout.commit.0)
+                .copied()
+                .unwrap_or(self.default_class);
+
+            Ok(ProbeObservation {
+                commit: checkout.commit.clone(),
+                class,
+                kind: ProbeKind::Test,
+                exit_code: Some(match class {
+                    ObservationClass::Pass => 0,
+                    ObservationClass::Skip => 125,
+                    _ => 1,
+                }),
+                timed_out: false,
+                duration_ms: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+            })
+        }
+    }
+
+    // ── Mock RunStorePort that returns cached observations (resumed run) ─
+    struct CachedRunStore {
+        cached_observations: Vec<ProbeObservation>,
+    }
+
+    impl RunStorePort for CachedRunStore {
+        fn prepare_run(&self, _request: &AnalysisRequest) -> faultline_types::Result<RunHandle> {
+            Ok(RunHandle {
+                id: "resumed-run".to_string(),
+                root: PathBuf::from("/tmp/resumed-run"),
+                resumed: true,
+            })
+        }
+
+        fn load_observations(
+            &self,
+            _run: &RunHandle,
+        ) -> faultline_types::Result<Vec<ProbeObservation>> {
+            Ok(self.cached_observations.clone())
+        }
+
+        fn save_observation(
+            &self,
+            _run: &RunHandle,
+            _observation: &ProbeObservation,
+        ) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn save_report(
+            &self,
+            _run: &RunHandle,
+            _report: &AnalysisReport,
+        ) -> faultline_types::Result<()> {
+            Ok(())
+        }
+    }
+
+    // ── Integration test: cached-resume scenario ─────────────────────
+    // Validates: Requirements 4.3, 4.4, 12.7
+    //
+    // Simulates a resumed run where boundary observations (c0=Pass, c4=Fail)
+    // and some intermediate observations are already cached. Verifies that:
+    // - Cached commits are NOT re-probed
+    // - The localization loop only probes uncached commits
+    // - The final outcome is FirstBad with the correct boundary pair
+    #[test]
+    fn integration_cached_resume_skips_cached_commits() {
+        // Sequence: c0, c1, c2, c3, c4 (5 commits)
+        let sequence = make_sequence(5);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        // Pre-cached observations: boundaries + c2 (the midpoint)
+        let cached_observations = vec![
+            ProbeObservation {
+                commit: CommitId("c0".into()),
+                class: ObservationClass::Pass,
+                kind: ProbeKind::Test,
+                exit_code: Some(0),
+                timed_out: false,
+                duration_ms: 10,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+            ProbeObservation {
+                commit: CommitId("c4".into()),
+                class: ObservationClass::Fail,
+                kind: ProbeKind::Test,
+                exit_code: Some(1),
+                timed_out: false,
+                duration_ms: 10,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+            ProbeObservation {
+                commit: CommitId("c2".into()),
+                class: ObservationClass::Fail,
+                kind: ProbeKind::Test,
+                exit_code: Some(1),
+                timed_out: false,
+                duration_ms: 10,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        ];
+
+        // The probe should return Pass for c1 (so we get FirstBad at c1→c2)
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("c1".into(), ObservationClass::Pass);
+        overrides.insert("c3".into(), ObservationClass::Fail);
+
+        let probe = TrackingProbe {
+            overrides,
+            default_class: ObservationClass::Fail,
+            probed: std::cell::RefCell::new(Vec::new()),
+        };
+
+        let store = CachedRunStore {
+            cached_observations,
+        };
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_for_sequence(5, 20);
+
+        let result = app.localize(request).expect("localize should succeed");
+
+        // Verify cached commits were NOT re-probed
+        let probed_commits = probe.probed.borrow();
+        assert!(
+            !probed_commits.contains(&"c0".to_string()),
+            "c0 was cached (Pass) and should not have been re-probed"
+        );
+        assert!(
+            !probed_commits.contains(&"c4".to_string()),
+            "c4 was cached (Fail) and should not have been re-probed"
+        );
+        assert!(
+            !probed_commits.contains(&"c2".to_string()),
+            "c2 was cached (Fail) and should not have been re-probed"
+        );
+
+        // Verify the outcome is FirstBad with last_good=c1, first_bad=c2
+        match &result.report.outcome {
+            faultline_types::LocalizationOutcome::FirstBad {
+                last_good,
+                first_bad,
+                ..
+            } => {
+                assert_eq!(last_good.0, "c1", "last_good should be c1");
+                assert_eq!(first_bad.0, "c2", "first_bad should be c2");
+            }
+            other => panic!("expected FirstBad outcome, got: {:?}", other),
+        }
+
+        // Verify the run handle indicates resumed
+        assert!(result.run.resumed, "run should be marked as resumed");
+    }
+
+    // ── Integration tests: boundary validation with mock ports ──────
+    // Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5
+
+    #[test]
+    fn integration_good_boundary_fail_yields_invalid_boundary() {
+        let sequence = make_sequence(5);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("c0".to_string(), ObservationClass::Fail); // mismatch
+        overrides.insert("c4".to_string(), ObservationClass::Fail);
+
+        let probe = ConfigurableMockProbe {
+            overrides,
+            default_class: ObservationClass::Fail,
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_for_sequence(5, 20);
+
+        match app.localize(request) {
+            Err(FaultlineError::InvalidBoundary(msg)) => {
+                assert!(
+                    msg.contains("known-good"),
+                    "error should mention known-good, got: {msg}"
+                );
+                assert!(
+                    msg.contains("Fail") && msg.contains("Pass"),
+                    "error should mention expected Pass and actual Fail, got: {msg}"
+                );
+            }
+            other => panic!("expected InvalidBoundary error, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn integration_bad_boundary_pass_yields_invalid_boundary() {
+        let sequence = make_sequence(5);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("c0".to_string(), ObservationClass::Pass);
+        overrides.insert("c4".to_string(), ObservationClass::Pass); // mismatch
+
+        let probe = ConfigurableMockProbe {
+            overrides,
+            default_class: ObservationClass::Pass,
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_for_sequence(5, 20);
+
+        match app.localize(request) {
+            Err(FaultlineError::InvalidBoundary(msg)) => {
+                assert!(
+                    msg.contains("known-bad"),
+                    "error should mention known-bad, got: {msg}"
+                );
+                assert!(
+                    msg.contains("Pass") && msg.contains("Fail"),
+                    "error should mention expected Fail and actual Pass, got: {msg}"
+                );
+            }
+            other => panic!("expected InvalidBoundary error, got: {other:?}"),
+        }
+    }
+
+    // Validates: Requirement 10.5
+    //
+    // Pre-caches boundary observations (c0=Pass, c{n-1}=Fail) via CachedRunStore.
+    // Uses TrackingProbe to verify that boundaries are NOT re-probed when cached.
+    // The localization should complete successfully using the cached boundary data.
+    #[test]
+    fn integration_cached_boundary_observations_reused_no_reprobe() {
+        // Sequence: c0, c1, c2, c3, c4 (5 commits)
+        let sequence = make_sequence(5);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        // Pre-cache ONLY the boundary observations
+        let cached_observations = vec![
+            ProbeObservation {
+                commit: CommitId("c0".into()),
+                class: ObservationClass::Pass,
+                kind: ProbeKind::Test,
+                exit_code: Some(0),
+                timed_out: false,
+                duration_ms: 10,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+            ProbeObservation {
+                commit: CommitId("c4".into()),
+                class: ObservationClass::Fail,
+                kind: ProbeKind::Test,
+                exit_code: Some(1),
+                timed_out: false,
+                duration_ms: 10,
+                stdout: String::new(),
+                stderr: String::new(),
+            },
+        ];
+
+        // Interior commits: c1=Pass, c2=Fail → FirstBad at c1→c2
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("c1".into(), ObservationClass::Pass);
+        overrides.insert("c2".into(), ObservationClass::Fail);
+        overrides.insert("c3".into(), ObservationClass::Fail);
+
+        let probe = TrackingProbe {
+            overrides,
+            default_class: ObservationClass::Fail,
+            probed: std::cell::RefCell::new(Vec::new()),
+        };
+
+        let store = CachedRunStore {
+            cached_observations,
+        };
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_for_sequence(5, 20);
+
+        let result = app.localize(request).expect("localize should succeed");
+
+        // Verify boundary commits were NOT re-probed
+        let probed_commits = probe.probed.borrow();
+        assert!(
+            !probed_commits.contains(&"c0".to_string()),
+            "c0 was cached (Pass boundary) and should not have been re-probed"
+        );
+        assert!(
+            !probed_commits.contains(&"c4".to_string()),
+            "c4 was cached (Fail boundary) and should not have been re-probed"
+        );
+
+        // Verify interior commits WERE probed (they were not cached)
+        assert!(
+            probed_commits.contains(&"c2".to_string()),
+            "c2 was not cached and should have been probed"
+        );
+
+        // Verify localization completed successfully with correct outcome
+        match &result.report.outcome {
+            faultline_types::LocalizationOutcome::FirstBad {
+                last_good,
+                first_bad,
+                ..
+            } => {
+                assert_eq!(last_good.0, "c1", "last_good should be c1");
+                assert_eq!(first_bad.0, "c2", "first_bad should be c2");
+            }
+            other => panic!("expected FirstBad outcome, got: {other:?}"),
+        }
+    }
+
     // Feature: v01-release-train, Property 9: Probe Count Respects Max Probes
     // **Validates: Requirements 3.8**
     proptest! {
@@ -489,5 +835,109 @@ mod tests {
                 }
             }
         }
+    }
+
+    // ── Integration test: full localization loop with mock ports ─────
+    // Validates: Requirements 3.1, 3.2, 3.8, 3.9
+    //
+    // Sets up 10 commits (c0–c9) with a known transition at c5:
+    //   c0–c4 = Pass, c5–c9 = Fail
+    // Wires FaultlineApp with mock ports (fresh run, no cache).
+    // Verifies:
+    //   1. FirstBad outcome with last_good=c4, first_bad=c5
+    //   2. Report contains all expected fields
+    //   3. Observation count is reasonable (≤ log2(10) + 2 boundary probes)
+    #[test]
+    fn integration_full_localization_loop_with_mock_ports() {
+        let n = 10;
+        let sequence = make_sequence(n);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        // c0–c4 = Pass, c5–c9 = Fail
+        let mut overrides = std::collections::HashMap::new();
+        for i in 0..5 {
+            overrides.insert(format!("c{i}"), ObservationClass::Pass);
+        }
+        for i in 5..10 {
+            overrides.insert(format!("c{i}"), ObservationClass::Fail);
+        }
+
+        let probe = TrackingProbe {
+            overrides,
+            default_class: ObservationClass::Fail,
+            probed: std::cell::RefCell::new(Vec::new()),
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_for_sequence(n, 30);
+
+        let result = app.localize(request).expect("localize should succeed");
+        let report = &result.report;
+
+        // 1. Verify FirstBad outcome with correct boundary pair
+        match &report.outcome {
+            faultline_types::LocalizationOutcome::FirstBad {
+                last_good,
+                first_bad,
+                confidence,
+            } => {
+                assert_eq!(last_good.0, "c4", "last_good should be c4");
+                assert_eq!(first_bad.0, "c5", "first_bad should be c5");
+                // Req 3.9: both boundaries backed by direct observations
+                let has_pass = report
+                    .observations
+                    .iter()
+                    .any(|o| o.commit.0 == "c4" && o.class == ObservationClass::Pass);
+                let has_fail = report
+                    .observations
+                    .iter()
+                    .any(|o| o.commit.0 == "c5" && o.class == ObservationClass::Fail);
+                assert!(has_pass, "last_good c4 must have a direct Pass observation");
+                assert!(has_fail, "first_bad c5 must have a direct Fail observation");
+                assert!(
+                    confidence.score > 0,
+                    "confidence score should be positive for FirstBad"
+                );
+            }
+            other => panic!("expected FirstBad outcome, got: {:?}", other),
+        }
+
+        // 2. Verify report contains all expected fields
+        assert_eq!(report.run_id, "mock-run", "run_id should match mock");
+        assert!(
+            report.created_at_epoch_seconds > 0,
+            "created_at should be set"
+        );
+        assert_eq!(
+            report.sequence.revisions.len(),
+            n,
+            "sequence should have {n} commits"
+        );
+        assert!(
+            !report.observations.is_empty(),
+            "observations should not be empty"
+        );
+
+        // 3. Verify observation count is reasonable: ≤ log2(n) + 2 boundary probes
+        //    For n=10: log2(10) ≈ 3.32, ceil → 4, plus 2 boundary = 6
+        //    We allow a small margin: log2(n) + 2 boundary probes + 1 extra
+        let max_expected = (n as f64).log2().ceil() as usize + 2 + 1;
+        let probed_commits = probe.probed.borrow();
+        assert!(
+            probed_commits.len() <= max_expected,
+            "probe count ({}) should be ≤ log2({n}) + 2 + 1 = {max_expected}",
+            probed_commits.len(),
+        );
+
+        // Also verify total observations in the report are reasonable
+        assert!(
+            report.observations.len() <= max_expected,
+            "observation count ({}) should be ≤ {max_expected}",
+            report.observations.len(),
+        );
     }
 }

@@ -5,7 +5,10 @@ use faultline_git::GitAdapter;
 use faultline_probe_exec::ExecProbeAdapter;
 use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
-use faultline_types::{AnalysisRequest, HistoryMode, ProbeSpec, RevisionSpec, SearchPolicy, ShellKind};
+use faultline_types::{
+    AnalysisRequest, HistoryMode, LocalizationOutcome, ProbeSpec, RevisionSpec, SearchPolicy,
+    ShellKind,
+};
 use std::io;
 use std::path::PathBuf;
 
@@ -54,27 +57,35 @@ fn main() {
     }
 }
 
+fn validate_cmd_program(cmd: &Option<String>, program: &Option<String>) -> Result<(), io::Error> {
+    if cmd.is_some() && program.is_some() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "only one of --cmd or --program is allowed",
+        ));
+    }
+    if cmd.is_none() && program.is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "one of --cmd or --program is required",
+        ));
+    }
+    Ok(())
+}
+
 fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    if cli.cmd.is_none() && cli.program.is_none() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "either --cmd or --program must be provided",
-        )
-        .into());
-    }
-    if cli.cmd.is_some() && cli.program.is_some() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "use either --cmd or --program, not both",
-        )
-        .into());
-    }
+    validate_cmd_program(&cli.cmd, &cli.program)?;
 
-    let probe_kind = cli
-        .kind
-        .parse::<ProbeKind>()
-        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+    let probe_kind = cli.kind.parse::<ProbeKind>().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "invalid --kind '{}': expected one of build, test, lint, perf-threshold, custom",
+                cli.kind
+            ),
+        )
+    })?;
 
     let probe = match (cli.cmd, cli.program) {
         (Some(script), None) => ProbeSpec::Shell {
@@ -118,9 +129,102 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     let renderer = ReportRenderer::new(cli.output_dir);
     renderer.render(&localized.report)?;
 
-    println!("run-id      {}", localized.report.run_id);
+    println!("run-id       {}", localized.report.run_id);
     println!("observations {}", localized.report.observations.len());
-    println!("artifacts   {}", renderer.output_dir().display());
-    println!("outcome     {:?}", localized.report.outcome);
+    println!("output-dir   {}", renderer.output_dir().display());
+    println!("outcome      {}", format_outcome(&localized.report.outcome));
     Ok(())
+}
+
+fn format_outcome(outcome: &LocalizationOutcome) -> String {
+    match outcome {
+        LocalizationOutcome::FirstBad {
+            last_good,
+            first_bad,
+            confidence,
+        } => {
+            format!(
+                "FirstBad  last_good={} first_bad={} confidence={}({})",
+                last_good, first_bad, confidence.score, confidence.label
+            )
+        }
+        LocalizationOutcome::SuspectWindow {
+            lower_bound_exclusive,
+            upper_bound_inclusive,
+            confidence,
+            reasons,
+        } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            format!(
+                "SuspectWindow  lower={} upper={} confidence={}({}) reasons=[{}]",
+                lower_bound_exclusive,
+                upper_bound_inclusive,
+                confidence.score,
+                confidence.label,
+                reasons_str.join(", ")
+            )
+        }
+        LocalizationOutcome::Inconclusive { reasons } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            format!("Inconclusive  reasons=[{}]", reasons_str.join(", "))
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn rejects_both_cmd_and_program() {
+        let err = validate_cmd_program(&Some("echo ok".into()), &Some("./test".into()))
+            .expect_err("should reject both --cmd and --program");
+        assert!(
+            err.to_string().contains("only one of --cmd or --program"),
+            "unexpected error message: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn rejects_neither_cmd_nor_program() {
+        let err = validate_cmd_program(&None, &None)
+            .expect_err("should reject neither --cmd nor --program");
+        assert!(
+            err.to_string()
+                .contains("one of --cmd or --program is required"),
+            "unexpected error message: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn help_output_describes_all_flags() {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf).unwrap();
+        let help = String::from_utf8(buf).unwrap();
+
+        let expected_flags = [
+            "--good",
+            "--bad",
+            "--repo",
+            "--cmd",
+            "--program",
+            "--arg",
+            "--kind",
+            "--first-parent",
+            "--timeout-seconds",
+            "--output-dir",
+            "--max-probes",
+        ];
+
+        for flag in &expected_flags {
+            assert!(
+                help.contains(flag),
+                "--help output missing expected flag '{flag}'.\nFull help:\n{help}"
+            );
+        }
+    }
 }

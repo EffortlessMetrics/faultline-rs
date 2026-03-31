@@ -64,14 +64,42 @@ This v0.1 implementation is deliberately narrow.
 
 ## Quickstart
 
+Find the first commit that broke a test:
+
 ```bash
-cargo run -p faultline-cli --   --repo .   --good abc1234   --bad def5678   --kind test   --timeout-seconds 300   --cmd "cargo test -p my_crate failing_test"   --output-dir ./faultline-report
+cargo run -p faultline-cli -- \
+  --repo . \
+  --good abc1234 \
+  --bad def5678 \
+  --kind test \
+  --timeout-seconds 300 \
+  --cmd "cargo test -p my_crate failing_test" \
+  --output-dir ./faultline-report
 ```
 
-Or use direct exec mode:
+Or use direct exec mode (no shell wrapper):
 
 ```bash
-cargo run -p faultline-cli --   --repo .   --good abc1234   --bad def5678   --kind build   --timeout-seconds 300   --program cargo   --arg build   --arg --workspace
+cargo run -p faultline-cli -- \
+  --repo . \
+  --good abc1234 \
+  --bad def5678 \
+  --kind build \
+  --timeout-seconds 300 \
+  --program cargo \
+  --arg build \
+  --arg --workspace \
+  --output-dir ./faultline-report
+```
+
+Replace `abc1234` and `def5678` with real commit SHAs from your repository.
+On success, faultline writes `analysis.json` and `index.html` to the output directory and prints a summary:
+
+```
+run-id       a1b2c3d4
+observations 7
+output-dir   ./faultline-report
+outcome      FirstBad  last_good=abc1234 first_bad=def5678 confidence=95(high)
 ```
 
 ## Operator contract

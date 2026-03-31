@@ -7,3 +7,6 @@ authors.workspace = true
 
 [dependencies]
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+proptest = "1"

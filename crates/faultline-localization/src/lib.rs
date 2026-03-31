@@ -1108,6 +1108,65 @@ mod tests {
                     }
                 }
             }
+
+            // Feature: v01-release-train, Property 23: Observation Order Independence
+            // **Validates: Requirement 11.4**
+            #[test]
+            fn prop_observation_order_independence(
+                n in 3usize..=12,
+                class_selectors in prop::collection::vec(0u8..4, 12),
+                perm_seeds in prop::collection::vec(0usize..1000, 3),
+            ) {
+                // Build a sequence of n commits
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+
+                // Build observation set: assign a class to every commit
+                let observations: Vec<ProbeObservation> = (0..n)
+                    .map(|idx| {
+                        let class = match class_selectors[idx % class_selectors.len()] % 4 {
+                            0 => ObservationClass::Pass,
+                            1 => ObservationClass::Fail,
+                            2 => ObservationClass::Skip,
+                            _ => ObservationClass::Indeterminate,
+                        };
+                        obs(&format!("commit-{idx}"), class)
+                    })
+                    .collect();
+
+                // Record in natural order to get the reference outcome
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session_ref = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                for o in &observations {
+                    session_ref.record(o.clone()).unwrap();
+                }
+                let reference_outcome = session_ref.outcome();
+
+                // Record in multiple permutation orders and verify same outcome
+                for seed in &perm_seeds {
+                    let mut permuted = observations.clone();
+                    // Simple deterministic permutation using seed
+                    let len = permuted.len();
+                    for i in (1..len).rev() {
+                        let j = (seed.wrapping_mul(i).wrapping_add(7)) % (i + 1);
+                        permuted.swap(i, j);
+                    }
+
+                    let seq = RevisionSequence { revisions: labels.clone() };
+                    let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                    for o in &permuted {
+                        session.record(o.clone()).unwrap();
+                    }
+                    let outcome = session.outcome();
+
+                    prop_assert_eq!(
+                        &outcome, &reference_outcome,
+                        "outcome differs for permutation with seed {}: got {:?}, expected {:?}",
+                        seed, outcome, reference_outcome
+                    );
+                }
+            }
         }
     }
 }
