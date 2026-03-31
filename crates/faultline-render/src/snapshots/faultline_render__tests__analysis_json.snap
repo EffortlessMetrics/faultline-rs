@@ -1,0 +1,134 @@
+---
+source: crates/faultline-render/src/lib.rs
+expression: json
+---
+{
+  "schema_version": "0.1.0",
+  "run_id": "snapshot-run-001",
+  "created_at_epoch_seconds": 1700000000,
+  "request": {
+    "repo_root": "/tmp/repo",
+    "good": "aaa111",
+    "bad": "ddd444",
+    "history_mode": "AncestryPath",
+    "probe": {
+      "Exec": {
+        "kind": "Test",
+        "program": "cargo",
+        "args": [
+          "test"
+        ],
+        "env": [],
+        "timeout_seconds": 300
+      }
+    },
+    "policy": {
+      "max_probes": 10
+    }
+  },
+  "sequence": {
+    "revisions": [
+      "aaa111",
+      "bbb222",
+      "ccc333",
+      "ddd444"
+    ]
+  },
+  "observations": [
+    {
+      "commit": "aaa111",
+      "class": "Pass",
+      "kind": "Test",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_ms": 120,
+      "stdout": "all tests passed",
+      "stderr": "",
+      "sequence_index": 0,
+      "signal_number": null,
+      "probe_command": "cargo test",
+      "working_dir": "/tmp/scratch/aaa111"
+    },
+    {
+      "commit": "ddd444",
+      "class": "Fail",
+      "kind": "Test",
+      "exit_code": 1,
+      "timed_out": false,
+      "duration_ms": 95,
+      "stdout": "",
+      "stderr": "test failed",
+      "sequence_index": 1,
+      "signal_number": null,
+      "probe_command": "cargo test",
+      "working_dir": "/tmp/scratch/ddd444"
+    },
+    {
+      "commit": "ccc333",
+      "class": "Fail",
+      "kind": "Test",
+      "exit_code": 1,
+      "timed_out": false,
+      "duration_ms": 110,
+      "stdout": "",
+      "stderr": "assertion failed",
+      "sequence_index": 2,
+      "signal_number": null,
+      "probe_command": "cargo test",
+      "working_dir": "/tmp/scratch/ccc333"
+    },
+    {
+      "commit": "bbb222",
+      "class": "Pass",
+      "kind": "Test",
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_ms": 130,
+      "stdout": "ok",
+      "stderr": "",
+      "sequence_index": 3,
+      "signal_number": null,
+      "probe_command": "cargo test",
+      "working_dir": "/tmp/scratch/bbb222"
+    }
+  ],
+  "outcome": {
+    "FirstBad": {
+      "last_good": "bbb222",
+      "first_bad": "ccc333",
+      "confidence": {
+        "score": 95,
+        "label": "high"
+      }
+    }
+  },
+  "changed_paths": [
+    {
+      "status": "Modified",
+      "path": "src/lib.rs"
+    },
+    {
+      "status": "Added",
+      "path": "src/bug.rs"
+    }
+  ],
+  "surface": {
+    "total_changes": 2,
+    "buckets": [
+      {
+        "name": "src",
+        "change_count": 2,
+        "paths": [
+          "src/lib.rs",
+          "src/bug.rs"
+        ],
+        "surface_kinds": [
+          "source"
+        ]
+      }
+    ],
+    "execution_surfaces": [
+      ".github/workflows/ci.yml"
+    ]
+  }
+}

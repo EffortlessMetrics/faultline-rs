@@ -1,0 +1,65 @@
+---
+source: crates/faultline-cli/src/main.rs
+expression: help
+---
+Local-first regression localization for Git repos
+
+Usage: faultline [OPTIONS] --good <GOOD> --bad <BAD>
+
+Options:
+      --repo <REPO>
+          [default: .]
+
+      --good <GOOD>
+          
+
+      --bad <BAD>
+          
+
+      --first-parent
+          
+
+      --cmd <CMD>
+          
+
+      --program <PROGRAM>
+          
+
+      --arg <ARGS>
+          
+
+      --kind <KIND>
+          [default: custom]
+
+      --timeout-seconds <TIMEOUT_SECONDS>
+          [default: 300]
+
+      --output-dir <OUTPUT_DIR>
+          [default: faultline-report]
+
+      --max-probes <MAX_PROBES>
+          [default: 64]
+
+      --resume
+          Explicit resume from cached observations (default behavior)
+
+      --force
+          Discard cached observations and re-probe
+
+      --fresh
+          Delete entire run directory and start from scratch
+
+      --no-render
+          Skip HTML report generation
+
+      --shell <SHELL>
+          Shell to use for --cmd predicates (sh, cmd, powershell)
+
+      --env <ENVS>
+          Environment variable injection (KEY=VALUE), repeatable
+
+  -h, --help
+          Print help
+
+  -V, --version
+          Print version

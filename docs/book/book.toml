@@ -1,0 +1,8 @@
+[book]
+title = "faultline"
+authors = ["faultline contributors"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "light"

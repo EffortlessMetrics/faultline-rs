@@ -396,6 +396,16 @@ mod tests {
         }
     }
 
+    // Req 3.4: Golden snapshot test for CLI --help text
+    #[test]
+    fn golden_cli_help() {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf).unwrap();
+        let help = String::from_utf8(buf).unwrap();
+        insta::assert_snapshot!("cli_help", help);
+    }
+
     #[test]
     fn exit_code_0_for_first_bad() {
         let outcome = LocalizationOutcome::FirstBad {

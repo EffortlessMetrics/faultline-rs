@@ -1,0 +1,534 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AnalysisReport",
+  "type": "object",
+  "required": [
+    "changed_paths",
+    "created_at_epoch_seconds",
+    "observations",
+    "outcome",
+    "request",
+    "run_id",
+    "sequence",
+    "surface"
+  ],
+  "properties": {
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PathChange"
+      }
+    },
+    "created_at_epoch_seconds": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProbeObservation"
+      }
+    },
+    "outcome": {
+      "$ref": "#/definitions/LocalizationOutcome"
+    },
+    "request": {
+      "$ref": "#/definitions/AnalysisRequest"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "0.1.0",
+      "type": "string"
+    },
+    "sequence": {
+      "$ref": "#/definitions/RevisionSequence"
+    },
+    "surface": {
+      "$ref": "#/definitions/SurfaceSummary"
+    }
+  },
+  "definitions": {
+    "AmbiguityReason": {
+      "type": "string",
+      "enum": [
+        "MissingPassBoundary",
+        "MissingFailBoundary",
+        "NonMonotonicEvidence",
+        "SkippedRevision",
+        "IndeterminateRevision",
+        "UntestableWindow",
+        "BoundaryValidationFailed",
+        "NeedsMoreProbes",
+        "MaxProbesExhausted"
+      ]
+    },
+    "AnalysisRequest": {
+      "type": "object",
+      "required": [
+        "bad",
+        "good",
+        "history_mode",
+        "policy",
+        "probe",
+        "repo_root"
+      ],
+      "properties": {
+        "bad": {
+          "$ref": "#/definitions/RevisionSpec"
+        },
+        "good": {
+          "$ref": "#/definitions/RevisionSpec"
+        },
+        "history_mode": {
+          "$ref": "#/definitions/HistoryMode"
+        },
+        "policy": {
+          "$ref": "#/definitions/SearchPolicy"
+        },
+        "probe": {
+          "$ref": "#/definitions/ProbeSpec"
+        },
+        "repo_root": {
+          "type": "string"
+        }
+      }
+    },
+    "ChangeStatus": {
+      "type": "string",
+      "enum": [
+        "Added",
+        "Modified",
+        "Deleted",
+        "Renamed",
+        "TypeChanged",
+        "Unknown"
+      ]
+    },
+    "CommitId": {
+      "type": "string"
+    },
+    "Confidence": {
+      "type": "object",
+      "required": [
+        "label",
+        "score"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "score": {
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        }
+      }
+    },
+    "HistoryMode": {
+      "type": "string",
+      "enum": [
+        "AncestryPath",
+        "FirstParent"
+      ]
+    },
+    "LocalizationOutcome": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "FirstBad"
+          ],
+          "properties": {
+            "FirstBad": {
+              "type": "object",
+              "required": [
+                "confidence",
+                "first_bad",
+                "last_good"
+              ],
+              "properties": {
+                "confidence": {
+                  "$ref": "#/definitions/Confidence"
+                },
+                "first_bad": {
+                  "$ref": "#/definitions/CommitId"
+                },
+                "last_good": {
+                  "$ref": "#/definitions/CommitId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "SuspectWindow"
+          ],
+          "properties": {
+            "SuspectWindow": {
+              "type": "object",
+              "required": [
+                "confidence",
+                "lower_bound_exclusive",
+                "reasons",
+                "upper_bound_inclusive"
+              ],
+              "properties": {
+                "confidence": {
+                  "$ref": "#/definitions/Confidence"
+                },
+                "lower_bound_exclusive": {
+                  "$ref": "#/definitions/CommitId"
+                },
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/AmbiguityReason"
+                  }
+                },
+                "upper_bound_inclusive": {
+                  "$ref": "#/definitions/CommitId"
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Inconclusive"
+          ],
+          "properties": {
+            "Inconclusive": {
+              "type": "object",
+              "required": [
+                "reasons"
+              ],
+              "properties": {
+                "reasons": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/AmbiguityReason"
+                  }
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ObservationClass": {
+      "type": "string",
+      "enum": [
+        "Pass",
+        "Fail",
+        "Skip",
+        "Indeterminate"
+      ]
+    },
+    "PathChange": {
+      "type": "object",
+      "required": [
+        "path",
+        "status"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ChangeStatus"
+        }
+      }
+    },
+    "ProbeKind": {
+      "type": "string",
+      "enum": [
+        "Build",
+        "Test",
+        "Lint",
+        "PerfThreshold",
+        "Custom"
+      ]
+    },
+    "ProbeObservation": {
+      "type": "object",
+      "required": [
+        "class",
+        "commit",
+        "duration_ms",
+        "kind",
+        "stderr",
+        "stdout",
+        "timed_out"
+      ],
+      "properties": {
+        "class": {
+          "$ref": "#/definitions/ObservationClass"
+        },
+        "commit": {
+          "$ref": "#/definitions/CommitId"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "kind": {
+          "$ref": "#/definitions/ProbeKind"
+        },
+        "probe_command": {
+          "default": "",
+          "type": "string"
+        },
+        "sequence_index": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "signal_number": {
+          "default": null,
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int32"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "working_dir": {
+          "default": "",
+          "type": "string"
+        }
+      }
+    },
+    "ProbeSpec": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Exec"
+          ],
+          "properties": {
+            "Exec": {
+              "type": "object",
+              "required": [
+                "args",
+                "env",
+                "kind",
+                "program",
+                "timeout_seconds"
+              ],
+              "properties": {
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "env": {
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2
+                  }
+                },
+                "kind": {
+                  "$ref": "#/definitions/ProbeKind"
+                },
+                "program": {
+                  "type": "string"
+                },
+                "timeout_seconds": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Shell"
+          ],
+          "properties": {
+            "Shell": {
+              "type": "object",
+              "required": [
+                "kind",
+                "script",
+                "shell",
+                "timeout_seconds"
+              ],
+              "properties": {
+                "env": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2
+                  }
+                },
+                "kind": {
+                  "$ref": "#/definitions/ProbeKind"
+                },
+                "script": {
+                  "type": "string"
+                },
+                "shell": {
+                  "$ref": "#/definitions/ShellKind"
+                },
+                "timeout_seconds": {
+                  "type": "integer",
+                  "format": "uint64",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "RevisionSequence": {
+      "type": "object",
+      "required": [
+        "revisions"
+      ],
+      "properties": {
+        "revisions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CommitId"
+          }
+        }
+      }
+    },
+    "RevisionSpec": {
+      "type": "string"
+    },
+    "SearchPolicy": {
+      "type": "object",
+      "required": [
+        "max_probes"
+      ],
+      "properties": {
+        "max_probes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ShellKind": {
+      "type": "string",
+      "enum": [
+        "Default",
+        "PosixSh",
+        "Cmd",
+        "PowerShell"
+      ]
+    },
+    "SubsystemBucket": {
+      "type": "object",
+      "required": [
+        "change_count",
+        "name",
+        "paths",
+        "surface_kinds"
+      ],
+      "properties": {
+        "change_count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "surface_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "SurfaceSummary": {
+      "type": "object",
+      "required": [
+        "buckets",
+        "execution_surfaces",
+        "total_changes"
+      ],
+      "properties": {
+        "buckets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SubsystemBucket"
+          }
+        },
+        "execution_surfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total_changes": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}

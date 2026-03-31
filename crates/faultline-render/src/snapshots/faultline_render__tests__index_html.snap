@@ -1,0 +1,55 @@
+---
+source: crates/faultline-render/src/lib.rs
+expression: html
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>faultline report</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 1100px; line-height: 1.5; }
+    code { background: #f3f4f6; padding: 0.15rem 0.35rem; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }
+    th { background: #f8f8f8; }
+    .outcome-firstbad { border-left: 4px solid #22c55e; padding: 0.75rem; margin: 0.5rem 0; }
+    .outcome-suspect { border-left: 4px solid #f59e0b; padding: 0.75rem; margin: 0.5rem 0; }
+    .outcome-inconclusive { border-left: 4px solid #ef4444; padding: 0.75rem; margin: 0.5rem 0; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85em; background: #e5e7eb; margin: 0.1rem; }
+    .badge-signal { background: #fef3c7; color: #92400e; }
+    .obs-pass { background: #f0fdf4; }
+    .obs-fail { background: #fef2f2; }
+    .obs-skip { background: #f3f4f6; }
+    .obs-indeterminate { background: #fefce8; }
+    .execution-surfaces { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 4px; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>faultline</h1>
+  <p>Run ID: <code>snapshot-run-001</code></p>
+  <h2>Summary</h2>
+  <div class="outcome-firstbad">
+  <p><strong>Exact boundary:</strong> bbb222 → ccc333 (confidence: 95 / high)</p>
+  </div>
+  <p><strong>Probe fingerprint:</strong> <code>a741b68921ddb646</code></p>
+  <p><strong>History mode:</strong> AncestryPath</p>
+  <h2>Observation timeline</h2>
+  <table>
+    <thead><tr><th>Commit</th><th>Class</th><th>Kind</th><th>Exit</th><th>Duration ms</th></tr></thead>
+    <tbody><tr class="obs-pass"><td><code>aaa111</code></td><td>Pass</td><td>test</td><td>Some(0)</td><td>120</td></tr>
+<tr class="obs-fail"><td><code>ddd444</code></td><td>Fail</td><td>test</td><td>Some(1)</td><td>95</td></tr>
+<tr class="obs-fail"><td><code>ccc333</code></td><td>Fail</td><td>test</td><td>Some(1)</td><td>110</td></tr>
+<tr class="obs-pass"><td><code>bbb222</code></td><td>Pass</td><td>test</td><td>Some(0)</td><td>130</td></tr></tbody>
+  </table>
+  <h2>Changed surface</h2>
+  <ul><li><strong>src</strong> — 2 changes — kinds: source<br/><small>src/lib.rs, src/bug.rs</small></li></ul>
+    <h2>Execution surfaces</h2>
+  <div class="execution-surfaces">
+  <ul><li><code>.github/workflows/ci.yml</code></li></ul>
+  </div>
+  <h2>Changed paths</h2>
+  <ul><li><code>Modified</code> src/lib.rs</li>
+<li><code>Added</code> src/bug.rs</li></ul>
+</body>
+</html>

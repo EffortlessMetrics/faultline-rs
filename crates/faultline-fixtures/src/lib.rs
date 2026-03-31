@@ -1,3 +1,5 @@
+pub mod arb;
+
 use faultline_types::{CommitId, RevisionSequence};
 use std::path::Path;
 use std::process::Command;

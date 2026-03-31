@@ -1,15 +1,15 @@
 [package]
-name = "faultline-render"
+name = "faultline-junit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [dependencies]
-serde_json.workspace = true
 faultline-types = { path = "../faultline-types" }
-faultline-codes = { path = "../faultline-codes" }
+quick-xml.workspace = true
 
 [dev-dependencies]
-proptest.workspace = true
-insta = { workspace = true }
+faultline-codes = { path = "../faultline-codes" }
+faultline-fixtures = { path = "../faultline-fixtures" }
+proptest = { workspace = true }

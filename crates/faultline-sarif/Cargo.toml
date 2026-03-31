@@ -1,13 +1,16 @@
 [package]
-name = "faultline-fixtures"
+name = "faultline-sarif"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-publish = false
 
 [dependencies]
 faultline-types = { path = "../faultline-types" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
 faultline-codes = { path = "../faultline-codes" }
+faultline-fixtures = { path = "../faultline-fixtures" }
 proptest = { workspace = true }
-tempfile = "3"

@@ -1200,6 +1200,24 @@ mod tests {
         assert!(html.contains(".execution-surfaces"));
     }
 
+    // --- Golden tests (via insta) for artifact contracts ---
+    // Req 3.4, 6.5: Golden snapshot tests for analysis.json and index.html
+
+    #[test]
+    fn golden_analysis_json() {
+        let report = canonical_fixture_report();
+        let json = serde_json::to_string_pretty(&report).unwrap();
+        insta::assert_snapshot!("analysis_json", json);
+    }
+
+    #[test]
+    fn golden_index_html() {
+        let report = canonical_fixture_report();
+        let renderer = ReportRenderer::new("/tmp/unused");
+        let html = renderer.render_html(&report);
+        insta::assert_snapshot!("index_html", html);
+    }
+
     // --- Proptest strategies for Property 16 ---
 
     use proptest::prelude::*;

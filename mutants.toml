@@ -1,0 +1,13 @@
+# Mutation testing configuration for cargo-mutants.
+# Invoked via: cargo xtask mutants
+# Which runs:  cargo mutants -p faultline-localization -- --lib
+#
+# This file provides additional configuration for cargo-mutants.
+# The xtask mutants subcommand targets faultline-localization's core
+# narrowing and outcome logic.
+
+# Timeout multiplier for mutant test runs (relative to baseline).
+timeout_multiplier = 2.0
+
+# Only examine the localization crate — the domain core.
+examine_re = ["faultline_localization::"]

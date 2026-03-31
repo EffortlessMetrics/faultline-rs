@@ -19,3 +19,4 @@ faultline-types = { path = "../faultline-types" }
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }
 serde_json.workspace = true
+insta = { workspace = true }

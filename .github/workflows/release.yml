@@ -1,20 +1,19 @@
-name: CI Fast
+name: Release Check
 
 on:
   push:
+    tags: ["v*"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci-fast:
+  release-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
 
       - uses: actions/cache@v4
         with:
@@ -24,4 +23,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: cargo xtask ci-fast
+      - run: cargo install cargo-deny cargo-audit cargo-semver-checks
+
+      - run: cargo xtask release-check

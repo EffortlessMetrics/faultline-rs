@@ -1,0 +1,23 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+clap.workspace = true
+anyhow.workspace = true
+faultline-types = { path = "../faultline-types" }
+faultline-sarif = { path = "../faultline-sarif", optional = true }
+faultline-junit = { path = "../faultline-junit", optional = true }
+schemars.workspace = true
+serde_json.workspace = true
+regex = "1"
+
+[features]
+export-adapters = ["faultline-sarif", "faultline-junit"]
+
+[dev-dependencies]
+proptest.workspace = true
+tempfile = "3"

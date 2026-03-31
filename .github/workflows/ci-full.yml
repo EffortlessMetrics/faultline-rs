@@ -1,13 +1,13 @@
-name: CI Fast
+name: CI Full
 
 on:
-  push:
+  pull_request:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  ci-fast:
+  ci-full:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,4 +24,6 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: cargo xtask ci-fast
+      - run: cargo install cargo-insta
+
+      - run: cargo xtask ci-full
