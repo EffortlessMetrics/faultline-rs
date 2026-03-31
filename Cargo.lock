@@ -178,11 +178,14 @@ dependencies = [
  "clap",
  "faultline-app",
  "faultline-codes",
+ "faultline-fixtures",
  "faultline-git",
  "faultline-probe-exec",
  "faultline-render",
  "faultline-store",
  "faultline-types",
+ "proptest",
+ "serde_json",
 ]
 
 [[package]]
@@ -198,12 +201,16 @@ version = "0.1.0"
 dependencies = [
  "faultline-types",
  "proptest",
+ "tempfile",
 ]
 
 [[package]]
 name = "faultline-git"
 version = "0.1.0"
 dependencies = [
+ "faultline-codes",
+ "faultline-fixtures",
+ "faultline-localization",
  "faultline-ports",
  "faultline-types",
  "proptest",
@@ -215,6 +222,7 @@ name = "faultline-localization"
 version = "0.1.0"
 dependencies = [
  "faultline-codes",
+ "faultline-fixtures",
  "faultline-types",
  "proptest",
 ]
@@ -254,6 +262,7 @@ dependencies = [
  "faultline-codes",
  "faultline-ports",
  "faultline-types",
+ "libc",
  "proptest",
  "serde",
  "serde_json",

@@ -58,7 +58,9 @@ impl LocalizationSession {
     }
 
     pub fn observation_list(&self) -> Vec<ProbeObservation> {
-        self.observations.values().cloned().collect()
+        let mut list: Vec<ProbeObservation> = self.observations.values().cloned().collect();
+        list.sort_by_key(|o| o.sequence_index);
+        list
     }
 
     pub fn sequence(&self) -> &RevisionSequence {
@@ -128,19 +130,25 @@ impl LocalizationSession {
 
     /// Determine the localization outcome based on current observations.
     pub fn outcome(&self) -> LocalizationOutcome {
+        let max_probes_exhausted = self.observations.len() >= self.policy.max_probes;
         let (pass_boundary, fail_boundary, non_monotonic) = self.boundaries_and_reasons();
 
         // Missing boundaries → Inconclusive
         let Some(lower) = pass_boundary else {
-            return LocalizationOutcome::Inconclusive {
-                reasons: vec![AmbiguityReason::MissingPassBoundary],
-            };
+            let mut reasons = vec![AmbiguityReason::MissingPassBoundary];
+            if max_probes_exhausted {
+                reasons.push(AmbiguityReason::MaxProbesExhausted);
+            }
+            return LocalizationOutcome::Inconclusive { reasons };
         };
 
         let Some(upper) = fail_boundary else {
             let mut reasons = vec![AmbiguityReason::MissingFailBoundary];
             if non_monotonic {
                 reasons.push(AmbiguityReason::NonMonotonicEvidence);
+            }
+            if max_probes_exhausted {
+                reasons.push(AmbiguityReason::MaxProbesExhausted);
             }
             return LocalizationOutcome::Inconclusive { reasons };
         };
@@ -164,6 +172,9 @@ impl LocalizationSession {
             let mut reasons = vec![AmbiguityReason::NeedsMoreProbes];
             if non_monotonic {
                 reasons.push(AmbiguityReason::NonMonotonicEvidence);
+            }
+            if max_probes_exhausted {
+                reasons.push(AmbiguityReason::MaxProbesExhausted);
             }
             return LocalizationOutcome::Inconclusive { reasons };
         }
@@ -191,6 +202,10 @@ impl LocalizationSession {
                 confidence: Confidence::high(),
             }
         } else {
+            // Window has not converged to a clean adjacent pass-fail pair
+            if max_probes_exhausted {
+                reasons.push(AmbiguityReason::MaxProbesExhausted);
+            }
             // Ambiguous: SuspectWindow
             let confidence = if non_monotonic {
                 Confidence::low()
@@ -281,7 +296,17 @@ mod tests {
             duration_ms: 1,
             stdout: String::new(),
             stderr: String::new(),
+            sequence_index: 0,
+            signal_number: None,
+            probe_command: String::new(),
+            working_dir: String::new(),
         }
+    }
+
+    fn obs_with_seq(commit: &str, class: ObservationClass, seq_idx: u64) -> ProbeObservation {
+        let mut o = obs(commit, class);
+        o.sequence_index = seq_idx;
+        o
     }
 
     fn make_seq(labels: &[&str]) -> RevisionSequence {
@@ -345,15 +370,61 @@ mod tests {
     }
 
     #[test]
-    fn observation_list_returns_all_in_index_order() {
+    fn observation_list_returns_all_in_sequence_index_order() {
         let seq = make_seq(&["a", "b", "c"]);
         let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        // Record "c" first with sequence_index=0, then "a" with sequence_index=1
+        session
+            .record(obs_with_seq("c", ObservationClass::Fail, 0))
+            .unwrap();
+        session
+            .record(obs_with_seq("a", ObservationClass::Pass, 1))
+            .unwrap();
         let list = session.observation_list();
         assert_eq!(list.len(), 2);
-        assert_eq!(list[0].commit.0, "a");
-        assert_eq!(list[1].commit.0, "c");
+        // Ordered by sequence_index: c(0) before a(1)
+        assert_eq!(list[0].commit.0, "c");
+        assert_eq!(list[1].commit.0, "a");
+    }
+
+    #[test]
+    fn observation_list_orders_by_sequence_index_not_revision_position() {
+        let seq = make_seq(&["a", "b", "c", "d", "e"]);
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        // Simulate probing in binary-search order: e(seq=0), a(seq=1), c(seq=2), b(seq=3), d(seq=4)
+        session
+            .record(obs_with_seq("e", ObservationClass::Fail, 0))
+            .unwrap();
+        session
+            .record(obs_with_seq("a", ObservationClass::Pass, 1))
+            .unwrap();
+        session
+            .record(obs_with_seq("c", ObservationClass::Fail, 2))
+            .unwrap();
+        session
+            .record(obs_with_seq("b", ObservationClass::Pass, 3))
+            .unwrap();
+        session
+            .record(obs_with_seq("d", ObservationClass::Fail, 4))
+            .unwrap();
+        let list = session.observation_list();
+        assert_eq!(list.len(), 5);
+        assert_eq!(list[0].commit.0, "e"); // seq_idx=0
+        assert_eq!(list[1].commit.0, "a"); // seq_idx=1
+        assert_eq!(list[2].commit.0, "c"); // seq_idx=2
+        assert_eq!(list[3].commit.0, "b"); // seq_idx=3
+        assert_eq!(list[4].commit.0, "d"); // seq_idx=4
+    }
+
+    #[test]
+    fn record_preserves_preassigned_sequence_index() {
+        let seq = make_seq(&["a", "b"]);
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        session
+            .record(obs_with_seq("a", ObservationClass::Pass, 42))
+            .unwrap();
+        let list = session.observation_list();
+        assert_eq!(list[0].sequence_index, 42);
     }
 
     #[test]
@@ -579,6 +650,108 @@ mod tests {
                 assert_eq!(confidence, Confidence::high());
             }
             other => panic!("unexpected outcome: {other:?}"),
+        }
+    }
+
+    // --- max probes exhausted outcome ---
+
+    #[test]
+    fn max_probes_exhausted_with_unobserved_between_boundaries() {
+        // 5 commits, max_probes=2, observe only endpoints → Inconclusive with MaxProbesExhausted
+        let seq = make_seq(&["a", "b", "c", "d", "e"]);
+        let policy = SearchPolicy {
+            max_probes: 2,
+            ..SearchPolicy::default()
+        };
+        let mut session = LocalizationSession::new(seq, policy).unwrap();
+        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        session.record(obs("e", ObservationClass::Fail)).unwrap();
+        match session.outcome() {
+            LocalizationOutcome::Inconclusive { reasons } => {
+                assert!(reasons.contains(&AmbiguityReason::NeedsMoreProbes));
+                assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
+            }
+            other => panic!("expected Inconclusive, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_probes_exhausted_with_skipped_between_boundaries() {
+        // 3 commits, max_probes=3, all observed but midpoint is Skip → SuspectWindow with MaxProbesExhausted
+        let seq = make_seq(&["a", "b", "c"]);
+        let policy = SearchPolicy {
+            max_probes: 3,
+            ..SearchPolicy::default()
+        };
+        let mut session = LocalizationSession::new(seq, policy).unwrap();
+        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        session.record(obs("b", ObservationClass::Skip)).unwrap();
+        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        match session.outcome() {
+            LocalizationOutcome::SuspectWindow { reasons, .. } => {
+                assert!(reasons.contains(&AmbiguityReason::SkippedRevision));
+                assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
+            }
+            other => panic!("expected SuspectWindow, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_probes_exhausted_missing_pass_boundary() {
+        // Only fail observations, max_probes reached → Inconclusive with MissingPassBoundary + MaxProbesExhausted
+        let seq = make_seq(&["a", "b", "c"]);
+        let policy = SearchPolicy {
+            max_probes: 1,
+            ..SearchPolicy::default()
+        };
+        let mut session = LocalizationSession::new(seq, policy).unwrap();
+        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        match session.outcome() {
+            LocalizationOutcome::Inconclusive { reasons } => {
+                assert!(reasons.contains(&AmbiguityReason::MissingPassBoundary));
+                assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
+            }
+            other => panic!("expected Inconclusive, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_probes_not_exhausted_no_extra_reason() {
+        // Adjacent pass-fail with plenty of budget → FirstBad, no MaxProbesExhausted
+        let seq = make_seq(&["a", "b"]);
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        match session.outcome() {
+            LocalizationOutcome::FirstBad { confidence, .. } => {
+                assert_eq!(confidence, Confidence::high());
+            }
+            other => panic!("expected FirstBad, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_probes_exhausted_but_converged_yields_first_bad() {
+        // Adjacent pass-fail AND max_probes reached → still FirstBad (converged)
+        let seq = make_seq(&["a", "b"]);
+        let policy = SearchPolicy {
+            max_probes: 2,
+            ..SearchPolicy::default()
+        };
+        let mut session = LocalizationSession::new(seq, policy).unwrap();
+        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        match session.outcome() {
+            LocalizationOutcome::FirstBad {
+                last_good,
+                first_bad,
+                confidence,
+            } => {
+                assert_eq!(last_good.0, "a");
+                assert_eq!(first_bad.0, "b");
+                assert_eq!(confidence, Confidence::high());
+            }
+            other => panic!("expected FirstBad, got {other:?}"),
         }
     }
 
@@ -915,6 +1088,15 @@ mod tests {
 
             // Feature: v01-release-train, Property 21: Monotonic Window Narrowing
             // **Validates: Requirements 11.2**
+            //
+            // v01-hardening review (task 3.4, Requirements 3.7, 3.8):
+            //   Reviewed and confirmed valid. The property correctly verifies that
+            //   the pass/fail boundary window never expands between successive
+            //   probes when evidence is monotonic (consistent pass→fail transition).
+            //   The generator covers sequence sizes 3–20 with a randomly placed
+            //   transition point, the window computation mirrors the engine's own
+            //   boundary_indices logic, and the final assertion ensures convergence
+            //   to window size 1. No changes needed — property is sound as-is.
             #[test]
             fn prop_monotonic_window_narrowing(
                 n in 3usize..=20,
@@ -1166,6 +1348,230 @@ mod tests {
                         seed, outcome, reference_outcome
                     );
                 }
+            }
+
+            // Feature: v01-hardening, Property 25: Max-Probe Exhaustion Produces Explicit Outcome
+            // **Validates: Requirements 3.2**
+            #[test]
+            fn prop_max_probe_exhaustion_produces_explicit_outcome(
+                n in 5usize..=30,
+                max_probes in 2usize..=5,
+                use_all_pass in any::<bool>(),
+                selectors in prop::collection::vec(0usize..1000, 30),
+            ) {
+                // Build a sequence of n commits
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let policy = SearchPolicy { max_probes };
+                let mut session = LocalizationSession::new(seq, policy).unwrap();
+
+                // Record exactly max_probes observations that do NOT converge.
+                // Strategy: record only Pass or only Fail observations so there
+                // is never an adjacent pass-fail pair.
+                let class = if use_all_pass {
+                    ObservationClass::Pass
+                } else {
+                    ObservationClass::Fail
+                };
+
+                // Pick max_probes distinct indices from 0..n using selectors
+                let mut indices: Vec<usize> = (0..n).collect();
+                for i in (1..indices.len()).rev() {
+                    let j = selectors[i % selectors.len()] % (i + 1);
+                    indices.swap(i, j);
+                }
+                let chosen: Vec<usize> = indices[..max_probes].to_vec();
+
+                for &idx in &chosen {
+                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                }
+
+                // Verify we recorded exactly max_probes observations
+                prop_assert_eq!(
+                    session.observation_list().len(), max_probes,
+                    "should have recorded exactly max_probes={} observations", max_probes
+                );
+
+                let outcome = session.outcome();
+
+                // The outcome must include MaxProbesExhausted in its reasons
+                let has_max_probes_exhausted = match &outcome {
+                    LocalizationOutcome::Inconclusive { reasons } => {
+                        reasons.contains(&AmbiguityReason::MaxProbesExhausted)
+                    }
+                    LocalizationOutcome::SuspectWindow { reasons, .. } => {
+                        reasons.contains(&AmbiguityReason::MaxProbesExhausted)
+                    }
+                    LocalizationOutcome::FirstBad { .. } => false,
+                };
+
+                prop_assert!(
+                    has_max_probes_exhausted,
+                    "outcome should include MaxProbesExhausted, got {:?}", outcome
+                );
+            }
+
+            // Feature: v01-hardening, Property 26: Observation Sequence Order Preservation
+            // **Validates: Requirement 3.3**
+            #[test]
+            fn prop_observation_sequence_order_preservation(
+                n in 2usize..=20,
+                seq_indices in prop::collection::vec(0u64..1000, 20),
+                class_selectors in prop::collection::vec(0u8..4, 20),
+            ) {
+                // Build a sequence of n commits
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+                // Assign distinct sequence_index values to each observation.
+                // Take the first n values from seq_indices and deduplicate by
+                // sorting and using the sorted position as a tiebreaker.
+                let mut indexed: Vec<(u64, usize)> = seq_indices.iter()
+                    .copied()
+                    .take(n)
+                    .enumerate()
+                    .map(|(i, v)| (v, i))
+                    .collect();
+                // Make indices distinct: sort by (value, original_position) then
+                // reassign so each is unique while preserving relative order.
+                indexed.sort();
+                let distinct_seq_indices: Vec<u64> = indexed.iter()
+                    .enumerate()
+                    .map(|(rank, _)| rank as u64)
+                    .collect();
+                // Map back to original commit order
+                let mut seq_idx_for_commit = vec![0u64; n];
+                for (rank_pos, &(_val, orig_pos)) in indexed.iter().enumerate() {
+                    seq_idx_for_commit[orig_pos] = distinct_seq_indices[rank_pos];
+                }
+
+                // Record observations in commit order (0..n) with pre-assigned sequence_index
+                for i in 0..n {
+                    let class = match class_selectors[i % class_selectors.len()] % 4 {
+                        0 => ObservationClass::Pass,
+                        1 => ObservationClass::Fail,
+                        2 => ObservationClass::Skip,
+                        _ => ObservationClass::Indeterminate,
+                    };
+                    session.record(obs_with_seq(
+                        &format!("commit-{i}"),
+                        class,
+                        seq_idx_for_commit[i],
+                    )).unwrap();
+                }
+
+                // Verify observation_list() returns observations sorted by sequence_index ascending
+                let list = session.observation_list();
+                prop_assert_eq!(list.len(), n, "observation_list length should equal n={}", n);
+
+                for w in list.windows(2) {
+                    prop_assert!(
+                        w[0].sequence_index <= w[1].sequence_index,
+                        "observation_list not sorted by sequence_index: {} > {}",
+                        w[0].sequence_index, w[1].sequence_index
+                    );
+                }
+            }
+        }
+    }
+
+    // ── Fixture scenarios for localization edge cases (Task 13.6) ────
+    // Validates: Requirements 7.5, 7.6, 7.7
+    //
+    // These use RevisionSequenceBuilder from faultline-fixtures to construct
+    // fixture-style scenarios without real Git.
+
+    mod fixture_scenarios {
+        use super::*;
+        use faultline_fixtures::RevisionSequenceBuilder;
+
+        /// Fixture: Skipped-midpoint
+        /// A 3-commit sequence where the midpoint is classified as Skip.
+        /// Expected: SuspectWindow with SkippedRevision reason, medium confidence.
+        #[test]
+        fn fixture_skipped_midpoint_yields_suspect_window() {
+            let seq = RevisionSequenceBuilder::with_labels(&["good", "mid", "bad"]);
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+            session.record(obs("good", ObservationClass::Pass)).unwrap();
+            session.record(obs("mid", ObservationClass::Skip)).unwrap();
+            session.record(obs("bad", ObservationClass::Fail)).unwrap();
+
+            match session.outcome() {
+                LocalizationOutcome::SuspectWindow {
+                    lower_bound_exclusive,
+                    upper_bound_inclusive,
+                    confidence,
+                    reasons,
+                } => {
+                    assert_eq!(lower_bound_exclusive.0, "good");
+                    assert_eq!(upper_bound_inclusive.0, "bad");
+                    assert!(reasons.contains(&AmbiguityReason::SkippedRevision));
+                    assert_eq!(confidence, Confidence::medium());
+                }
+                other => panic!("expected SuspectWindow, got: {other:?}"),
+            }
+        }
+
+        /// Fixture: Timed-out-midpoint
+        /// A 3-commit sequence where the midpoint is classified as Indeterminate.
+        /// Expected: SuspectWindow with IndeterminateRevision reason.
+        #[test]
+        fn fixture_timed_out_midpoint_yields_suspect_window() {
+            let seq = RevisionSequenceBuilder::with_labels(&["good", "mid", "bad"]);
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+            session.record(obs("good", ObservationClass::Pass)).unwrap();
+            session
+                .record(obs("mid", ObservationClass::Indeterminate))
+                .unwrap();
+            session.record(obs("bad", ObservationClass::Fail)).unwrap();
+
+            match session.outcome() {
+                LocalizationOutcome::SuspectWindow {
+                    lower_bound_exclusive,
+                    upper_bound_inclusive,
+                    confidence,
+                    reasons,
+                } => {
+                    assert_eq!(lower_bound_exclusive.0, "good");
+                    assert_eq!(upper_bound_inclusive.0, "bad");
+                    assert!(reasons.contains(&AmbiguityReason::IndeterminateRevision));
+                    assert!(confidence.score < Confidence::high().score);
+                }
+                other => panic!("expected SuspectWindow, got: {other:?}"),
+            }
+        }
+
+        /// Fixture: Non-monotonic evidence
+        /// A 4-commit sequence where a Fail appears before a Pass (Fail at idx 1,
+        /// Pass at idx 2), violating the expected monotonic pass→fail transition.
+        /// Expected: SuspectWindow with NonMonotonicEvidence, low confidence.
+        #[test]
+        fn fixture_non_monotonic_yields_low_confidence() {
+            let seq = RevisionSequenceBuilder::with_labels(&["a", "b", "c", "d"]);
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+
+            // b (idx 1) = Fail, c (idx 2) = Pass → non-monotonic
+            session.record(obs("b", ObservationClass::Fail)).unwrap();
+            session.record(obs("c", ObservationClass::Pass)).unwrap();
+            session.record(obs("d", ObservationClass::Fail)).unwrap();
+
+            match session.outcome() {
+                LocalizationOutcome::SuspectWindow {
+                    confidence,
+                    reasons,
+                    ..
+                } => {
+                    assert!(reasons.contains(&AmbiguityReason::NonMonotonicEvidence));
+                    assert_eq!(confidence, Confidence::low());
+                }
+                other => panic!("expected SuspectWindow with NonMonotonicEvidence, got: {other:?}"),
             }
         }
     }

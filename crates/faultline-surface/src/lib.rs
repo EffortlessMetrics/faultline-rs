@@ -276,13 +276,17 @@ mod tests {
             pc("scripts/deploy.sh"),
         ]);
         assert_eq!(summary.execution_surfaces.len(), 3);
-        assert!(summary
-            .execution_surfaces
-            .contains(&".github/workflows/ci.yml".to_string()));
+        assert!(
+            summary
+                .execution_surfaces
+                .contains(&".github/workflows/ci.yml".to_string())
+        );
         assert!(summary.execution_surfaces.contains(&"build.rs".to_string()));
-        assert!(summary
-            .execution_surfaces
-            .contains(&"scripts/deploy.sh".to_string()));
+        assert!(
+            summary
+                .execution_surfaces
+                .contains(&"scripts/deploy.sh".to_string())
+        );
     }
 
     #[test]

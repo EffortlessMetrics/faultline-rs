@@ -99,10 +99,39 @@ On success, faultline writes `analysis.json` and `index.html` to the output dire
 run-id       a1b2c3d4
 observations 7
 output-dir   ./faultline-report
+artifacts    ./faultline-report/analysis.json
+             ./faultline-report/index.html
+history      ancestry-path
 outcome      FirstBad  last_good=abc1234 first_bad=def5678 confidence=95(high)
 ```
+
+### Additional flags
+
+- `--resume` — continue an interrupted run (default behavior)
+- `--force` — discard cached observations and re-probe
+- `--fresh` — delete the entire run directory and start from scratch
+- `--no-render` — skip HTML report generation, produce only `analysis.json`
+- `--shell <sh|cmd|powershell>` — select the shell for `--cmd` predicates
+- `--env KEY=VALUE` — inject environment variables into the predicate (repeatable)
+- `--first-parent` — use first-parent linearization instead of ancestry-path
+- `--max-probes <n>` — cap probe executions (default: 64)
+
+Run `cargo run -p faultline-cli -- --help` for the full flag reference.
+
+## Defaults
+
+| Setting | Default | Notes |
+|---------|---------|-------|
+| `max_probes` | 64 | Maximum number of probe executions before returning a suspect window |
+| `timeout_seconds` | 300 | Per-probe timeout; exceeded probes are classified as Indeterminate |
+| `output_truncation` | 64 KiB | Probe stdout/stderr truncated in observations; full output saved to log files |
+| Output directory | `faultline-report` | Configurable via `--output-dir` |
 
 ## Operator contract
 
 The predicate should be monotonic enough across the selected history range.
 If it flakes, times out, or depends on mutable external state, `faultline` will reduce confidence and may return a suspect window instead of an exact first-bad commit.
+
+## Packaging
+
+faultline v0.1 is a **source-only release**. Install by cloning the repository and building with `cargo build --release`. See [BUILDING.md](BUILDING.md) for prerequisites and commands. Prebuilt binaries are not provided for v0.1.

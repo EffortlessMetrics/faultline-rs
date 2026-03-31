@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 faultline-types = { path = "../faultline-types" }
+tempfile = "3"
 
 [dev-dependencies]
 proptest = { workspace = true }

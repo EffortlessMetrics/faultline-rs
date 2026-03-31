@@ -3,8 +3,20 @@ use faultline_localization::LocalizationSession;
 use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
 use faultline_surface::SurfaceAnalyzer;
 use faultline_types::{
-    now_epoch_seconds, AnalysisReport, AnalysisRequest, FaultlineError, Result, RunHandle,
+    AnalysisReport, AnalysisRequest, FaultlineError, Result, RunHandle, now_epoch_seconds,
 };
+
+/// Options controlling the behavior of `FaultlineApp::localize`.
+#[derive(Debug, Clone, Default)]
+pub struct LocalizeOptions {
+    /// If true, clear cached observations before starting (--force).
+    pub force: bool,
+    /// If true, delete the entire run directory before prepare_run (--fresh).
+    pub fresh: bool,
+    /// If true, skip rendering (--no-render). The app layer does not own
+    /// rendering, but this flag is threaded through for the caller's use.
+    pub no_render: bool,
+}
 
 #[derive(Debug, Clone)]
 pub struct LocalizedRun {
@@ -37,13 +49,43 @@ impl<'a> FaultlineApp<'a> {
     }
 
     pub fn localize(&self, request: AnalysisRequest) -> Result<LocalizedRun> {
+        self.localize_with_options(request, LocalizeOptions::default())
+    }
+
+    pub fn localize_with_options(
+        &self,
+        request: AnalysisRequest,
+        options: LocalizeOptions,
+    ) -> Result<LocalizedRun> {
+        // --fresh: get the run handle first to know the root, then delete and re-create
+        if options.fresh {
+            // First prepare to discover the run directory path
+            let handle = self.store.prepare_run(&request)?;
+            self.store.delete_run(&handle)?;
+            // Fall through — prepare_run below will create it fresh
+        }
+
         let run = self.store.prepare_run(&request)?;
+
+        // --force: clear cached observations before starting the loop
+        if options.force {
+            self.store.clear_observations(&run)?;
+        }
+
         let sequence = self
             .history
             .linearize(&request.good, &request.bad, request.history_mode)?;
 
         let mut session = LocalizationSession::new(sequence.clone(), request.policy.clone())?;
-        for observation in self.store.load_observations(&run)? {
+
+        // Replay cached observations, preserving their existing sequence_index values.
+        let cached = self.store.load_observations(&run)?;
+        let mut next_sequence_index: u64 = if cached.is_empty() {
+            0
+        } else {
+            cached.iter().map(|o| o.sequence_index).max().unwrap_or(0) + 1
+        };
+        for observation in cached {
             session.record(observation)?;
         }
 
@@ -54,6 +96,7 @@ impl<'a> FaultlineApp<'a> {
             0,
             ObservationClass::Pass,
             "known-good",
+            &mut next_sequence_index,
         )?;
         self.ensure_boundary(
             &run,
@@ -62,6 +105,7 @@ impl<'a> FaultlineApp<'a> {
             sequence.len() - 1,
             ObservationClass::Fail,
             "known-bad",
+            &mut next_sequence_index,
         )?;
 
         let mut probe_count = 0usize;
@@ -70,7 +114,13 @@ impl<'a> FaultlineApp<'a> {
             let Some(commit) = session.next_probe() else {
                 break;
             };
-            let observation = self.probe_commit(&request, &commit)?;
+            let mut observation = self.probe_commit(&request, &commit)?;
+            observation.sequence_index = next_sequence_index;
+            next_sequence_index += 1;
+
+            // Full-log persistence: if stdout/stderr was truncated, save full logs
+            self.persist_truncated_logs(&run, &observation);
+
             self.store.save_observation(&run, &observation)?;
             session.record(observation)?;
             probe_count += 1;
@@ -84,6 +134,7 @@ impl<'a> FaultlineApp<'a> {
         };
         let surface = self.surface.summarize(&changed_paths);
         let report = AnalysisReport {
+            schema_version: "0.1.0".into(),
             run_id: run.id.clone(),
             created_at_epoch_seconds: now_epoch_seconds(),
             request,
@@ -97,6 +148,7 @@ impl<'a> FaultlineApp<'a> {
         Ok(LocalizedRun { run, report })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn ensure_boundary(
         &self,
         run: &RunHandle,
@@ -105,6 +157,7 @@ impl<'a> FaultlineApp<'a> {
         index: usize,
         expected: ObservationClass,
         label: &str,
+        next_sequence_index: &mut u64,
     ) -> Result<()> {
         let commit = session
             .sequence()
@@ -114,7 +167,13 @@ impl<'a> FaultlineApp<'a> {
             .clone();
 
         if !session.has_observation(&commit) {
-            let observation = self.probe_commit(request, &commit)?;
+            let mut observation = self.probe_commit(request, &commit)?;
+            observation.sequence_index = *next_sequence_index;
+            *next_sequence_index += 1;
+
+            // Full-log persistence for boundary probes
+            self.persist_truncated_logs(run, &observation);
+
             self.store.save_observation(run, &observation)?;
             session.record(observation)?;
         }
@@ -129,6 +188,28 @@ impl<'a> FaultlineApp<'a> {
             )));
         }
         Ok(())
+    }
+
+    /// If stdout or stderr ends with "[truncated]", persist the (truncated)
+    /// output to per-commit log files via the store. In the current architecture
+    /// the probe adapter truncates in-memory and the full output is not available
+    /// at the app layer — this call saves what we have so the log files exist
+    /// for diagnostic purposes.
+    fn persist_truncated_logs(
+        &self,
+        run: &RunHandle,
+        observation: &faultline_types::ProbeObservation,
+    ) {
+        let stdout_truncated = observation.stdout.ends_with("[truncated]");
+        let stderr_truncated = observation.stderr.ends_with("[truncated]");
+        if stdout_truncated || stderr_truncated {
+            let _ = self.store.save_probe_logs(
+                run,
+                &observation.commit.0,
+                &observation.stdout,
+                &observation.stderr,
+            );
+        }
     }
 
     fn probe_commit(
@@ -248,6 +329,10 @@ mod tests {
                 duration_ms: 1,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             })
         }
     }
@@ -261,6 +346,8 @@ mod tests {
                 id: "mock-run".to_string(),
                 root: PathBuf::from("/tmp/mock-run"),
                 resumed: false,
+                schema_version: "0.1.0".into(),
+                tool_version: String::new(),
             })
         }
 
@@ -286,6 +373,28 @@ mod tests {
         ) -> faultline_types::Result<()> {
             Ok(())
         }
+
+        fn load_report(&self, _run: &RunHandle) -> faultline_types::Result<Option<AnalysisReport>> {
+            Ok(None)
+        }
+
+        fn save_probe_logs(
+            &self,
+            _run: &RunHandle,
+            _commit_sha: &str,
+            _stdout: &str,
+            _stderr: &str,
+        ) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn clear_observations(&self, _run: &RunHandle) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn delete_run(&self, _run: &RunHandle) -> faultline_types::Result<()> {
+            Ok(())
+        }
     }
 
     /// Build a revision sequence of `n` commits labelled c0..c{n-1}.
@@ -305,12 +414,10 @@ mod tests {
                 kind: ProbeKind::Test,
                 shell: ShellKind::Default,
                 script: "true".into(),
+                env: vec![],
                 timeout_seconds: 60,
             },
-            policy: SearchPolicy {
-                max_probes,
-                edge_refine_threshold: 6,
-            },
+            policy: SearchPolicy { max_probes },
         }
     }
 
@@ -347,6 +454,10 @@ mod tests {
                 duration_ms: 1,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             })
         }
     }
@@ -361,12 +472,10 @@ mod tests {
                 kind: ProbeKind::Test,
                 shell: ShellKind::Default,
                 script: "true".into(),
+                env: vec![],
                 timeout_seconds: 60,
             },
-            policy: SearchPolicy {
-                max_probes,
-                edge_refine_threshold: 6,
-            },
+            policy: SearchPolicy { max_probes },
         }
     }
 
@@ -406,6 +515,10 @@ mod tests {
                 duration_ms: 1,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             })
         }
     }
@@ -421,6 +534,8 @@ mod tests {
                 id: "resumed-run".to_string(),
                 root: PathBuf::from("/tmp/resumed-run"),
                 resumed: true,
+                schema_version: "0.1.0".into(),
+                tool_version: String::new(),
             })
         }
 
@@ -444,6 +559,28 @@ mod tests {
             _run: &RunHandle,
             _report: &AnalysisReport,
         ) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn load_report(&self, _run: &RunHandle) -> faultline_types::Result<Option<AnalysisReport>> {
+            Ok(None)
+        }
+
+        fn save_probe_logs(
+            &self,
+            _run: &RunHandle,
+            _commit_sha: &str,
+            _stdout: &str,
+            _stderr: &str,
+        ) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn clear_observations(&self, _run: &RunHandle) -> faultline_types::Result<()> {
+            Ok(())
+        }
+
+        fn delete_run(&self, _run: &RunHandle) -> faultline_types::Result<()> {
             Ok(())
         }
     }
@@ -476,6 +613,10 @@ mod tests {
                 duration_ms: 10,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             },
             ProbeObservation {
                 commit: CommitId("c4".into()),
@@ -486,6 +627,10 @@ mod tests {
                 duration_ms: 10,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 1,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             },
             ProbeObservation {
                 commit: CommitId("c2".into()),
@@ -496,6 +641,10 @@ mod tests {
                 duration_ms: 10,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 2,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             },
         ];
 
@@ -547,8 +696,59 @@ mod tests {
             other => panic!("expected FirstBad outcome, got: {:?}", other),
         }
 
+        // Verify schema_version is set on the report (Task 13.9)
+        assert_eq!(
+            result.report.schema_version, "0.1.0",
+            "schema_version should be 0.1.0 on resumed run"
+        );
+
         // Verify the run handle indicates resumed
         assert!(result.run.resumed, "run should be marked as resumed");
+
+        // Verify sequence indices from cached observations are preserved (Task 13.7)
+        let obs_c0 = result
+            .report
+            .observations
+            .iter()
+            .find(|o| o.commit.0 == "c0")
+            .expect("c0 must be in observations");
+        assert_eq!(
+            obs_c0.sequence_index, 0,
+            "cached c0 sequence_index must be preserved as 0"
+        );
+        let obs_c4 = result
+            .report
+            .observations
+            .iter()
+            .find(|o| o.commit.0 == "c4")
+            .expect("c4 must be in observations");
+        assert_eq!(
+            obs_c4.sequence_index, 1,
+            "cached c4 sequence_index must be preserved as 1"
+        );
+        let obs_c2 = result
+            .report
+            .observations
+            .iter()
+            .find(|o| o.commit.0 == "c2")
+            .expect("c2 must be in observations");
+        assert_eq!(
+            obs_c2.sequence_index, 2,
+            "cached c2 sequence_index must be preserved as 2"
+        );
+
+        // Verify newly probed commits get sequence indices > max cached (2)
+        let obs_c1 = result
+            .report
+            .observations
+            .iter()
+            .find(|o| o.commit.0 == "c1")
+            .expect("c1 must be in observations");
+        assert!(
+            obs_c1.sequence_index > 2,
+            "newly probed c1 sequence_index ({}) must be > max cached index (2)",
+            obs_c1.sequence_index
+        );
     }
 
     // ── Integration tests: boundary validation with mock ports ──────
@@ -651,6 +851,10 @@ mod tests {
                 duration_ms: 10,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             },
             ProbeObservation {
                 commit: CommitId("c4".into()),
@@ -661,6 +865,10 @@ mod tests {
                 duration_ms: 10,
                 stdout: String::new(),
                 stderr: String::new(),
+                sequence_index: 1,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             },
         ];
 
@@ -714,6 +922,12 @@ mod tests {
             }
             other => panic!("expected FirstBad outcome, got: {other:?}"),
         }
+
+        // Verify schema_version is set on the report (Task 13.9)
+        assert_eq!(
+            result.report.schema_version, "0.1.0",
+            "schema_version should be 0.1.0"
+        );
     }
 
     // Feature: v01-release-train, Property 9: Probe Count Respects Max Probes
@@ -911,6 +1125,10 @@ mod tests {
         assert!(
             report.created_at_epoch_seconds > 0,
             "created_at should be set"
+        );
+        assert_eq!(
+            report.schema_version, "0.1.0",
+            "schema_version should be 0.1.0"
         );
         assert_eq!(
             report.sequence.revisions.len(),

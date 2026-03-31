@@ -80,6 +80,8 @@ pub enum ProbeSpec {
         kind: ProbeKind,
         shell: ShellKind,
         script: String,
+        #[serde(default)]
+        env: Vec<(String, String)>,
         timeout_seconds: u64,
     },
 }
@@ -111,15 +113,11 @@ impl ProbeSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SearchPolicy {
     pub max_probes: usize,
-    pub edge_refine_threshold: usize,
 }
 
 impl Default for SearchPolicy {
     fn default() -> Self {
-        Self {
-            max_probes: 64,
-            edge_refine_threshold: 6,
-        }
+        Self { max_probes: 64 }
     }
 }
 
@@ -165,6 +163,14 @@ pub struct ProbeObservation {
     pub duration_ms: u64,
     pub stdout: String,
     pub stderr: String,
+    #[serde(default)]
+    pub sequence_index: u64,
+    #[serde(default)]
+    pub signal_number: Option<i32>,
+    #[serde(default)]
+    pub probe_command: String,
+    #[serde(default)]
+    pub working_dir: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,6 +274,10 @@ pub struct RunHandle {
     pub id: String,
     pub root: PathBuf,
     pub resumed: bool,
+    #[serde(default = "default_schema_version")]
+    pub schema_version: String,
+    #[serde(default)]
+    pub tool_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,6 +288,8 @@ pub struct CheckedOutRevision {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisReport {
+    #[serde(default = "default_schema_version")]
+    pub schema_version: String,
     pub run_id: String,
     pub created_at_epoch_seconds: u64,
     pub request: AnalysisRequest,
@@ -286,6 +298,10 @@ pub struct AnalysisReport {
     pub outcome: LocalizationOutcome,
     pub changed_paths: Vec<PathChange>,
     pub surface: SurfaceSummary,
+}
+
+fn default_schema_version() -> String {
+    "0.1.0".to_string()
 }
 
 pub fn stable_hash(data: &[u8]) -> String {
@@ -342,6 +358,7 @@ mod tests {
 
     fn sample_report() -> AnalysisReport {
         AnalysisReport {
+            schema_version: "0.1.0".into(),
             run_id: "run-1".into(),
             created_at_epoch_seconds: 1700000000,
             request: sample_analysis_request(),
@@ -357,6 +374,10 @@ mod tests {
                 duration_ms: 100,
                 stdout: "ok".into(),
                 stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
             }],
             outcome: LocalizationOutcome::FirstBad {
                 last_good: CommitId("abc123".into()),
@@ -400,6 +421,10 @@ mod tests {
             duration_ms: 0,
             stdout: String::new(),
             stderr: String::new(),
+            sequence_index: 0,
+            signal_number: None,
+            probe_command: String::new(),
+            working_dir: String::new(),
         });
         assert_serialize_deserialize_debug_clone_partialeq_eq(&Confidence::high());
         assert_serialize_deserialize_debug_clone_partialeq_eq(&LocalizationOutcome::Inconclusive {
@@ -424,6 +449,8 @@ mod tests {
             id: "r".into(),
             root: PathBuf::from("/tmp"),
             resumed: false,
+            schema_version: "0.1.0".into(),
+            tool_version: "0.1.0".into(),
         });
         assert_serialize_deserialize_debug_clone_partialeq_eq(&CheckedOutRevision {
             commit: CommitId("a".into()),
@@ -480,6 +507,7 @@ mod tests {
             kind: ProbeKind::Custom,
             shell: ShellKind::Default,
             script: "echo hi".into(),
+            env: vec![],
             timeout_seconds: 60,
         };
         assert_ne!(exec.fingerprint(), shell.fingerprint());
@@ -569,7 +597,6 @@ mod tests {
     fn search_policy_default() {
         let p = SearchPolicy::default();
         assert_eq!(p.max_probes, 64);
-        assert_eq!(p.edge_refine_threshold, 6);
     }
 
     // --- CommitId Display ---
@@ -712,6 +739,7 @@ mod tests {
                         kind,
                         shell,
                         script,
+                        env: vec![],
                         timeout_seconds,
                     }
                 }),
@@ -719,10 +747,7 @@ mod tests {
     }
 
     fn arb_search_policy() -> impl Strategy<Value = SearchPolicy> {
-        (1usize..128, 1usize..16).prop_map(|(max_probes, edge_refine_threshold)| SearchPolicy {
-            max_probes,
-            edge_refine_threshold,
-        })
+        (1usize..128).prop_map(|max_probes| SearchPolicy { max_probes })
     }
 
     fn arb_analysis_request() -> impl Strategy<Value = AnalysisRequest> {
@@ -770,9 +795,26 @@ mod tests {
             any::<u64>(),
             "[a-z ]{0,20}",
             "[a-z ]{0,20}",
+            any::<u64>(),
+            prop::option::of(any::<i32>()),
+            "[a-z/ ]{0,30}",
+            "[a-z/ ]{0,30}",
         )
             .prop_map(
-                |(commit, class, kind, exit_code, timed_out, duration_ms, stdout, stderr)| {
+                |(
+                    commit,
+                    class,
+                    kind,
+                    exit_code,
+                    timed_out,
+                    duration_ms,
+                    stdout,
+                    stderr,
+                    sequence_index,
+                    signal_number,
+                    probe_command,
+                    working_dir,
+                )| {
                     ProbeObservation {
                         commit,
                         class,
@@ -782,6 +824,10 @@ mod tests {
                         duration_ms,
                         stdout,
                         stderr,
+                        sequence_index,
+                        signal_number,
+                        probe_command,
+                        working_dir,
                     }
                 },
             )
@@ -906,6 +952,7 @@ mod tests {
                     surface,
                 )| {
                     AnalysisReport {
+                        schema_version: "0.1.0".into(),
                         run_id,
                         created_at_epoch_seconds,
                         request,

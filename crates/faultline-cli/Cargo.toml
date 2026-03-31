@@ -14,3 +14,8 @@ faultline-probe-exec = { path = "../faultline-probe-exec" }
 faultline-render = { path = "../faultline-render" }
 faultline-store = { path = "../faultline-store" }
 faultline-types = { path = "../faultline-types" }
+
+[dev-dependencies]
+proptest.workspace = true
+faultline-fixtures = { path = "../faultline-fixtures" }
+serde_json.workspace = true

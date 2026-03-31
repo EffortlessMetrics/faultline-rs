@@ -21,12 +21,98 @@ pub struct GitAdapter {
 impl GitAdapter {
     pub fn new(repo_root: impl Into<PathBuf>) -> Result<Self> {
         let repo_root = repo_root.into();
+        Self::verify_git_available()?;
+        Self::verify_git_repo(&repo_root)?;
         let scratch_root = repo_root.join(".faultline").join("scratch");
         fs::create_dir_all(&scratch_root)?;
+        Self::cleanup_stale_worktrees(&repo_root, &scratch_root);
         Ok(Self {
             repo_root,
             scratch_root,
         })
+    }
+
+    /// Scan `.faultline/scratch/` for leftover directories from previous runs
+    /// and remove them. Attempts `git worktree remove --force` first, falling
+    /// back to `fs::remove_dir_all`. Warnings are logged on failure but errors
+    /// are never propagated so that construction always succeeds.
+    fn cleanup_stale_worktrees(repo_root: &PathBuf, scratch_root: &PathBuf) {
+        let entries = match fs::read_dir(scratch_root) {
+            Ok(entries) => entries,
+            Err(e) => {
+                eprintln!(
+                    "warning: could not scan scratch directory {}: {}",
+                    scratch_root.display(),
+                    e
+                );
+                return;
+            }
+        };
+
+        for entry in entries {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("warning: could not read scratch directory entry: {}", e);
+                    continue;
+                }
+            };
+
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            // Try git worktree remove --force first
+            let git_result = Command::new("git")
+                .args(["worktree", "remove", "--force"])
+                .arg(&path)
+                .current_dir(repo_root)
+                .output();
+
+            let removed_by_git = match git_result {
+                Ok(output) => output.status.success(),
+                Err(_) => false,
+            };
+
+            if removed_by_git {
+                continue;
+            }
+
+            // Fallback: direct directory removal
+            if let Err(e) = fs::remove_dir_all(&path) {
+                eprintln!(
+                    "warning: failed to remove stale worktree {}: {}",
+                    path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    fn verify_git_available() -> Result<()> {
+        Command::new("git")
+            .arg("--version")
+            .output()
+            .map_err(|_| FaultlineError::Git("git binary not found on PATH".to_string()))?;
+        Ok(())
+    }
+
+    fn verify_git_repo(path: &PathBuf) -> Result<()> {
+        let output = Command::new("git")
+            .args(["rev-parse", "--git-dir"])
+            .current_dir(path)
+            .output()
+            .map_err(|_| {
+                FaultlineError::Git(format!("not a git repository: {}", path.display()))
+            })?;
+        if !output.status.success() {
+            return Err(FaultlineError::Git(format!(
+                "not a git repository: {}",
+                path.display()
+            )));
+        }
+        Ok(())
     }
 
     fn git_output(&self, args: Vec<OsString>) -> Result<String> {
@@ -216,8 +302,14 @@ impl CheckoutPort for GitAdapter {
                 OsString::from("--force"),
                 checkout.path.as_os_str().to_os_string(),
             ]);
-            if checkout.path.exists() {
-                let _ = fs::remove_dir_all(&checkout.path);
+            if checkout.path.exists()
+                && let Err(e) = fs::remove_dir_all(&checkout.path)
+            {
+                eprintln!(
+                    "warning: failed to clean up checkout {}: {}",
+                    checkout.path.display(),
+                    e
+                );
             }
         }
         Ok(())
@@ -367,5 +459,502 @@ mod tests {
             .changed_paths(&CommitId(sha.clone()), &CommitId(sha))
             .expect("changed_paths");
         assert!(changes.is_empty(), "same commit should yield no changes");
+    }
+}
+
+#[cfg(test)]
+mod env_validation_tests {
+    use super::*;
+    use faultline_fixtures::{FileOp, GitRepoBuilder};
+    use faultline_ports::CheckoutPort;
+    use faultline_types::CheckedOutRevision;
+
+    #[test]
+    fn rejects_non_repo_path() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let result = GitAdapter::new(tmp.path());
+        assert!(result.is_err(), "should reject a non-git directory");
+        let err = result.unwrap_err();
+        let msg = format!("{}", err);
+        assert!(
+            msg.contains("not a git repository"),
+            "error should mention 'not a git repository', got: {}",
+            msg
+        );
+    }
+
+    /// Validates: Requirements 4.3
+    #[test]
+    fn cleans_stale_worktrees_on_construction() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial",
+                vec![FileOp::Write {
+                    path: "file.txt".into(),
+                    content: "hello".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let repo_path = repo.dir.path();
+        let scratch = repo_path.join(".faultline").join("scratch");
+        fs::create_dir_all(&scratch).unwrap();
+
+        // Manually create a stale directory that looks like a leftover worktree.
+        let stale = scratch.join("stale-worktree-12345");
+        fs::create_dir_all(&stale).unwrap();
+        fs::write(stale.join("marker.txt"), "stale").unwrap();
+        assert!(
+            stale.exists(),
+            "stale directory should exist before construction"
+        );
+
+        // Constructing a new GitAdapter should clean up the stale directory.
+        let _adapter = GitAdapter::new(repo_path).expect("create adapter");
+        assert!(
+            !stale.exists(),
+            "stale worktree directory should be removed after GitAdapter construction"
+        );
+    }
+
+    /// Validates: Requirements 4.6
+    #[test]
+    fn cleanup_checkout_returns_ok_on_missing_directory() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial",
+                vec![FileOp::Write {
+                    path: "file.txt".into(),
+                    content: "hello".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).expect("create adapter");
+
+        // Create a CheckedOutRevision pointing to a non-existent path.
+        let fake_checkout = CheckedOutRevision {
+            commit: CommitId("deadbeef".to_string()),
+            path: repo.dir.path().join("nonexistent-worktree"),
+        };
+
+        let result = adapter.cleanup_checkout(&fake_checkout);
+        assert!(
+            result.is_ok(),
+            "cleanup_checkout should return Ok(()) for a missing directory, got: {:?}",
+            result
+        );
+    }
+}
+
+#[cfg(test)]
+mod fixture_scenario_tests {
+    use super::*;
+    use faultline_codes::{ObservationClass, ProbeKind};
+    use faultline_fixtures::{FileOp, GitRepoBuilder};
+    use faultline_localization::LocalizationSession;
+    use faultline_ports::HistoryPort;
+    use faultline_types::{
+        Confidence, LocalizationOutcome, ProbeObservation, RevisionSpec, SearchPolicy,
+    };
+
+    /// Helper: run a git command in a directory and return stdout.
+    fn git_cmd(dir: &std::path::Path, args: &[&str]) -> String {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .expect("git command failed to execute");
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    fn make_obs(commit: &CommitId, class: ObservationClass, seq_idx: u64) -> ProbeObservation {
+        ProbeObservation {
+            commit: commit.clone(),
+            class,
+            kind: ProbeKind::Test,
+            exit_code: Some(match class {
+                ObservationClass::Pass => 0,
+                ObservationClass::Skip => 125,
+                _ => 1,
+            }),
+            timed_out: false,
+            duration_ms: 1,
+            stdout: String::new(),
+            stderr: String::new(),
+            sequence_index: seq_idx,
+            signal_number: None,
+            probe_command: String::new(),
+            working_dir: String::new(),
+        }
+    }
+
+    /// Fixture scenario: exact-first-bad-commit (real Git)
+    /// A linear 5-commit repo where commit 3 (index 3) introduces a failing change.
+    /// Commits 0–2 pass, commits 3–4 fail. End-to-end with GitAdapter::linearize
+    /// + LocalizationSession verifies FirstBad outcome with correct boundary pair.
+    /// **Validates: Requirements 7.4**
+    #[test]
+    fn exact_first_bad_commit_real_git() {
+        // Build a 5-commit linear repo; commit 3 introduces the "bug".
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "commit-0: initial good",
+                vec![FileOp::Write {
+                    path: "src/main.rs".into(),
+                    content: "fn main() { println!(\"v0\"); }".into(),
+                }],
+            )
+            .commit(
+                "commit-1: still good",
+                vec![FileOp::Write {
+                    path: "src/main.rs".into(),
+                    content: "fn main() { println!(\"v1\"); }".into(),
+                }],
+            )
+            .commit(
+                "commit-2: last good",
+                vec![FileOp::Write {
+                    path: "src/main.rs".into(),
+                    content: "fn main() { println!(\"v2\"); }".into(),
+                }],
+            )
+            .commit(
+                "commit-3: introduces bug",
+                vec![FileOp::Write {
+                    path: "src/main.rs".into(),
+                    content: "fn main() { panic!(\"bug\"); }".into(),
+                }],
+            )
+            .commit(
+                "commit-4: still bad",
+                vec![FileOp::Write {
+                    path: "src/main.rs".into(),
+                    content: "fn main() { panic!(\"still broken\"); }".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        assert_eq!(repo.commits.len(), 5);
+
+        // Use GitAdapter to linearize the history from commit 0 (good) to commit 4 (bad).
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let good = RevisionSpec(repo.commits[0].0.clone());
+        let bad = RevisionSpec(repo.commits[4].0.clone());
+        let sequence = adapter
+            .linearize(&good, &bad, HistoryMode::AncestryPath)
+            .expect("linearize should succeed");
+
+        // The sequence should contain all 5 commits in order.
+        assert_eq!(
+            sequence.revisions.len(),
+            5,
+            "expected 5 revisions, got {}",
+            sequence.revisions.len()
+        );
+        assert_eq!(sequence.revisions[0], repo.commits[0]);
+        assert_eq!(sequence.revisions[4], repo.commits[4]);
+
+        // Create a LocalizationSession and simulate probing.
+        let policy = SearchPolicy::default();
+        let mut session = LocalizationSession::new(sequence, policy).unwrap();
+
+        // Record observations: commits 0–2 pass, commits 3–4 fail.
+        for i in 0..5u64 {
+            let class = if i <= 2 {
+                ObservationClass::Pass
+            } else {
+                ObservationClass::Fail
+            };
+            session
+                .record(make_obs(&repo.commits[i as usize], class, i))
+                .unwrap();
+        }
+
+        // Verify the outcome is FirstBad with last_good=commit-2, first_bad=commit-3.
+        match session.outcome() {
+            LocalizationOutcome::FirstBad {
+                last_good,
+                first_bad,
+                confidence,
+            } => {
+                assert_eq!(last_good, repo.commits[2], "last_good should be commit-2");
+                assert_eq!(first_bad, repo.commits[3], "first_bad should be commit-3");
+                assert_eq!(
+                    confidence,
+                    Confidence::high(),
+                    "exact boundary should have high confidence"
+                );
+            }
+            other => panic!("expected FirstBad outcome, got: {other:?}"),
+        }
+    }
+
+    /// Fixture scenario: first-parent-merge-history (real Git)
+    /// A repository with merge commits where `--first-parent` produces a different
+    /// linearization than ancestry-path. The feature branch commits appear in
+    /// ancestry-path but are excluded by first-parent.
+    /// **Validates: Requirements 7.8**
+    #[test]
+    fn first_parent_merge_history_real_git() {
+        // Build a repo with an initial commit on main.
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial on main",
+                vec![FileOp::Write {
+                    path: "main.txt".into(),
+                    content: "v0".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let repo_path = repo.dir.path();
+        let initial_sha = repo.commits[0].0.clone();
+
+        // Create a feature branch with two commits.
+        git_cmd(repo_path, &["checkout", "-b", "feature"]);
+        std::fs::write(repo_path.join("feature.txt"), "feature-1").unwrap();
+        git_cmd(repo_path, &["add", "."]);
+        git_cmd(repo_path, &["commit", "-m", "feature commit 1"]);
+
+        std::fs::write(repo_path.join("feature.txt"), "feature-2").unwrap();
+        git_cmd(repo_path, &["add", "."]);
+        git_cmd(repo_path, &["commit", "-m", "feature commit 2"]);
+
+        // Switch back to main and add a commit so the merge is non-trivial.
+        git_cmd(repo_path, &["checkout", "main"]);
+        std::fs::write(repo_path.join("main.txt"), "v1").unwrap();
+        git_cmd(repo_path, &["add", "."]);
+        git_cmd(repo_path, &["commit", "-m", "main commit after branch"]);
+
+        // Merge feature into main with --no-ff to force a merge commit.
+        git_cmd(
+            repo_path,
+            &["merge", "--no-ff", "-m", "merge feature", "feature"],
+        );
+        let merge_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+
+        // Linearize with both modes.
+        let adapter = GitAdapter::new(repo_path).unwrap();
+        let good = RevisionSpec(initial_sha);
+        let bad = RevisionSpec(merge_sha);
+
+        let ancestry = adapter
+            .linearize(&good, &bad, HistoryMode::AncestryPath)
+            .expect("ancestry-path linearize should succeed");
+
+        let first_parent = adapter
+            .linearize(&good, &bad, HistoryMode::FirstParent)
+            .expect("first-parent linearize should succeed");
+
+        // Ancestry-path includes the feature branch commits; first-parent does not.
+        // Therefore the two linearizations must differ.
+        assert_ne!(
+            ancestry.revisions.len(),
+            first_parent.revisions.len(),
+            "ancestry-path ({} commits) and first-parent ({} commits) should produce \
+             different linearizations for a repo with merge commits",
+            ancestry.revisions.len(),
+            first_parent.revisions.len(),
+        );
+
+        // Ancestry-path should have more commits (includes feature branch commits).
+        assert!(
+            ancestry.revisions.len() > first_parent.revisions.len(),
+            "ancestry-path should include more commits than first-parent: {} vs {}",
+            ancestry.revisions.len(),
+            first_parent.revisions.len(),
+        );
+
+        // Both should share the same good and bad boundaries.
+        assert_eq!(ancestry.revisions.first(), first_parent.revisions.first());
+        assert_eq!(ancestry.revisions.last(), first_parent.revisions.last());
+    }
+
+    /// Fixture scenario: rename-and-delete (real Git)
+    /// A repository where files are renamed and deleted between boundary commits.
+    /// Verifies `GitAdapter::changed_paths` returns correct `PathChange` entries
+    /// with the expected statuses (Renamed, Deleted).
+    /// **Validates: Requirements 7.9**
+    #[test]
+    fn rename_and_delete_real_git() {
+        // First commit: add several files.
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial: add files",
+                vec![
+                    FileOp::Write {
+                        path: "keep.txt".into(),
+                        content: "stays the same".into(),
+                    },
+                    FileOp::Write {
+                        path: "to_rename.txt".into(),
+                        content: "I will be renamed".into(),
+                    },
+                    FileOp::Write {
+                        path: "to_delete.txt".into(),
+                        content: "I will be deleted".into(),
+                    },
+                    FileOp::Write {
+                        path: "another.txt".into(),
+                        content: "also stays".into(),
+                    },
+                ],
+            )
+            .commit(
+                "rename one file and delete another",
+                vec![
+                    FileOp::Rename {
+                        from: "to_rename.txt".into(),
+                        to: "renamed.txt".into(),
+                    },
+                    FileOp::Delete {
+                        path: "to_delete.txt".into(),
+                    },
+                ],
+            )
+            .build()
+            .unwrap();
+
+        assert_eq!(repo.commits.len(), 2);
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let changes = adapter
+            .changed_paths(&repo.commits[0], &repo.commits[1])
+            .expect("changed_paths should succeed");
+
+        // Verify deleted file is detected.
+        let deleted: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Deleted)
+            .collect();
+        assert!(
+            deleted.iter().any(|c| c.path == "to_delete.txt"),
+            "should detect to_delete.txt as Deleted, got: {:?}",
+            deleted
+        );
+
+        // Verify renamed file is detected.
+        // Git may detect the rename as Renamed (R) or as Delete+Add depending on
+        // similarity detection. Check for Renamed first; if not present, verify
+        // the old path is Deleted and the new path is Added.
+        let renamed: Vec<_> = changes
+            .iter()
+            .filter(|c| c.status == ChangeStatus::Renamed)
+            .collect();
+        if !renamed.is_empty() {
+            assert!(
+                renamed.iter().any(|c| c.path == "renamed.txt"),
+                "rename entry should use destination path 'renamed.txt', got: {:?}",
+                renamed
+            );
+        } else {
+            // Fallback: git detected as delete + add instead of rename.
+            let has_old_deleted = changes
+                .iter()
+                .any(|c| c.status == ChangeStatus::Deleted && c.path == "to_rename.txt");
+            let has_new_added = changes
+                .iter()
+                .any(|c| c.status == ChangeStatus::Added && c.path == "renamed.txt");
+            assert!(
+                has_old_deleted && has_new_added,
+                "if not detected as Renamed, should see to_rename.txt Deleted and renamed.txt Added, got: {:?}",
+                changes
+            );
+        }
+
+        // Verify unchanged files are NOT in the diff.
+        let unchanged_paths: Vec<_> = changes.iter().map(|c| c.path.as_str()).collect();
+        assert!(
+            !unchanged_paths.contains(&"keep.txt"),
+            "keep.txt should not appear in changed_paths"
+        );
+        assert!(
+            !unchanged_paths.contains(&"another.txt"),
+            "another.txt should not appear in changed_paths"
+        );
+    }
+
+    /// Fixture scenario: invalid-boundaries (real Git)
+    /// A repository where the good commit is not an ancestor of the bad commit.
+    /// Two divergent branches with no ancestor relationship between their tips.
+    /// Verifies `GitAdapter::linearize` returns an error.
+    /// **Validates: Requirements 7.10**
+    #[test]
+    fn invalid_boundaries_real_git() {
+        // Build a repo with an initial commit on main.
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial on main",
+                vec![FileOp::Write {
+                    path: "main.txt".into(),
+                    content: "main content".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let repo_path = repo.dir.path();
+        let initial_sha = repo.commits[0].0.clone();
+
+        // Create branch-a from initial and add a commit.
+        git_cmd(repo_path, &["checkout", "-b", "branch-a"]);
+        std::fs::write(repo_path.join("a.txt"), "branch-a work").unwrap();
+        git_cmd(repo_path, &["add", "."]);
+        git_cmd(repo_path, &["commit", "-m", "commit on branch-a"]);
+        let branch_a_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+
+        // Go back to initial and create branch-b with a divergent commit.
+        git_cmd(repo_path, &["checkout", &initial_sha]);
+        git_cmd(repo_path, &["checkout", "-b", "branch-b"]);
+        std::fs::write(repo_path.join("b.txt"), "branch-b work").unwrap();
+        git_cmd(repo_path, &["add", "."]);
+        git_cmd(repo_path, &["commit", "-m", "commit on branch-b"]);
+        let branch_b_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+
+        // branch-a tip is NOT an ancestor of branch-b tip (and vice versa).
+        let adapter = GitAdapter::new(repo_path).unwrap();
+
+        // Try linearize with branch-a as good and branch-b as bad.
+        let good = RevisionSpec(branch_a_sha.clone());
+        let bad = RevisionSpec(branch_b_sha.clone());
+        let result = adapter.linearize(&good, &bad, HistoryMode::AncestryPath);
+
+        assert!(
+            result.is_err(),
+            "linearize should fail when good is not an ancestor of bad"
+        );
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(
+            err_msg.contains("must be an ancestor"),
+            "error should mention ancestor relationship, got: {}",
+            err_msg
+        );
+
+        // Also verify the reverse direction fails.
+        let good_rev = RevisionSpec(branch_b_sha);
+        let bad_rev = RevisionSpec(branch_a_sha);
+        let result_rev = adapter.linearize(&good_rev, &bad_rev, HistoryMode::AncestryPath);
+
+        assert!(
+            result_rev.is_err(),
+            "linearize should also fail in the reverse direction"
+        );
     }
 }

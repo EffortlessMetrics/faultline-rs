@@ -1,6 +1,6 @@
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, PathChange, ProbeObservation,
-    ProbeSpec, Result, RevisionSequence, RevisionSpec, RunHandle, HistoryMode,
+    AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, HistoryMode, PathChange,
+    ProbeObservation, ProbeSpec, Result, RevisionSequence, RevisionSpec, RunHandle,
 };
 
 pub trait HistoryPort {
@@ -28,4 +28,18 @@ pub trait RunStorePort {
     fn load_observations(&self, run: &RunHandle) -> Result<Vec<ProbeObservation>>;
     fn save_observation(&self, run: &RunHandle, observation: &ProbeObservation) -> Result<()>;
     fn save_report(&self, run: &RunHandle, report: &AnalysisReport) -> Result<()>;
+    fn load_report(&self, run: &RunHandle) -> Result<Option<AnalysisReport>>;
+    /// Persist full probe stdout/stderr to per-commit log files.
+    /// Called by the app layer when truncated output is detected.
+    fn save_probe_logs(
+        &self,
+        run: &RunHandle,
+        commit_sha: &str,
+        stdout: &str,
+        stderr: &str,
+    ) -> Result<()>;
+    /// Clear all cached observations for a run (used by --force).
+    fn clear_observations(&self, run: &RunHandle) -> Result<()>;
+    /// Delete the entire run directory (used by --fresh).
+    fn delete_run(&self, run: &RunHandle) -> Result<()>;
 }

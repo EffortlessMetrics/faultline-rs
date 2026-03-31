@@ -57,6 +57,7 @@ pub enum AmbiguityReason {
     UntestableWindow,
     BoundaryValidationFailed,
     NeedsMoreProbes,
+    MaxProbesExhausted,
 }
 
 impl fmt::Display for AmbiguityReason {
@@ -70,6 +71,7 @@ impl fmt::Display for AmbiguityReason {
             AmbiguityReason::UntestableWindow => "untestable window",
             AmbiguityReason::BoundaryValidationFailed => "boundary validation failed",
             AmbiguityReason::NeedsMoreProbes => "needs more probes",
+            AmbiguityReason::MaxProbesExhausted => "max probes exhausted",
         };
         write!(f, "{}", text)
     }
