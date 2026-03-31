@@ -2,15 +2,24 @@
 
 ## Overview
 
-Implements the hardening pass that takes the existing v0.1 scaffold to a releasable state. Changes are delta-only across the existing 12 crates — no new crates, no architectural changes. Waves follow the priority order: freeze contract → prove core → harden adapters → safe resumability → real fixtures → operator surface → dogfood. All code is Rust, tested with `proptest` for correctness properties (P24–P36) and unit tests for fixture scenarios.
+Implements the hardening pass that takes the existing v0.1 scaffold to a releasable state. Changes are delta-only across the existing 12 crates — no new crates, no architectural changes. Waves follow the adjusted priority order: freeze contract → prove core → real Git fixtures + adapter realism → safe resumability → harden probe executor → operator surface → dogfood. All code is Rust, tested with `proptest` for correctness properties (P24–P36) and unit tests for fixture scenarios.
+
+Key process rules:
+- Core hardening property tests (P25, P26, P27, P29, P30, P31, P32, P36) are MANDATORY, not optional
+- Any change made after a property-test failure requires human review before the wave checkpoint is marked complete
+- `sequence_index` is assigned by the app/store layer, not the localization engine
+- `SignalTermination` is observation metadata only, not an `AmbiguityReason` variant
+- Full-log persistence is a store/app concern, not a probe-exec concern
+- The lock file is a local-machine-only, best-effort single-writer guard
 
 ## Tasks
 
 - [ ] 1. Wave 0 — Freeze Contract: Type Changes, Code Vocabulary, Port Extension
-  - [ ] 1.1 Add `MaxProbesExhausted` and `SignalTermination` variants to `AmbiguityReason` in `faultline-codes`
-    - Add `MaxProbesExhausted` and `SignalTermination` to the `AmbiguityReason` enum
-    - Add `Display` match arms for both: `"max probes exhausted"` and `"signal termination"`
-    - _Requirements: 3.2, 5.1_
+  - [ ] 1.1 Add `MaxProbesExhausted` variant to `AmbiguityReason` in `faultline-codes`
+    - Add `MaxProbesExhausted` to the `AmbiguityReason` enum
+    - Add `Display` match arm: `"max probes exhausted"`
+    - NOTE: `SignalTermination` is NOT added as an `AmbiguityReason` — signal info is observation metadata only
+    - _Requirements: 3.2_
 
   - [ ] 1.2 Remove `edge_refine_threshold` from `SearchPolicy` in `faultline-types`
     - Remove the `edge_refine_threshold` field from `SearchPolicy`
@@ -23,8 +32,8 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - _Requirements: 1.4, 1.5, 1.6_
 
   - [ ] 1.4 Add diagnostic fields to `ProbeObservation` in `faultline-types`
-    - Add `pub sequence_index: u64` (temporal probe order)
-    - Add `pub signal_number: Option<i32>` (Unix signal that killed process)
+    - Add `pub sequence_index: u64` (temporal probe order, assigned by app/store layer)
+    - Add `pub signal_number: Option<i32>` (Unix signal that killed process — metadata only)
     - Add `pub probe_command: String` (effective command for reproducibility)
     - Add `pub working_dir: String` (checkout path for reproducibility)
     - All new fields use `#[serde(default)]` for backward-compatible deserialization
@@ -58,10 +67,11 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - Modify `outcome()` to check if max probes were exhausted and the result is `Inconclusive` or `SuspectWindow`
     - _Requirements: 3.2_
 
-  - [ ] 3.2 Implement sequence-index tracking in `LocalizationSession` in `faultline-localization`
-    - Add an internal `next_sequence_index: u64` counter initialized to 0
-    - On each `record()` call, set `observation.sequence_index = self.next_sequence_index` then increment
-    - Change `observation_list()` to return observations ordered by `sequence_index` (ascending)
+  - [ ] 3.2 Update `LocalizationSession` to consume (not assign) sequence indices in `faultline-localization`
+    - The engine does NOT own `sequence_index` assignment — the app/store layer assigns them
+    - `record()` accepts observations with pre-assigned `sequence_index` values
+    - `observation_list()` returns observations ordered by `sequence_index` (ascending)
+    - When replaying cached observations on resume, prior sequence indices are preserved
     - _Requirements: 3.3_
 
   - [ ] 3.3 Remove all references to `edge_refine_threshold` in `faultline-localization`
@@ -71,69 +81,81 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
   - [ ] 3.4 Review and document `prop_monotonic_window_narrowing` in `faultline-localization`
     - Review the existing property test for correctness
     - Add a code comment documenting the review outcome (confirmed valid or strengthened)
-    - _Requirements: 3.7_
+    - HUMAN REVIEW REQUIRED: any change after a property-test failure must be reviewed before the wave checkpoint
+    - _Requirements: 3.7, 3.8_
 
-  - [ ]* 3.5 Write property test P25: Max-Probe Exhaustion Produces Explicit Outcome
+  - [ ] 3.5 Write property test P25: Max-Probe Exhaustion Produces Explicit Outcome
     - **Property 25: Max-Probe Exhaustion Produces Explicit Outcome**
     - Generate sequences of 5–30 commits, set `max_probes` to 2–5, record that many observations without convergence, verify `outcome()` includes `AmbiguityReason::MaxProbesExhausted`
     - **Validates: Requirement 3.2**
 
-  - [ ]* 3.6 Write property test P26: Observation Sequence Order Preservation
+  - [ ] 3.6 Write property test P26: Observation Sequence Order Preservation
     - **Property 26: Observation Sequence Order Preservation**
-    - Generate random observation orderings, record in order, verify `observation_list()` returns by `sequence_index` with monotonically increasing values starting at 0
+    - Generate observations with pre-assigned `sequence_index` values, record into session, verify `observation_list()` returns by `sequence_index` ascending
     - **Validates: Requirement 3.3**
 
 - [ ] 4. Checkpoint — Wave 1 complete (localization semantics proven)
-  - Ensure `cargo test -p faultline-localization` passes with all property and unit tests. Ask the user if questions arise.
+  - Ensure `cargo test -p faultline-localization` passes with all property and unit tests.
+  - HUMAN REVIEW GATE: if any property test failed and was fixed during this wave, the diff must be reviewed before proceeding.
+  - Ask the user if questions arise.
 
-- [ ] 5. Wave 2 — Harden Adapters: Git, Probe Executor
-  - [ ] 5.1 Add environment validation to `GitAdapter::new()` in `faultline-git`
+- [ ] 5. Wave 2 — Real Fixtures + Adapter Realism: GitRepoBuilder, Git Hardening
+  - [ ] 5.1 Implement `GitRepoBuilder` in `faultline-fixtures`
+    - Add `GitRepoBuilder` struct with `TempDir`, commit list
+    - Add `FixtureCommit` struct with message and `Vec<FileOp>`
+    - Add `FileOp` enum: `Write { path, content }`, `Delete { path }`, `Rename { from, to }`
+    - Implement `new()` → init bare repo with initial config
+    - Implement `commit(message, ops)` → apply file ops, `git add .`, `git commit`
+    - Implement `merge(message, branch)` → create merge commit
+    - Implement `build()` → return `FixtureRepo { dir, commits: Vec<CommitId> }`
+    - Add `tempfile` as dev-dependency to `faultline-fixtures`
+    - _Requirements: 7.1, 7.2, 7.3_
+
+  - [ ] 5.2 Add environment validation to `GitAdapter::new()` in `faultline-git`
     - Add `verify_git_available()`: run `git --version`, return `FaultlineError::Git("git binary not found on PATH")` on failure
     - Add `verify_git_repo(path)`: run `git rev-parse --git-dir` in the repo root, return `FaultlineError::Git("not a git repository: {path}")` on failure
     - Call both checks at the start of `new()`
     - _Requirements: 4.1, 4.2_
 
-  - [ ] 5.2 Add stale worktree cleanup to `GitAdapter::new()` in `faultline-git`
+  - [ ] 5.3 Add stale worktree cleanup to `GitAdapter::new()` in `faultline-git`
     - After creating `scratch_root`, scan for existing directories under `.faultline/scratch/`
     - For each stale directory, attempt `git worktree remove --force`, fallback to `fs::remove_dir_all`
     - Log warnings on failure but do not return errors
     - _Requirements: 4.3_
 
-  - [ ] 5.3 Harden `cleanup_checkout` resilience in `faultline-git`
+  - [ ] 5.4 Harden `cleanup_checkout` resilience in `faultline-git`
     - When both `git worktree remove --force` and `fs::remove_dir_all` fail, log a warning (eprintln) and return `Ok(())` so the original probe result is not masked
     - _Requirements: 4.4, 4.6_
 
-  - [ ] 5.4 Implement signal-aware classification in `faultline-probe-exec`
-    - After `wait_with_output`, extract signal number via `#[cfg(unix)] std::os::unix::process::ExitStatusExt::signal()`
-    - On non-Unix, set `signal_number = None`
-    - Update `classify` to accept `signal_number: Option<i32>`: if `exit_code` is `None` and `timed_out` is false and `signal_number` is `Some`, return `Indeterminate`
-    - Populate `signal_number` on the `ProbeObservation`
-    - _Requirements: 5.1, 5.2_
+  - [ ] 5.5 Add fixture scenario: exact-first-bad-commit (real Git)
+    - Create a linear 5-commit repo via `GitRepoBuilder` where commit 3 introduces a failing change
+    - Test end-to-end with `GitAdapter::linearize` + `LocalizationSession`
+    - Verify `FirstBad` outcome with correct boundary pair
+    - _Requirements: 7.4_
 
-  - [ ] 5.5 Implement output truncation in `faultline-probe-exec`
-    - Define `const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024`
-    - After capturing stdout/stderr, if length exceeds limit, truncate and append `"[truncated]"`
-    - Save full output to `{run_dir}/{commit_sha}_stdout.log` and `_stderr.log` when truncated (requires passing run directory context or deferring to store layer)
-    - _Requirements: 5.3_
+  - [ ] 5.6 Add fixture scenario: first-parent-merge-history (real Git)
+    - Create a repo with merge commits via `GitRepoBuilder`
+    - Verify `--first-parent` produces a different linearization than ancestry-path
+    - _Requirements: 7.8_
 
-  - [ ] 5.6 Populate `probe_command` and `working_dir` on `ProbeObservation` in `faultline-probe-exec`
-    - Set `probe_command` to the effective command string (e.g., `"sh -c 'cargo test'"` or `"cargo test --lib"`)
-    - Set `working_dir` to `checkout.path.display().to_string()`
-    - _Requirements: 5.4_
+  - [ ] 5.7 Add fixture scenario: rename-and-delete (real Git)
+    - Create a repo where files are renamed and deleted between boundary commits
+    - Verify `GitAdapter::changed_paths` returns correct `PathChange` entries
+    - _Requirements: 7.9_
 
-  - [ ]* 5.7 Write property test P27: Signal-Aware Exit Code Classification
-    - **Property 27: Signal-Aware Exit Code Classification**
-    - Generate `(Option<i32>, bool, Option<i32>)` triples for `(exit_code, timed_out, signal_number)`
-    - Verify classification: `Indeterminate` when timed_out, `Indeterminate` when no exit_code + signal, `Pass` for exit 0, `Skip` for exit 125, `Fail` for other non-zero, `Indeterminate` when no exit_code and no signal
-    - **Validates: Requirements 5.1, 5.2**
+  - [ ] 5.8 Add fixture scenario: invalid-boundaries (real Git)
+    - Create a repo where the good commit is not an ancestor of the bad commit
+    - Verify `GitAdapter::linearize` returns an error
+    - _Requirements: 7.10_
 
-  - [ ]* 5.8 Write property test P28: Observation Structural Completeness (Extended)
-    - **Property 28: Observation Structural Completeness (Extended)**
-    - Generate valid `ProbeSpec` + mock checkout, verify `probe_command` is non-empty and `working_dir` is non-empty in the resulting observation
-    - **Validates: Requirements 5.4, extends v01-release-train Property 2**
+  - [ ] 5.9 Add adapter hardening unit tests for `faultline-git`
+    - Test: `GitAdapter` rejects non-repo path (temp dir without `.git`)
+    - Test: `GitAdapter` cleans stale worktrees on construction
+    - Test: `cleanup_checkout` returns `Ok(())` on missing directory
+    - _Requirements: 4.1, 4.3, 4.6_
 
-- [ ] 6. Checkpoint — Wave 2 complete (adapters hardened)
-  - Ensure `cargo test -p faultline-git -p faultline-probe-exec` passes. Ask the user if questions arise.
+- [ ] 6. Checkpoint — Wave 2 complete (real fixtures + adapter realism)
+  - Ensure `cargo test -p faultline-fixtures -p faultline-git` passes. Ask the user if questions arise.
 
 - [ ] 7. Wave 3 — Safe Resumability: Atomic Writes, Lock File, Store Enhancements
   - [ ] 7.1 Implement `atomic_write` helper in `faultline-store`
@@ -143,10 +165,11 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
 
   - [ ] 7.2 Implement lock file for single-writer guard in `faultline-store`
     - `prepare_run` creates `.lock` file containing `{pid}\n{timestamp}`
-    - If `.lock` exists, read PID and check if process is alive (via `/proc/{pid}` on Linux or `kill(pid, 0)` on Unix)
+    - If `.lock` exists, read PID and check if process is alive (platform-specific: `kill(pid, 0)` on Unix)
     - Alive → return `FaultlineError::Store("run locked by process {pid}")`
     - Dead → stale lock, remove and re-acquire
     - Release lock on `save_report` or implement `Drop`
+    - Document as local-machine-only, best-effort guard (not distributed lock)
     - _Requirements: 6.2, 6.3_
 
   - [ ] 7.3 Implement `load_report` in `FileRunStore`
@@ -163,81 +186,78 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - Set `schema_version` and `tool_version` on the returned `RunHandle`
     - _Requirements: 6.4_
 
-  - [ ]* 7.6 Write property test P29: Store Observation Sequence Order
+  - [ ] 7.6 Implement full-log persistence in `faultline-store`
+    - Add a method to write full probe output to `{run_dir}/logs/{commit_sha}_stdout.log` and `_stderr.log`
+    - Called by the app layer when truncated output is detected (ends with `"[truncated]"`)
+    - Full-log persistence is a store concern, not a probe-exec concern
+    - _Requirements: 5.3_
+
+  - [ ] 7.7 Write property test P29: Store Observation Sequence Order
     - **Property 29: Store Observation Sequence Order**
     - Generate observations with distinct `sequence_index` values, save via `save_observation`, load via `load_observations`, verify returned in ascending `sequence_index` order
     - **Validates: Requirements 3.3, 6.5**
 
-  - [ ]* 7.7 Write property test P30: Version Metadata Persistence
+  - [ ] 7.8 Write property test P30: Version Metadata Persistence
     - **Property 30: Version Metadata Persistence**
     - Generate random `AnalysisRequest`, call `prepare_run`, read `metadata.json`, verify `schema_version == "0.1.0"` and `tool_version` matches workspace version
     - **Validates: Requirement 6.4**
 
-  - [ ]* 7.8 Write property test P31: Report Load Round-Trip
+  - [ ] 7.9 Write property test P31: Report Load Round-Trip
     - **Property 31: Report Load Round-Trip**
     - Generate random `AnalysisReport`, `save_report` then `load_report`, verify `Some(report)` equals original
     - **Validates: Requirement 6.11**
 
-  - [ ]* 7.9 Write property test P24: Schema Version Round-Trip
+  - [ ] 7.10 Write property test P24: Schema Version Round-Trip
     - **Property 24: Schema Version Round-Trip**
     - Generate random `AnalysisReport` with non-empty `schema_version`, save/load via store, verify `schema_version` preserved
     - **Validates: Requirements 1.4, 1.6**
 
+  - [ ] 7.11 Add store hardening unit tests
+    - Test: lock file prevents concurrent `prepare_run`
+    - Test: stale lock file (dead PID) is cleaned on `prepare_run`
+    - Test: atomic write produces correct file content
+    - _Requirements: 6.1, 6.2, 6.3_
+
 - [ ] 8. Checkpoint — Wave 3 complete (persistence safe)
   - Ensure `cargo test -p faultline-store` passes. Ask the user if questions arise.
 
-- [ ] 9. Wave 4 — Real Fixtures: GitRepoBuilder and Fixture Scenarios
-  - [ ] 9.1 Implement `GitRepoBuilder` in `faultline-fixtures`
-    - Add `GitRepoBuilder` struct with `TempDir`, commit list
-    - Add `FixtureCommit` struct with message and `Vec<FileOp>`
-    - Add `FileOp` enum: `Write { path, content }`, `Delete { path }`, `Rename { from, to }`
-    - Implement `new()` → init bare repo with initial config
-    - Implement `commit(message, ops)` → apply file ops, `git add .`, `git commit`
-    - Implement `merge(message, branch)` → create merge commit
-    - Implement `build()` → return `FixtureRepo { dir, commits: Vec<CommitId> }`
-    - Add `tempfile` as dev-dependency to `faultline-fixtures`
-    - _Requirements: 7.1, 7.2, 7.3_
+- [ ] 9. Wave 4 — Harden Probe Executor
+  - [ ] 9.1 Implement signal-aware classification in `faultline-probe-exec`
+    - After `wait_with_output`, extract signal number via `#[cfg(unix)] std::os::unix::process::ExitStatusExt::signal()`
+    - On non-Unix, set `signal_number = None`
+    - Update `classify` to accept `signal_number: Option<i32>`: if `exit_code` is `None` and `timed_out` is false and `signal_number` is `Some`, return `Indeterminate`
+    - Populate `signal_number` on the `ProbeObservation` as metadata (NOT as AmbiguityReason)
+    - _Requirements: 5.1, 5.2_
 
-  - [ ] 9.2 Add fixture scenario: exact-first-bad-commit
-    - Create a linear 5-commit repo via `GitRepoBuilder` where commit 3 introduces a failing change
-    - Test end-to-end with `GitAdapter::linearize` + `LocalizationSession`
-    - Verify `FirstBad` outcome with correct boundary pair
-    - _Requirements: 7.4_
+  - [ ] 9.2 Implement output truncation in `faultline-probe-exec`
+    - Define `const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024`
+    - After capturing stdout/stderr, if length exceeds limit, truncate and append `"[truncated]"`
+    - The probe adapter only truncates in-memory — full log persistence is handled by store/app layer (task 7.6)
+    - _Requirements: 5.3_
 
-  - [ ] 9.3 Add fixture scenario: first-parent-merge-history
-    - Create a repo with merge commits via `GitRepoBuilder`
-    - Verify `--first-parent` produces a different linearization than ancestry-path
-    - _Requirements: 7.8_
+  - [ ] 9.3 Populate `probe_command` and `working_dir` on `ProbeObservation` in `faultline-probe-exec`
+    - Set `probe_command` to the effective command string (e.g., `"sh -c 'cargo test'"` or `"cargo test --lib"`)
+    - Set `working_dir` to `checkout.path.display().to_string()`
+    - _Requirements: 5.4_
 
-  - [ ] 9.4 Add fixture scenario: rename-and-delete
-    - Create a repo where files are renamed and deleted between boundary commits
-    - Verify `GitAdapter::changed_paths` returns correct `PathChange` entries
-    - _Requirements: 7.9_
+  - [ ] 9.4 Write property test P27: Signal-Aware Exit Code Classification
+    - **Property 27: Signal-Aware Exit Code Classification**
+    - Generate `(Option<i32>, bool, Option<i32>)` triples for `(exit_code, timed_out, signal_number)`
+    - Verify classification: `Indeterminate` when timed_out, `Indeterminate` when no exit_code + signal, `Pass` for exit 0, `Skip` for exit 125, `Fail` for other non-zero, `Indeterminate` when no exit_code and no signal
+    - **Validates: Requirements 5.1, 5.2**
 
-  - [ ] 9.5 Add fixture scenario: invalid-boundaries
-    - Create a repo where the good commit is not an ancestor of the bad commit
-    - Verify `GitAdapter::linearize` returns an error
-    - _Requirements: 7.10_
+  - [ ]* 9.5 Write property test P28: Observation Structural Completeness (Extended)
+    - **Property 28: Observation Structural Completeness (Extended)**
+    - Generate valid `ProbeSpec` + mock checkout, verify `probe_command` is non-empty and `working_dir` is non-empty in the resulting observation
+    - **Validates: Requirements 5.4, extends v01-release-train Property 2**
 
-  - [ ] 9.6 Add fixture scenarios for localization edge cases (skipped, timed-out, non-monotonic)
-    - Skipped-midpoint: midpoint classified as Skip → `SuspectWindow`
-    - Timed-out-midpoint: midpoint classified as Indeterminate → `SuspectWindow`
-    - Non-monotonic: Fail before Pass → low confidence
-    - These use `RevisionSequenceBuilder` + `LocalizationSession` (no real Git needed)
-    - _Requirements: 7.5, 7.6, 7.7_
+  - [ ] 9.6 Add probe executor hardening unit tests
+    - Test: signal termination detection (Unix only, kill child with signal, verify `signal_number` set)
+    - Test: output truncation (probe producing >64KiB output, verify truncation marker)
+    - _Requirements: 5.1, 5.3_
 
-  - [ ] 9.7 Add fixture scenario: interrupted-run-and-resume
-    - Pre-populate a `FileRunStore` run directory with partial observations
-    - Resume via `FaultlineApp::localize`, verify no re-probing of cached commits
-    - _Requirements: 7.11_
-
-  - [ ] 9.8 Add snapshot tests for `analysis.json` and HTML report
-    - Create a canonical fixture, render via `ReportRenderer`, compare JSON output against golden file
-    - Compare HTML output against golden file (or verify key structural elements)
-    - _Requirements: 7.12, 7.13_
-
-- [ ] 10. Checkpoint — Wave 4 complete (real fixtures in place)
-  - Ensure `cargo test -p faultline-fixtures -p faultline-git -p faultline-app` passes. Ask the user if questions arise.
+- [ ] 10. Checkpoint — Wave 4 complete (probe executor hardened)
+  - Ensure `cargo test -p faultline-probe-exec` passes. Ask the user if questions arise.
 
 - [ ] 11. Wave 5 — Operator Surface: CLI Polish, Exit Codes, HTML Enhancements
   - [ ] 11.1 Implement `OperatorCode`-based exit codes in `faultline-cli`
@@ -280,6 +300,7 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
   - [ ] 11.7 Implement temporal observation timeline in HTML report in `faultline-render`
     - Order observation table rows by `sequence_index` (ascending) instead of commit order
     - Add color-coded row backgrounds: Pass=green, Fail=red, Skip=gray, Indeterminate=yellow
+    - Render `signal_number` as a diagnostic badge on Indeterminate rows when present
     - _Requirements: 8.10_
 
   - [ ] 11.8 Add execution surface separation in HTML report in `faultline-render`
@@ -290,7 +311,7 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - When per-probe log files exist (from output truncation), render relative `<a>` links to them
     - _Requirements: 8.12_
 
-  - [ ]* 11.10 Write property test P32: OperatorCode Exit Code Mapping
+  - [ ] 11.10 Write property test P32: OperatorCode Exit Code Mapping
     - **Property 32: OperatorCode Exit Code Mapping**
     - Generate all `LocalizationOutcome` variants, verify: `FirstBad` → 0, `SuspectWindow` → 1, `Inconclusive` → 3, and all exit codes are distinct
     - **Validates: Requirement 8.1**
@@ -310,7 +331,7 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - Generate reports with non-empty `execution_surfaces`, verify a separate HTML section/container exists for execution surfaces
     - **Validates: Requirement 8.11**
 
-  - [ ]* 11.14 Write property test P36: CLI Help Flag Completeness
+  - [ ] 11.14 Write property test P36: CLI Help Flag Completeness
     - **Property 36: CLI Help Flag Completeness**
     - Verify `--help` output contains all flag names: `--resume`, `--force`, `--fresh`, `--no-render`, `--shell`, `--env`, plus all pre-existing flags
     - **Validates: Requirement 9.6**
@@ -328,28 +349,58 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
 - [ ] 12. Checkpoint — Wave 5 complete (operator surface polished)
   - Ensure `cargo test -p faultline-cli -p faultline-render` passes. Ask the user if questions arise.
 
-- [ ] 13. Wave 6 — App Orchestrator Updates and Integration
-  - [ ] 13.1 Update `FaultlineApp::localize` to set `schema_version` on `AnalysisReport`
+- [ ] 13. Wave 6 — App Orchestrator Updates, Fixture Scenarios, Integration
+  - [ ] 13.1 Implement `sequence_index` assignment in `FaultlineApp::localize`
+    - The app layer owns a `next_sequence_index: u64` counter
+    - Before each `session.record(obs)` call, set `obs.sequence_index = next_sequence_index` and increment
+    - When replaying cached observations, preserve their existing `sequence_index` values and set the counter to `max(cached) + 1`
+    - _Requirements: 3.3_
+
+  - [ ] 13.2 Update `FaultlineApp::localize` to set `schema_version` on `AnalysisReport`
     - Set `schema_version: "0.1.0".into()` when constructing the report
     - _Requirements: 1.4_
 
-  - [ ] 13.2 Update `FaultlineApp::localize` to handle `MaxProbesExhausted`
+  - [ ] 13.3 Update `FaultlineApp::localize` to handle `MaxProbesExhausted`
     - When the narrowing loop ends because `probe_count >= max_probes` and the session has not converged, the session's `outcome()` now includes `MaxProbesExhausted` — verify this is wired correctly
     - _Requirements: 3.2_
 
-  - [ ] 13.3 Wire `--force` and `--fresh` behavior through `FaultlineApp`
+  - [ ] 13.4 Wire `--force`, `--fresh`, and `--no-render` behavior through `FaultlineApp`
     - `--force`: clear cached observations before starting the loop (or pass a flag to `prepare_run`)
     - `--fresh`: delete the run directory before `prepare_run`
     - `--no-render`: skip `ReportRenderer::render` call
     - _Requirements: 6.7, 6.8, 8.4_
 
-  - [ ] 13.4 Update integration tests in `faultline-app` for new type fields
+  - [ ] 13.5 Wire full-log persistence through `FaultlineApp::localize`
+    - After each probe, if stdout/stderr ends with `"[truncated]"`, pass the full output to the store's log persistence method (task 7.6)
+    - _Requirements: 5.3_
+
+  - [ ] 13.6 Add fixture scenarios for localization edge cases (skipped, timed-out, non-monotonic)
+    - Skipped-midpoint: midpoint classified as Skip → `SuspectWindow`
+    - Timed-out-midpoint: midpoint classified as Indeterminate → `SuspectWindow`
+    - Non-monotonic: Fail before Pass → low confidence
+    - These use `RevisionSequenceBuilder` + `LocalizationSession` (no real Git needed)
+    - _Requirements: 7.5, 7.6, 7.7_
+
+  - [ ] 13.7 Add fixture scenario: interrupted-run-and-resume
+    - Pre-populate a `FileRunStore` run directory with partial observations
+    - Resume via `FaultlineApp::localize`, verify no re-probing of cached commits
+    - Verify sequence indices from cached observations are preserved
+    - _Requirements: 7.11_
+
+  - [ ] 13.8 Add snapshot tests for `analysis.json` and HTML report
+    - Create a canonical fixture, render via `ReportRenderer`, compare JSON output against golden file
+    - Compare HTML output against golden file (or verify key structural elements)
+    - _Requirements: 7.12, 7.13_
+
+  - [ ] 13.9 Update integration tests in `faultline-app` for new type fields
     - Update all mock port implementations to include new fields (`schema_version`, `tool_version`, `sequence_index`, etc.)
     - Update all `AnalysisReport` assertions to check `schema_version`
     - _Requirements: 1.4, 3.3_
 
-- [ ] 14. Checkpoint — Wave 6 complete (app orchestrator updated)
-  - Ensure `cargo test -p faultline-app` passes. Ask the user if questions arise.
+- [ ] 14. Checkpoint — Wave 6 complete (app orchestrator updated, fixtures complete)
+  - Ensure `cargo test -p faultline-app -p faultline-localization -p faultline-render` passes.
+  - HUMAN REVIEW GATE: if any property test failed and was fixed during this wave, the diff must be reviewed before proceeding.
+  - Ask the user if questions arise.
 
 - [ ] 15. Wave 7 — Dogfood and Release Readiness
   - [ ] 15.1 Add CI configuration (`.github/workflows/ci.yml`)
@@ -389,15 +440,21 @@ Implements the hardening pass that takes the existing v0.1 scaffold to a releasa
     - _Requirements: 9.5_
 
 - [ ] 16. Final checkpoint — All tests pass, release ready
-  - Ensure `cargo test` passes for the entire workspace, `cargo build --release` succeeds, `cargo fmt --check` reports no violations, `cargo clippy` reports no warnings, and `cargo run -p faultline-cli -- --help` produces expected output with all new flags. Ask the user if questions arise.
+  - Ensure `cargo test` passes for the entire workspace, `cargo build --release` succeeds, `cargo fmt --check` reports no violations, `cargo clippy` reports no warnings, and `cargo run -p faultline-cli -- --help` produces expected output with all new flags.
+  - HUMAN REVIEW GATE: final review of any property-test fixes made during the entire hardening pass.
+  - Ask the user if questions arise.
 
 ## Notes
 
-- Tasks marked with `*` are optional and can be skipped for faster MVP
+- Tasks marked with `*` are optional polish and can be skipped for faster MVP
+- Core hardening property tests (P25, P26, P27, P29, P30, P31, P32, P36) are MANDATORY — they are the contract
+- HTML rendering property tests (P33, P34, P35) and extended observation completeness (P28) are optional polish
+- Any change made after a property-test failure requires human review before the wave checkpoint is marked complete — the implementor must not self-certify semantic correctness by rerunning until green
+- `sequence_index` is assigned by the app/store layer, not the localization engine — the engine consumes and respects order but does not invent it
+- `SignalTermination` is observation metadata (`signal_number` field), not an `AmbiguityReason` variant — the ambiguity from signal kills is already represented by `Indeterminate`
+- Full-log persistence (writing truncated output to files) is a store/app concern, not a probe-exec concern
+- The lock file is a local-machine-only, best-effort single-writer guard — not a distributed lock
 - Each task references specific requirements for traceability
 - Checkpoints ensure incremental validation at each wave boundary
-- Property tests validate universal correctness properties (P24–P36) from the design document
-- Unit tests validate specific fixture scenarios from Requirement 7
-- All property tests use `proptest` with minimum 100 iterations
 - Wave 0 is the most disruptive (type changes ripple across the workspace) — the checkpoint ensures everything compiles before proceeding
 - No new crates are added; all changes are internal to existing crates

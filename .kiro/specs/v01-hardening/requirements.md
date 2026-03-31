@@ -75,11 +75,12 @@ Key observations about the current state that motivate these requirements:
 
 1. WHEN `SearchPolicy.edge_refine_threshold` is set, THE Localization_Engine SHALL use the threshold to switch from binary narrowing to linear edge refinement when the candidate window size falls below the threshold; IF the threshold is not used by the engine, THEN THE `edge_refine_threshold` field SHALL be removed from `SearchPolicy`.
 2. WHEN the maximum probe count is reached before convergence, THE Localization_Engine SHALL return an explicit outcome with `AmbiguityReason::MaxProbesExhausted` instead of silently stopping.
-3. THE Localization_Engine SHALL preserve observations in sequence order using a Sequence_Index, so that the observation list reflects the temporal order of probing rather than lexicographic commit hash order.
+3. THE App_Orchestrator SHALL assign a monotonically increasing Sequence_Index to each observation as it is recorded, and THE Run_Store SHALL persist observations in Sequence_Index order, so that the observation list reflects the temporal order of probing rather than lexicographic commit hash order. The Localization_Engine SHALL consume and respect observation order but SHALL NOT own the assignment of Sequence_Index values.
 4. WHEN non-monotonic evidence is detected (a Fail observation at a lower sequence index than a Pass observation), THE Localization_Engine SHALL degrade the outcome to `SuspectWindow` with `AmbiguityReason::NonMonotonicEvidence` and `Confidence::low()`, and the degradation rules SHALL be deterministic and documented.
 5. THE Localization_Engine SHALL derive confidence scores from explicit, deterministic rules based on evidence quality (number of observations, presence of ambiguity reasons, window size), or THE confidence scoring SHALL use the existing fixed buckets (`high`/`medium`/`low`) with rules that are documented and tested.
 6. THE Localization_Engine SHALL include property tests that verify: (a) the window never expands between successive probes, (b) FirstBad outcomes have direct Pass and Fail evidence at the boundary, (c) observation order independence holds for the same observation set, (d) max-probe exhaustion produces an explicit outcome.
 7. THE `prop_monotonic_window_narrowing` property test SHALL be reviewed and either confirmed as a valid fix or the property SHALL be strengthened, with the review outcome documented.
+8. ANY change made after a property-test failure SHALL require human review before the wave checkpoint is marked complete. The implementor SHALL not self-certify semantic correctness by rerunning until green.
 
 ### Requirement 4: Harden the Git Adapter
 
@@ -100,9 +101,9 @@ Key observations about the current state that motivate these requirements:
 
 #### Acceptance Criteria
 
-1. WHEN the predicate process is killed by a signal (e.g., SIGKILL, SIGTERM) without a timeout, THE Probe_Executor SHALL classify the observation as `Indeterminate` and record the signal number in the observation.
-2. WHEN the predicate process exceeds the timeout, THE Probe_Executor SHALL classify the observation as `Indeterminate` and set `timed_out` to true, distinguishing timeout termination from signal termination.
-3. WHEN the predicate produces stdout or stderr exceeding a configurable truncation limit (default 64 KiB), THE Probe_Executor SHALL truncate the captured output in the observation and save the full output to a separate log file in the Run_Directory.
+1. WHEN the predicate process is killed by a signal (e.g., SIGKILL, SIGTERM) without a timeout, THE Probe_Executor SHALL classify the observation as `Indeterminate` and record the signal number in the observation's `signal_number` field. Signal termination is observation metadata, not an outcome-level ambiguity reason — the ambiguity it creates is already represented by the `Indeterminate` classification.
+2. WHEN the predicate process exceeds the timeout, THE Probe_Executor SHALL classify the observation as `Indeterminate` and set `timed_out` to true, distinguishing timeout termination from signal termination via the `signal_number` and `timed_out` fields.
+3. WHEN the predicate produces stdout or stderr exceeding a configurable truncation limit (default 64 KiB), THE Probe_Executor SHALL truncate the captured output in the observation. THE App_Orchestrator or Run_Store SHALL save the full output to a separate log file in the Run_Directory — full-log persistence is a store/app concern, not a probe-exec concern.
 4. THE Probe_Executor SHALL include the effective probe command string and working directory path in each observation for diagnostic reproducibility.
 5. THE CLI SHALL accept `--shell <shell_kind>` to select the shell used for `--cmd` predicates, supporting at least `sh`, `cmd`, and `powershell`.
 6. THE CLI SHALL accept `--env <KEY=VALUE>` (repeatable) to inject environment variables into the predicate execution environment.
@@ -115,7 +116,7 @@ Key observations about the current state that motivate these requirements:
 #### Acceptance Criteria
 
 1. WHEN the Run_Store writes `observations.json`, `request.json`, or `report.json`, THE Run_Store SHALL write to a temporary file in the same directory and then atomically rename the temporary file to the target path.
-2. WHEN a localization run begins, THE Run_Store SHALL create a lock file (e.g., `.lock`) in the Run_Directory; IF the lock file already exists and is held by another process, THEN THE Run_Store SHALL return an error indicating that another process is using the same run.
+2. WHEN a localization run begins, THE Run_Store SHALL create a lock file (e.g., `.lock`) in the Run_Directory; IF the lock file already exists and is held by another process, THEN THE Run_Store SHALL return an error indicating that another process is using the same run. THE lock file is a local-machine-only, best-effort single-writer guard — not a distributed lock. Behavior may differ by platform (PID liveness checks are platform-specific).
 3. WHEN a localization run completes or fails, THE Run_Store SHALL release the lock file.
 4. THE Run_Store SHALL persist the tool version and Schema_Version in the Run_Directory metadata.
 5. THE Run_Store SHALL preserve observations in Sequence_Index order rather than sorting by commit hash string.

@@ -11,13 +11,13 @@ This document specifies only what changes relative to the existing codebase. It 
 1. **Remove `edge_refine_threshold`** — the field exists in `SearchPolicy` but is unused. Rather than implement edge refinement for v0.1, remove the dead field to keep the contract honest.
 2. **Add `MaxProbesExhausted` ambiguity reason** — when the probe budget runs out before convergence, the engine currently stops silently. A new `AmbiguityReason` variant makes this explicit.
 3. **Add `schema_version` to `AnalysisReport`** — freeze at `"0.1.0"` so future readers can detect format incompatibilities.
-4. **Sequence-indexed observations** — add a `sequence_index: u64` field to `ProbeObservation` so temporal probe order is preserved instead of lexicographic commit hash order.
+4. **Sequence-indexed observations owned by app/store** — add a `sequence_index: u64` field to `ProbeObservation`. The app layer assigns sequence indices as probes are executed; the store persists them in order. The localization engine consumes and respects observation order but does not own index assignment. This ensures sequence order survives resume, rerender, and export paths.
 5. **Atomic persistence** — all `FileRunStore` writes use temp-file-plus-rename to prevent corruption from interrupted writes.
-6. **Lock file for single-writer** — a `.lock` file in the run directory prevents concurrent invocations from corrupting shared state.
+6. **Lock file for single-writer** — a `.lock` file in the run directory prevents concurrent invocations from corrupting shared state. This is a local-machine-only, best-effort guard — not a distributed lock. PID liveness checks are platform-specific; stale PID reuse is rare but possible.
 7. **Real Git fixture harness** — `faultline-fixtures` gains a `GitRepoBuilder` that creates real temporary Git repos with real commits for adapter-level testing.
 8. **OperatorCode-based exit codes** — the CLI maps outcome types to distinct exit codes instead of using 0/2 for everything.
-9. **Signal-aware probe classification** — on Unix, distinguish signal termination (no exit code, not timed out) from timeout and normal exit.
-10. **Output truncation** — probe stdout/stderr is truncated at 64 KiB in the observation, with full output saved to a log file.
+9. **Signal-aware probe metadata** — on Unix, capture signal number as observation metadata (`signal_number` field on `ProbeObservation`). Signal termination is NOT promoted to an `AmbiguityReason` variant — the ambiguity it creates is already represented by the `Indeterminate` classification. Signal info is rendered as a diagnostic badge in HTML/logs.
+10. **Output truncation with store-owned log persistence** — probe stdout/stderr is truncated at 64 KiB in the observation by the probe adapter. Full output is saved to log files by the store/app layer, not the probe adapter — keeping filesystem policy with the persistence layer.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ The hexagonal architecture is unchanged. No new crates are added. The changes ar
 ```mermaid
 graph TD
     subgraph "Changes by Crate"
-        Codes["faultline-codes<br/>+ MaxProbesExhausted<br/>+ SignalTermination"]
+        Codes["faultline-codes<br/>+ MaxProbesExhausted"]
         Types["faultline-types<br/>+ schema_version<br/>+ sequence_index<br/>+ signal_number<br/>+ probe_command<br/>+ working_dir<br/>- edge_refine_threshold"]
         Loc["faultline-localization<br/>+ sequence_index tracking<br/>+ MaxProbesExhausted outcome<br/>+ property test review"]
         Git["faultline-git<br/>+ env validation<br/>+ stale worktree cleanup"]
@@ -43,27 +43,30 @@ graph TD
 
 The localization loop is unchanged at the architectural level. The changes are:
 
-1. `FaultlineApp::localize` now checks for `MaxProbesExhausted` when the loop ends due to budget.
+1. `FaultlineApp::localize` now assigns `sequence_index` to each observation as probes are executed, and checks for `MaxProbesExhausted` when the loop ends due to budget.
 2. `FileRunStore` writes use atomic rename.
 3. `FileRunStore` acquires/releases a lock file around the run lifecycle.
-4. `ExecProbeAdapter` captures signal numbers and truncates output.
-5. CLI maps `LocalizationOutcome` → `OperatorCode` → process exit code.
+4. `FileRunStore` persists full probe logs when output is truncated (log persistence is a store concern).
+5. `ExecProbeAdapter` captures signal numbers as observation metadata and truncates output in-memory.
+6. CLI maps `LocalizationOutcome` → `OperatorCode` → process exit code.
 
 ## Components and Interfaces
 
 ### 1. faultline-codes — Changes
 
-Add two new `AmbiguityReason` variants:
+Add one new `AmbiguityReason` variant:
 
 ```rust
 pub enum AmbiguityReason {
     // ... existing variants ...
     MaxProbesExhausted,   // NEW: probe budget exhausted before convergence
-    SignalTermination,    // NEW: predicate killed by signal (not timeout)
+    // NOTE: SignalTermination is NOT an AmbiguityReason — signal info is
+    // observation metadata (signal_number field on ProbeObservation).
+    // The ambiguity from signal kills is already represented by Indeterminate.
 }
 ```
 
-Add `Display` implementations for the new variants.
+Add `Display` implementation for the new variant.
 
 `OperatorCode` is unchanged (already exists with the right variants).
 
@@ -131,12 +134,13 @@ pub trait RunStorePort {
 
 ### 4. faultline-localization — Changes
 
-**Sequence index tracking**: The session assigns a monotonically increasing `sequence_index` to each observation as it is recorded. The `observation_list()` method returns observations in sequence-index order.
+**Sequence index consumption**: The localization engine does NOT own sequence index assignment. The app/store layer assigns `sequence_index` values as probes are executed and persisted. The engine's `observation_list()` method returns observations ordered by `sequence_index` (ascending). When replaying cached observations on resume, the prior sequence indices are preserved — the engine does not reassign them.
 
 ```rust
 impl LocalizationSession {
-    // Internal counter incremented on each record() call
-    // sequence_index is set on the observation before storing
+    // observation_list() returns observations sorted by sequence_index
+    // record() accepts observations with pre-assigned sequence_index
+    // The engine respects but does not assign sequence order
 }
 ```
 
@@ -186,7 +190,9 @@ let signal_number = {
 let signal_number = None;
 
 // Classification update:
-// If exit_code is None AND not timed_out AND signal_number is Some → Indeterminate + SignalTermination
+// If exit_code is None AND not timed_out AND signal_number is Some → Indeterminate
+// NOTE: signal_number is observation metadata only — NOT promoted to AmbiguityReason.
+// The Indeterminate classification already represents the ambiguity.
 ```
 
 **Output truncation**:
@@ -196,7 +202,8 @@ const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024; // 64 KiB
 
 // After capturing stdout/stderr:
 // If len > limit, truncate to limit bytes and append "[truncated]"
-// Full output saved to {run_dir}/{commit_sha}_stdout.log / _stderr.log
+// The probe adapter only truncates the in-memory observation.
+// Full log persistence is handled by the store/app layer (see faultline-store changes).
 ```
 
 The truncation limit is configurable via `ProbeSpec` (add `output_truncation_bytes: Option<usize>` field).
@@ -240,6 +247,8 @@ fn load_report(&self, run: &RunHandle) -> Result<Option<AnalysisReport>> {
 ```
 
 **Sequence order**: `save_observation` preserves insertion order (sequence_index) instead of sorting by commit hash.
+
+**Full log persistence**: When the app layer detects that a `ProbeObservation` has truncated stdout/stderr (ends with `"[truncated]"`), it passes the full output to the store, which writes it to `{run_dir}/logs/{commit_sha}_stdout.log` and `_stderr.log`. This keeps filesystem policy with the persistence layer, not the probe adapter.
 
 **Version metadata**: `prepare_run` writes `schema_version` and `tool_version` into the run directory metadata.
 
@@ -345,7 +354,6 @@ pub struct FixtureRepo {
 | `RunHandle` | `schema_version` | ADDED (`String`) |
 | `RunHandle` | `tool_version` | ADDED (`String`) |
 | `AmbiguityReason` | `MaxProbesExhausted` | ADDED variant |
-| `AmbiguityReason` | `SignalTermination` | ADDED variant |
 
 ### Filesystem Layout Changes
 
@@ -398,7 +406,7 @@ The following properties were derived from the 9 hardening requirements by analy
 
 ### Property 26: Observation Sequence Order Preservation
 
-*For any* sequence of `ProbeObservation` values recorded into a `LocalizationSession` in a specific order, `observation_list()` shall return observations ordered by their `sequence_index` values, which shall be monotonically increasing in the order they were recorded. The first recorded observation shall have `sequence_index` 0, the second shall have `sequence_index` 1, and so on.
+*For any* sequence of `ProbeObservation` values with pre-assigned `sequence_index` values recorded into a `LocalizationSession`, `observation_list()` shall return observations ordered by their `sequence_index` values (ascending). The app/store layer is responsible for assigning monotonically increasing `sequence_index` values; the engine consumes and preserves them.
 
 **Validates: Requirement 3.3**
 
@@ -474,7 +482,7 @@ The following properties were derived from the 9 hardening requirements by analy
 | Store | Lock file held by another process | Return `FaultlineError::Store("run locked by process {pid}")` |
 | Store | Lock file held by dead process | Remove stale lock, proceed normally |
 | Store | Atomic rename fails | Return `FaultlineError::Io` (temp file left for manual cleanup) |
-| Probe | Signal termination (Unix) | Classify as `Indeterminate`, set `signal_number` |
+| Probe | Signal termination (Unix) | Classify as `Indeterminate`, set `signal_number` (metadata only, not AmbiguityReason) |
 | Probe | Output exceeds truncation limit | Truncate in observation, save full to log file |
 | CLI | `--force` and `--resume` both specified | Return `InvalidInput` error |
 | CLI | `--fresh` and `--resume` both specified | Return `InvalidInput` error |
@@ -491,7 +499,7 @@ The lock file uses a simple PID-based scheme:
 2. **Release**: Delete `.lock` file.
 3. **Crash recovery**: Next invocation detects stale lock via dead PID check.
 
-This is not a distributed lock — it protects against concurrent local invocations only, which is sufficient for a local-first tool.
+This is not a distributed lock — it protects against concurrent local invocations only, which is sufficient for a local-first tool. PID liveness checks are platform-specific (Unix uses `kill(pid, 0)`, Windows would need a different approach). Stale PID reuse is rare but theoretically possible. The lock is documented as best-effort.
 
 ### CLI Flag Mutual Exclusion
 
