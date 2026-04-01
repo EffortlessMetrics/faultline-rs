@@ -22,7 +22,19 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - run: cargo install cargo-deny cargo-audit cargo-semver-checks
 
-      - run: cargo xtask release-check
+      - name: "Contract: supply-chain policy (cargo deny)"
+        id: deny
+        run: cargo deny check
+
+      - name: "Contract: security audit"
+        id: audit
+        run: cargo audit
+
+      - name: "Contract: semver compatibility"
+        id: semver
+        run: cargo semver-checks

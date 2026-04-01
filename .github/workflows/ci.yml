@@ -23,5 +23,17 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - run: cargo xtask ci-fast
+      - name: "Contract: formatting (cargo fmt)"
+        id: fmt
+        run: cargo fmt --all --check
+
+      - name: "Contract: lint (cargo clippy)"
+        id: lint
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: "Contract: tests pass"
+        id: test
+        run: cargo test --workspace
