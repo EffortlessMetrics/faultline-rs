@@ -9,6 +9,7 @@ use faultline_types::{
     AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
     ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
 };
+use serde::Serialize;
 use std::io;
 use std::path::PathBuf;
 
@@ -125,6 +126,15 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+    },
+    /// List all cached analysis runs
+    ListRuns {
+        /// Path to the repository (default: current directory)
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Output as JSON instead of table
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
 }
 
@@ -258,6 +268,7 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
             } => run_reproduce(run_dir, commit, shell),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
             Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::ListRuns { repo, json } => run_list_runs(repo, json),
         };
     }
 
@@ -534,6 +545,152 @@ fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Erro
     Ok(0)
 }
 
+/// Summary of a single cached run, used for both table and JSON output.
+#[derive(Debug, Serialize)]
+struct RunSummary {
+    run_id: String,
+    outcome: String,
+    observations: usize,
+    good: String,
+    bad: String,
+    created: String,
+    #[serde(skip_serializing)]
+    created_epoch: u64,
+}
+
+/// Format an epoch-seconds timestamp as a human-readable UTC string.
+fn format_epoch(epoch: u64) -> String {
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    let time = UNIX_EPOCH + Duration::from_secs(epoch);
+    // Format as ISO-8601-ish: YYYY-MM-DD HH:MM:SS UTC
+    // Using manual calculation to avoid pulling in chrono
+    match time.duration_since(SystemTime::UNIX_EPOCH) {
+        Ok(dur) => {
+            let secs = dur.as_secs();
+            let days = secs / 86400;
+            let time_of_day = secs % 86400;
+            let hours = time_of_day / 3600;
+            let minutes = (time_of_day % 3600) / 60;
+            let seconds = time_of_day % 60;
+
+            // Days since Unix epoch to year/month/day
+            let (year, month, day) = epoch_days_to_date(days as i64);
+            format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02} UTC",
+                year, month, day, hours, minutes, seconds
+            )
+        }
+        Err(_) => "unknown".to_string(),
+    }
+}
+
+/// Convert days since Unix epoch (1970-01-01) to (year, month, day).
+fn epoch_days_to_date(days: i64) -> (i64, u32, u32) {
+    // Algorithm from Howard Hinnant's civil_from_days
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+/// Classify an outcome variant to a short label.
+fn outcome_label(outcome: &LocalizationOutcome) -> String {
+    match outcome {
+        LocalizationOutcome::FirstBad { .. } => "FirstBad".to_string(),
+        LocalizationOutcome::SuspectWindow { .. } => "SuspectWindow".to_string(),
+        LocalizationOutcome::Inconclusive { .. } => "Inconclusive".to_string(),
+    }
+}
+
+/// Collect run summaries from the runs directory.
+fn collect_run_summaries(runs_dir: &std::path::Path) -> Vec<RunSummary> {
+    let mut summaries = Vec::new();
+    let entries = match std::fs::read_dir(runs_dir) {
+        Ok(entries) => entries,
+        Err(_) => return summaries,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let report_path = path.join("report.json");
+        if !report_path.exists() {
+            continue;
+        }
+        let raw = match std::fs::read_to_string(&report_path) {
+            Ok(raw) => raw,
+            Err(_) => continue,
+        };
+        let report: AnalysisReport = match serde_json::from_str(&raw) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        summaries.push(RunSummary {
+            run_id: report.run_id.clone(),
+            outcome: outcome_label(&report.outcome),
+            observations: report.observations.len(),
+            good: report.request.good.0.clone(),
+            bad: report.request.bad.0.clone(),
+            created: format_epoch(report.created_at_epoch_seconds),
+            created_epoch: report.created_at_epoch_seconds,
+        });
+    }
+    summaries.sort_by(|a, b| b.created_epoch.cmp(&a.created_epoch));
+    summaries
+}
+
+/// Run the `list-runs` subcommand.
+fn run_list_runs(repo: PathBuf, json: bool) -> Result<i32, Box<dyn std::error::Error>> {
+    let runs_dir = repo.join(".faultline").join("runs");
+    let summaries = collect_run_summaries(&runs_dir);
+
+    if json {
+        let output = serde_json::to_string_pretty(&summaries)?;
+        println!("{}", output);
+        return Ok(0);
+    }
+
+    if summaries.is_empty() {
+        println!("No cached runs found.");
+        return Ok(0);
+    }
+
+    // Print table header
+    println!(
+        "{:<20} {:<15} {:<14} {:<19} created",
+        "run-id", "outcome", "observations", "good..bad"
+    );
+    println!("{}", "-".repeat(92));
+    for s in &summaries {
+        let good_bad = good_bad_label_from_summary(s);
+        println!(
+            "{:<20} {:<15} {:<14} {:<19} {}",
+            s.run_id, s.outcome, s.observations, good_bad, s.created
+        );
+    }
+
+    Ok(0)
+}
+
+/// Build a truncated good..bad label from a RunSummary.
+fn good_bad_label_from_summary(s: &RunSummary) -> String {
+    let g = if s.good.len() > 8 {
+        &s.good[..8]
+    } else {
+        &s.good
+    };
+    let b = if s.bad.len() > 8 { &s.bad[..8] } else { &s.bad };
+    format!("{}..{}", g, b)
+}
+
 fn print_run_comparison(cmp: &RunComparison) {
     println!("left-run     {}", cmp.left_run_id);
     println!("right-run    {}", cmp.right_run_id);
@@ -694,6 +851,10 @@ mod tests {
         assert!(
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("list-runs"),
+            "--help output missing 'list-runs' subcommand.\nFull help:\n{help}"
         );
     }
 
@@ -1028,5 +1189,325 @@ mod tests {
                 );
             }
         }
+    }
+
+    // --- list-runs tests ---
+
+    use faultline_types::{
+        ChangeStatus, CommitId, FlakePolicy, HistoryMode, PathChange, RevisionSequence,
+        RevisionSpec, SearchPolicy, SurfaceSummary,
+    };
+    use std::fs;
+
+    fn make_test_report(
+        run_id: &str,
+        good: &str,
+        bad: &str,
+        outcome: LocalizationOutcome,
+        epoch: u64,
+        obs_count: usize,
+    ) -> AnalysisReport {
+        let observations: Vec<faultline_types::ProbeObservation> = (0..obs_count)
+            .map(|i| faultline_types::ProbeObservation {
+                commit: CommitId(format!("commit{}", i)),
+                class: faultline_codes::ObservationClass::Pass,
+                kind: ProbeKind::Test,
+                exit_code: Some(0),
+                timed_out: false,
+                duration_ms: 100,
+                stdout: String::new(),
+                stderr: String::new(),
+                sequence_index: i as u64,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
+                flake_signal: None,
+            })
+            .collect();
+        AnalysisReport {
+            schema_version: "0.1.0".into(),
+            run_id: run_id.into(),
+            created_at_epoch_seconds: epoch,
+            request: AnalysisRequest {
+                repo_root: PathBuf::from("/tmp/repo"),
+                good: RevisionSpec(good.into()),
+                bad: RevisionSpec(bad.into()),
+                history_mode: HistoryMode::AncestryPath,
+                probe: ProbeSpec::Exec {
+                    kind: ProbeKind::Test,
+                    program: "cargo".into(),
+                    args: vec!["test".into()],
+                    env: vec![],
+                    timeout_seconds: 300,
+                },
+                policy: SearchPolicy {
+                    max_probes: 64,
+                    flake_policy: FlakePolicy {
+                        retries: 0,
+                        stability_threshold: 1.0,
+                    },
+                },
+            },
+            sequence: RevisionSequence {
+                revisions: vec![CommitId(good.into()), CommitId(bad.into())],
+            },
+            observations,
+            outcome,
+            changed_paths: vec![PathChange {
+                status: ChangeStatus::Modified,
+                path: "src/main.rs".into(),
+            }],
+            surface: SurfaceSummary {
+                total_changes: 1,
+                buckets: vec![],
+                execution_surfaces: vec![],
+            },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
+        }
+    }
+
+    #[test]
+    fn format_epoch_known_timestamp() {
+        // 2023-11-14 22:13:20 UTC
+        let formatted = format_epoch(1700000000);
+        assert_eq!(formatted, "2023-11-14 22:13:20 UTC");
+    }
+
+    #[test]
+    fn format_epoch_zero() {
+        let formatted = format_epoch(0);
+        assert_eq!(formatted, "1970-01-01 00:00:00 UTC");
+    }
+
+    #[test]
+    fn outcome_label_first_bad() {
+        let outcome = LocalizationOutcome::FirstBad {
+            last_good: CommitId("aaa".into()),
+            first_bad: CommitId("bbb".into()),
+            confidence: Confidence::high(),
+        };
+        assert_eq!(outcome_label(&outcome), "FirstBad");
+    }
+
+    #[test]
+    fn outcome_label_suspect_window() {
+        let outcome = LocalizationOutcome::SuspectWindow {
+            lower_bound_exclusive: CommitId("aaa".into()),
+            upper_bound_inclusive: CommitId("bbb".into()),
+            confidence: Confidence::medium(),
+            reasons: vec![AmbiguityReason::NonMonotonicEvidence],
+        };
+        assert_eq!(outcome_label(&outcome), "SuspectWindow");
+    }
+
+    #[test]
+    fn outcome_label_inconclusive() {
+        let outcome = LocalizationOutcome::Inconclusive {
+            reasons: vec![AmbiguityReason::MissingPassBoundary],
+        };
+        assert_eq!(outcome_label(&outcome), "Inconclusive");
+    }
+
+    #[test]
+    fn collect_run_summaries_empty_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        fs::create_dir_all(&runs_dir).unwrap();
+        let summaries = collect_run_summaries(&runs_dir);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn collect_run_summaries_nonexistent_dir() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("nonexistent");
+        let summaries = collect_run_summaries(&runs_dir);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn collect_run_summaries_skips_dir_without_report() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        let run_dir = runs_dir.join("some-fingerprint");
+        fs::create_dir_all(&run_dir).unwrap();
+        // Only create request.json, no report.json
+        fs::write(run_dir.join("request.json"), "{}").unwrap();
+        let summaries = collect_run_summaries(&runs_dir);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn collect_run_summaries_loads_valid_report() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        let run_dir = runs_dir.join("fp-001");
+        fs::create_dir_all(&run_dir).unwrap();
+
+        let report = make_test_report(
+            "fp-001",
+            "abc12345",
+            "def67890",
+            LocalizationOutcome::FirstBad {
+                last_good: CommitId("abc12345".into()),
+                first_bad: CommitId("def67890".into()),
+                confidence: Confidence::high(),
+            },
+            1700000000,
+            3,
+        );
+        let json = serde_json::to_string_pretty(&report).unwrap();
+        fs::write(run_dir.join("report.json"), json).unwrap();
+
+        let summaries = collect_run_summaries(&runs_dir);
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].run_id, "fp-001");
+        assert_eq!(summaries[0].outcome, "FirstBad");
+        assert_eq!(summaries[0].observations, 3);
+        assert_eq!(summaries[0].good, "abc12345");
+        assert_eq!(summaries[0].bad, "def67890");
+        assert!(summaries[0].created.contains("2023-11-14"));
+    }
+
+    #[test]
+    fn collect_run_summaries_sorted_by_created_desc() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("runs");
+
+        for (id, epoch) in &[("older", 1600000000u64), ("newer", 1700000000u64)] {
+            let run_dir = runs_dir.join(id);
+            fs::create_dir_all(&run_dir).unwrap();
+            let report = make_test_report(
+                id,
+                "aaa",
+                "bbb",
+                LocalizationOutcome::FirstBad {
+                    last_good: CommitId("aaa".into()),
+                    first_bad: CommitId("bbb".into()),
+                    confidence: Confidence::high(),
+                },
+                *epoch,
+                1,
+            );
+            fs::write(
+                run_dir.join("report.json"),
+                serde_json::to_string_pretty(&report).unwrap(),
+            )
+            .unwrap();
+        }
+
+        let summaries = collect_run_summaries(&runs_dir);
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].run_id, "newer");
+        assert_eq!(summaries[1].run_id, "older");
+    }
+
+    #[test]
+    fn collect_run_summaries_skips_corrupt_json() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join("runs");
+        let run_dir = runs_dir.join("corrupt");
+        fs::create_dir_all(&run_dir).unwrap();
+        fs::write(run_dir.join("report.json"), "not valid json").unwrap();
+        let summaries = collect_run_summaries(&runs_dir);
+        assert!(summaries.is_empty());
+    }
+
+    #[test]
+    fn run_list_runs_json_output() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join(".faultline").join("runs");
+        let run_dir = runs_dir.join("fp-json");
+        fs::create_dir_all(&run_dir).unwrap();
+
+        let report = make_test_report(
+            "fp-json",
+            "aaa11111",
+            "bbb22222",
+            LocalizationOutcome::Inconclusive {
+                reasons: vec![AmbiguityReason::MissingPassBoundary],
+            },
+            1700000000,
+            0,
+        );
+        fs::write(
+            run_dir.join("report.json"),
+            serde_json::to_string_pretty(&report).unwrap(),
+        )
+        .unwrap();
+
+        // Verify the function doesn't error
+        let result = run_list_runs(tmp.path().to_path_buf(), true);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn run_list_runs_table_output() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let runs_dir = tmp.path().join(".faultline").join("runs");
+        let run_dir = runs_dir.join("fp-table");
+        fs::create_dir_all(&run_dir).unwrap();
+
+        let report = make_test_report(
+            "fp-table",
+            "aaa11111",
+            "bbb22222",
+            LocalizationOutcome::FirstBad {
+                last_good: CommitId("aaa11111".into()),
+                first_bad: CommitId("bbb22222".into()),
+                confidence: Confidence::high(),
+            },
+            1700000000,
+            5,
+        );
+        fs::write(
+            run_dir.join("report.json"),
+            serde_json::to_string_pretty(&report).unwrap(),
+        )
+        .unwrap();
+
+        let result = run_list_runs(tmp.path().to_path_buf(), false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn run_list_runs_empty_repo() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let result = run_list_runs(tmp.path().to_path_buf(), false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[test]
+    fn good_bad_label_truncates_long_shas() {
+        let summary = RunSummary {
+            run_id: "test".into(),
+            outcome: "FirstBad".into(),
+            observations: 0,
+            good: "abcdef1234567890".into(),
+            bad: "fedcba0987654321".into(),
+            created: "".into(),
+            created_epoch: 0,
+        };
+        let label = good_bad_label_from_summary(&summary);
+        assert_eq!(label, "abcdef12..fedcba09");
+    }
+
+    #[test]
+    fn good_bad_label_short_shas() {
+        let summary = RunSummary {
+            run_id: "test".into(),
+            outcome: "FirstBad".into(),
+            observations: 0,
+            good: "abc".into(),
+            bad: "def".into(),
+            created: "".into(),
+            created_epoch: 0,
+        };
+        let label = good_bad_label_from_summary(&summary);
+        assert_eq!(label, "abc..def");
     }
 }
