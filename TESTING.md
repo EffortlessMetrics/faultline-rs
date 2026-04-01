@@ -15,20 +15,20 @@ Each crate tier has specific verification techniques assigned. The full matrix i
 | `faultline-codes` | ✓ (via types) | ✓ | — |
 | `faultline-types` | ✓ | ✓ | — |
 | `faultline-localization` | ✓ | ✓ | ✓ |
-| `faultline-surface` | ✓ | ✓ | — |
+| `faultline-surface` | ✓ | ✓ | ✓ |
 
 Domain property tests run against pure logic with no I/O. Minimum 100 cases per property.
 
 ### Adapter Crates (infrastructure boundaries)
 
-| Crate | Property | Unit | Golden | Fuzz |
-|-------|----------|------|--------|------|
-| `faultline-git` | — | ✓ | — | — |
-| `faultline-probe-exec` | ✓ | ✓ | — | — |
-| `faultline-store` | ✓ | ✓ | — | — |
-| `faultline-render` | ✓ | ✓ | ✓ | — |
-| `faultline-sarif` | ✓ | ✓ | ✓ | — |
-| `faultline-junit` | ✓ | ✓ | ✓ | — |
+| Crate | Property | Unit | Golden | Fuzz | Mutation |
+|-------|----------|------|--------|------|----------|
+| `faultline-git` | ✓ | ✓ | — | ✓ | ✓ |
+| `faultline-probe-exec` | ✓ | ✓ | — | — | ✓ |
+| `faultline-store` | ✓ | ✓ | — | ✓ | ✓ |
+| `faultline-render` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `faultline-sarif` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `faultline-junit` | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 Adapter property tests may use `tempfile` for filesystem isolation.
 
@@ -172,15 +172,24 @@ just golden
 
 Mutation testing verifies that the test suite detects meaningful code changes. Currently configured for:
 - `faultline-localization` — core narrowing logic and outcome classification
-- `faultline-app` — orchestration loop and boundary validation
+- `faultline-app` — orchestration loop, boundary validation, flake retry, capsule generation
+- `faultline-git` — CODEOWNERS parsing, blame frequency, diff output handling
+- `faultline-probe-exec` — predicate execution, timeout enforcement, exit code classification
+- `faultline-store` — atomic writes, lock files, observation persistence
+- `faultline-render` — HTML/JSON/Markdown rendering, suspect surface display, HTML escaping
+- `faultline-sarif` — SARIF v2.1.0 export, suspect surface locations
+- `faultline-junit` — JUnit XML export, suspect surface in system-out
+- `faultline-surface` — suspect surface ranking, scoring, owner hint mapping
 
 ```bash
 cargo xtask mutants
+# or target a specific crate:
+cargo xtask mutants --crate faultline-localization
 # or
 just mutants
 ```
 
-This runs `cargo mutants -p faultline-localization -- --lib`. Surviving mutants indicate gaps in test coverage.
+This runs `cargo mutants` against all configured crates (or a single crate with `--crate`). Surviving mutants indicate gaps in test coverage.
 
 Requires `cargo-mutants`:
 ```bash
@@ -189,8 +198,14 @@ cargo install cargo-mutants
 
 ## How to Run Fuzz Tests
 
-Fuzz testing exercises deserialization and parsing paths with arbitrary input. Currently configured for:
-- `AnalysisReport` JSON deserialization in `faultline-types`
+Fuzz testing exercises deserialization and parsing paths with arbitrary input. Currently configured targets:
+- `fuzz_analysis_report` — `AnalysisReport` JSON deserialization in `faultline-types`
+- `fuzz_git_diff_parse` — Git adapter diff output parsing
+- `fuzz_store_json` — store JSON deserialization with malformed input
+- `fuzz_html_escape` — renderer HTML escaping with adversarial strings
+- `fuzz_cli_args` — CLI argument parsing via clap
+- `fuzz_sarif_export` — SARIF serialization with arbitrary reports
+- `fuzz_junit_export` — JUnit serialization with arbitrary reports
 
 ```bash
 cargo xtask fuzz --duration 60

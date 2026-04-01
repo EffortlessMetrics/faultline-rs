@@ -1013,6 +1013,7 @@ dependencies = [
  "anyhow",
  "clap",
  "faultline-junit",
+ "faultline-render",
  "faultline-sarif",
  "faultline-types",
  "proptest",

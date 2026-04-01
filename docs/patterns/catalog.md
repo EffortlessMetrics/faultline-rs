@@ -36,11 +36,11 @@ This catalog defines the 10 named patterns that govern the faultline repository'
 
 ## 3. Artifact-First Boundary
 
-**Definition:** Every faultline run produces portable, inspectable artifacts (`analysis.json`, `index.html`) whose structure is governed by a JSON Schema and validated by golden tests.
+**Definition:** Every faultline run produces portable, inspectable artifacts (`analysis.json`, `index.html`, and optionally a Markdown dossier) whose structure is governed by a JSON Schema and validated by golden tests.
 
-**When to use:** When changing the `AnalysisReport` structure, adding new output fields, or modifying the HTML renderer. The artifact schema must be regenerated (`cargo xtask golden`), golden snapshots must be reviewed (`cargo insta review`), and the schema version must be evaluated for compatibility.
+**When to use:** When changing the `AnalysisReport` structure, adding new output fields, or modifying the HTML/Markdown renderer. The artifact schema must be regenerated (`cargo xtask golden`), golden snapshots must be reviewed (`cargo insta review`), and the schema version must be evaluated for compatibility.
 
-**Example:** `faultline-render` writes `analysis.json` (canonical JSON) and `index.html` (self-contained HTML) from an `AnalysisReport`. Golden tests via `insta` snapshot both artifacts against a canonical fixture. The JSON Schema at `schemas/analysis-report.schema.json` is generated from the Rust types via `schemars`.
+**Example:** `faultline-render` writes `analysis.json` (canonical JSON), `index.html` (self-contained HTML with ranked suspect surface), and a Markdown dossier from an `AnalysisReport`. Golden tests via `insta` snapshot both JSON and HTML artifacts against a canonical fixture. The JSON Schema at `schemas/analysis-report.schema.json` is generated from the Rust types via `schemars`.
 
 **Anti-example:** Adding a new field to `AnalysisReport` without regenerating the JSON Schema or updating golden snapshots. CI will fail with `"schema drift detected"`.
 
@@ -159,7 +159,7 @@ This catalog defines the 10 named patterns that govern the faultline repository'
 | Term | Definition |
 |------|-----------|
 | **Adapter** | A crate that implements a port trait, bridging domain logic to infrastructure (Git, filesystem, processes). |
-| **Artifact** | A portable output file produced by a faultline run (`analysis.json`, `index.html`). |
+| **Artifact** | A portable output file produced by a faultline run (`analysis.json`, `index.html`, Markdown dossier). |
 | **BDD scenario** | A behavior-driven test that exercises an integration flow with realistic fixtures. |
 | **Boundary pair** | The adjacent last-good and first-bad commits that define the regression boundary. |
 | **Confidence** | A score (high/medium/low) indicating how much certainty the evidence supports for a localization outcome. |

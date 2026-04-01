@@ -1,9 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 use xtask::ci;
 use xtask::scaffold;
 use xtask::schema;
+use xtask::smoke;
 use xtask::tools;
 
 #[derive(Parser)]
@@ -43,9 +45,37 @@ enum Command {
         #[command(subcommand)]
         kind: ScaffoldKind,
     },
-    /// Regenerate JSON Schema files (internal)
-    #[command(hide = true)]
+    /// Regenerate schemas/analysis-report.schema.json from Rust types
     GenerateSchema,
+    /// Verify scenario atlas entries match actual workspace tests
+    CheckScenarios,
+    /// Export Markdown dossier from a report directory
+    ExportMarkdown {
+        /// Path to the run directory containing analysis.json
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Export SARIF from a report directory
+    ExportSarif {
+        /// Path to the run directory containing analysis.json
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Export JUnit XML from a report directory
+    ExportJunit {
+        /// Path to the run directory containing analysis.json
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -84,6 +114,31 @@ fn run_cmd(contract: &str, cmd: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Load an `AnalysisReport` from `<run_dir>/analysis.json`.
+fn load_report(run_dir: &std::path::Path) -> Result<faultline_types::AnalysisReport> {
+    let path = run_dir.join("analysis.json");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", path.display()))?;
+    let report: faultline_types::AnalysisReport = serde_json::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("failed to parse {}: {e}", path.display()))?;
+    Ok(report)
+}
+
+/// Write content to a file or stdout.
+fn write_output(content: &str, output: Option<&std::path::Path>) -> Result<()> {
+    match output {
+        Some(path) => {
+            std::fs::write(path, content)
+                .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", path.display()))?;
+            println!("wrote {}", path.display());
+        }
+        None => {
+            print!("{content}");
+        }
+    }
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -91,11 +146,7 @@ fn main() -> Result<()> {
         Command::CiFast => ci::ci_fast()?,
         Command::CiFull => ci::ci_full()?,
 
-        Command::Smoke => {
-            println!("=== smoke ===\n");
-            run_cmd("CLI build", "cargo", &["build", "-p", "faultline-cli"])?;
-            println!("\n=== smoke passed (fixture run is a placeholder) ===");
-        }
+        Command::Smoke => smoke::run_smoke()?,
 
         Command::Golden => {
             tools::ensure_tool("cargo-insta", "cargo install cargo-insta");
@@ -142,9 +193,20 @@ fn main() -> Result<()> {
         }
 
         Command::DocsCheck => {
-            tools::ensure_tool("mdbook", "cargo install mdbook");
             println!("=== docs-check ===\n");
-            run_cmd("mdbook build", "mdbook", &["build", "docs/book"])?;
+
+            // Step 1: Build mdBook (if mdbook is available)
+            if tools::has_tool("mdbook") {
+                run_cmd("mdbook build", "mdbook", &["build", "docs/book"])?;
+            } else {
+                println!("  mdbook not found, skipping book build");
+            }
+
+            // Step 2: Real link checking across all Markdown files
+            println!("\n=> link check");
+            let root = xtask::scaffold::workspace_root()?;
+            xtask::docs_check::check_links(&root)?;
+
             println!("\n=== docs-check passed ===");
         }
 
@@ -177,6 +239,58 @@ fn main() -> Result<()> {
         }
 
         Command::GenerateSchema => schema::generate_schema()?,
+
+        Command::CheckScenarios => {
+            println!("=== check-scenarios ===\n");
+            ci::check_scenarios()?;
+            println!("\n=== check-scenarios passed ===");
+        }
+
+        Command::ExportMarkdown { run_dir, output } => {
+            let report = load_report(&run_dir)?;
+            #[cfg(feature = "export-adapters")]
+            {
+                let md = faultline_render::render_markdown(&report);
+                write_output(&md, output.as_deref())?;
+            }
+            #[cfg(not(feature = "export-adapters"))]
+            {
+                let _ = report;
+                let _ = output;
+                anyhow::bail!("export-markdown requires the `export-adapters` feature");
+            }
+        }
+
+        Command::ExportSarif { run_dir, output } => {
+            let report = load_report(&run_dir)?;
+            #[cfg(feature = "export-adapters")]
+            {
+                let sarif = faultline_sarif::to_sarif(&report)
+                    .map_err(|e| anyhow::anyhow!("SARIF serialization failed: {e}"))?;
+                write_output(&sarif, output.as_deref())?;
+            }
+            #[cfg(not(feature = "export-adapters"))]
+            {
+                let _ = report;
+                let _ = output;
+                anyhow::bail!("export-sarif requires the `export-adapters` feature");
+            }
+        }
+
+        Command::ExportJunit { run_dir, output } => {
+            let report = load_report(&run_dir)?;
+            #[cfg(feature = "export-adapters")]
+            {
+                let junit = faultline_junit::to_junit_xml(&report);
+                write_output(&junit, output.as_deref())?;
+            }
+            #[cfg(not(feature = "export-adapters"))]
+            {
+                let _ = report;
+                let _ = output;
+                anyhow::bail!("export-junit requires the `export-adapters` feature");
+            }
+        }
     }
 
     Ok(())
@@ -207,6 +321,11 @@ mod tests {
             "docs-check",
             "release-check",
             "scaffold",
+            "generate-schema",
+            "check-scenarios",
+            "export-markdown",
+            "export-sarif",
+            "export-junit",
         ];
 
         for name in &expected_subcommands {

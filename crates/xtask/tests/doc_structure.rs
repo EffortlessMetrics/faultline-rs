@@ -146,8 +146,8 @@ fn parse_scenario_table_rows(content: &str) -> Vec<(usize, Vec<String>)> {
             .map(|cell| cell.trim().to_string())
             .collect();
 
-        // Only consider 7-column tables (the scenario tables)
-        if cells.len() != 7 {
+        // Only consider 14-column tables (the enriched scenario tables with metadata)
+        if cells.len() != 14 {
             continue;
         }
 
@@ -184,7 +184,7 @@ fn scenario_entry_structural_completeness() {
         "No scenario table rows found in scenario_index.md"
     );
 
-    let expected_columns = 7; // Scenario, Problem, Fixture/Generator, Crate(s), Artifact, Invariant, Refs
+    let expected_columns = 14; // Scenario, Problem, Fixture/Generator, Crate(s), Artifact, Invariant, Refs, Tier, Req IDs, Contract, Mutation Surface, Crit, Owner, Review
 
     for (line_num, cells) in &rows {
         assert_eq!(
@@ -194,7 +194,7 @@ fn scenario_entry_structural_completeness() {
             cells.len()
         );
 
-        // Each of the 7 fields must be non-empty (using "—" for intentionally blank is OK)
+        // Each of the first 7 fields must be non-empty (using "—" for intentionally blank is OK)
         let field_names = [
             "Scenario",
             "Problem",
@@ -210,6 +210,26 @@ fn scenario_entry_structural_completeness() {
                 !cells[i].is_empty(),
                 "Line {line_num}: field '{field_name}' (column {}) is empty. Row: {cells:?}",
                 i + 1
+            );
+        }
+
+        // Metadata columns (7..14) must also be non-empty
+        let metadata_names = [
+            "Tier",
+            "Req IDs",
+            "Contract",
+            "Mutation Surface",
+            "Crit",
+            "Owner",
+            "Review",
+        ];
+
+        for (j, meta_name) in metadata_names.iter().enumerate() {
+            let col = 7 + j;
+            assert!(
+                !cells[col].is_empty(),
+                "Line {line_num}: metadata field '{meta_name}' (column {}) is empty. Row: {cells:?}",
+                col + 1
             );
         }
     }

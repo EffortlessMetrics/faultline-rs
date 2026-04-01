@@ -2,6 +2,22 @@
 
 This handbook is the entry point for understanding the faultline repository's architecture, patterns, testing strategy, and operational practices.
 
+## Maintainer Playbooks
+
+| Playbook | Purpose |
+|----------|---------|
+| [Reviewing Failing Property Tests](reviewing-failing-property-tests.md) | Investigate a counterexample, triage root cause, fix or escalate |
+| [Deciding Test Technique](deciding-test-technique.md) | Decision tree for property vs unit vs golden vs fuzz vs mutation |
+| [Bumping `schema_version`](bumping-schema-version.md) | When and how to bump `AnalysisReport` schema version |
+| [Handling Breaking Changes](handling-breaking-changes.md) | Semver, migration, backward compat, CI checks, release process |
+
+## Worked Examples
+
+| Example | Purpose |
+|---------|---------|
+| [Investigating a Regression with the Suspect Surface](worked-example-suspect-surface.md) | Walkthrough of using the ranked suspect surface to triage a regression |
+| [Handling a Flaky Test with Flake-Aware Probing](worked-example-flake-detection.md) | Walkthrough of using retries and stability thresholds for flaky predicates |
+
 ## Quick Links
 
 | Document | Purpose |

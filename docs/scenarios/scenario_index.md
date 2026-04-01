@@ -149,6 +149,23 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `prop_suspect_entry_preserves_status_and_surface_kind` | SuspectEntry preserves change_status and surface_kind | `arb_path_change()` | faultline-surface | — | P45: Field consistency | Req 1.6, 1.7 | domain | Req 1.6, 1.7 | — | faultline-surface | P0 | faultline-surface | yes |
 | `prop_suspect_entry_owner_hint_matches_map` | SuspectEntry owner_hint matches owners map | `arb_path_change()` × 1..20 + owners | faultline-surface | — | P46: Owner hint fidelity | Req 1.3, 1.4, 1.5 | domain | Req 1.3, 1.4, 1.5 | — | faultline-surface | P0 | faultline-surface | yes |
 
+### faultline-fixtures
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `push_and_build_produces_correct_sequence` | Push + build produces correct RevisionSequence | `RevisionSequenceBuilder::new()` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `exact_boundary_produces_n_commits` | exact_boundary(n) produces n-commit sequence | `RevisionSequenceBuilder::exact_boundary` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `exact_boundary_zero_produces_empty_sequence` | exact_boundary(0) produces empty sequence | `RevisionSequenceBuilder::exact_boundary(0)` | faultline-fixtures | — | Edge case | — | domain | — | — | faultline-fixtures | P2 | faultline-fixtures | no |
+| `with_labels_produces_correct_sequence` | with_labels produces sequence with given labels | `RevisionSequenceBuilder::with_labels` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `with_labels_empty_produces_empty_sequence` | with_labels([]) produces empty sequence | `RevisionSequenceBuilder::with_labels(&[])` | faultline-fixtures | — | Edge case | — | domain | — | — | faultline-fixtures | P2 | faultline-fixtures | no |
+| `build_with_fewer_than_two_commits_still_works` | Builder with <2 commits still produces valid sequence | `RevisionSequenceBuilder::new()` | faultline-fixtures | — | Edge case | — | domain | — | — | faultline-fixtures | P2 | faultline-fixtures | no |
+| `git_repo_builder_creates_repo_with_commits` | GitRepoBuilder creates real Git repo with commits | `GitRepoBuilder::new()` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `git_repo_builder_supports_delete` | GitRepoBuilder supports file deletion | `GitRepoBuilder + FileOp::Delete` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `git_repo_builder_supports_rename` | GitRepoBuilder supports file rename | `GitRepoBuilder + FileOp::Rename` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `git_repo_builder_merge` | GitRepoBuilder supports merge commits | `GitRepoBuilder::merge()` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `git_repo_builder_subdirectories` | GitRepoBuilder supports nested directory paths | `GitRepoBuilder + nested paths` | faultline-fixtures | — | Builder correctness | — | domain | — | — | faultline-fixtures | P1 | faultline-fixtures | no |
+| `prop_revision_sequence_boundary_invariant` | RevisionSequence boundary invariant holds for arbitrary SHAs | `arb good/bad SHA strings` | faultline-fixtures | — | Boundary invariant | — | domain | — | — | faultline-fixtures | P0 | faultline-fixtures | yes |
+
 ---
 
 ## Adapter Tier — BDD, Property, and Golden Tests
@@ -191,6 +208,14 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `save_probe_logs_creates_logs_directory` | Logs directory created on first save | Fresh run | faultline-store | logs/ | Directory creation | — | adapter | — | logs/ | faultline-store | P2 | faultline-store | no |
 | `save_probe_logs_overwrites_existing_logs` | Re-saving logs overwrites previous content | Two saves, same commit | faultline-store | logs/*.log | Overwrite semantics | — | adapter | — | logs/*.log | faultline-store | P1 | faultline-store | no |
 | `save_probe_logs_handles_multiple_commits` | Multiple commits have separate log files | Two different commits | faultline-store | logs/*.log | Isolation | — | adapter | — | logs/*.log | faultline-store | P1 | faultline-store | no |
+| `prop_observation_round_trip` | Observation round-trips through store | `arb_probe_observation()` | faultline-store | observations.json | P11: Round-trip | — | adapter | — | observations.json | faultline-store | P0 | faultline-store | yes |
+| `prop_report_round_trip` | Report round-trips through store | `arb_analysis_report()` | faultline-store | report.json | P12: Round-trip | — | adapter | — | report.json | faultline-store | P0 | faultline-store | yes |
+| `prop_request_round_trip` | Request round-trips through store | `arb_analysis_request()` | faultline-store | request.json | Round-trip | — | adapter | — | request.json | faultline-store | P0 | faultline-store | yes |
+| `prop_store_observation_sequence_order` | Observations stored in sequence_index order | `arb_probe_observation() × 2..10` | faultline-store | observations.json | P26: Sequence order | Req 3.3, 6.5 | adapter | Req 3.3, 6.5 | observations.json | faultline-store | P0 | faultline-store | yes |
+| `prop_run_store_resumability` | Run store supports resume with cached observations | `arb_analysis_request() + observations` | faultline-store | observations.json | Resumability | Req 4.3 | adapter | Req 4.3 | observations.json | faultline-store | P0 | faultline-store | yes |
+| `prop_report_load_round_trip` | Report load round-trips through store | `arb_analysis_report()` | faultline-store | report.json | Round-trip | Req 6.11 | adapter | Req 6.11 | report.json | faultline-store | P0 | faultline-store | yes |
+| `prop_schema_version_round_trip` | Schema version preserved through store round-trip | `arb_analysis_report() + custom version` | faultline-store | report.json | Version preservation | Req 1.4, 1.6 | adapter | Req 1.4, 1.6 | report.json | faultline-store | P0 | faultline-store | yes |
+| `prop_version_metadata_persistence` | Version metadata persisted correctly | `arb_analysis_request()` | faultline-store | request.json | Metadata persistence | Req 6.4 | adapter | Req 6.4 | request.json | faultline-store | P0 | faultline-store | yes |
 
 ### faultline-git
 
@@ -211,6 +236,16 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `blame_frequency_returns_most_frequent_author` | Most frequent committer returned as owner | GitRepoBuilder with multiple commits | faultline-git | — | Frequency heuristic | — | adapter | Req 1.4 | — | faultline-git | P1 | faultline-git | no |
 | `blame_frequency_no_commits_returns_none` | No commits for path returns None | GitRepoBuilder with empty history | faultline-git | — | Edge case | — | adapter | Req 1.4, 1.5 | — | faultline-git | P2 | faultline-git | no |
 | `prop_codeowners_parser_determinism` | CODEOWNERS parsing is deterministic for any content and path | Random CODEOWNERS content + paths | faultline-git | — | P55: Parser determinism | Req 1.3 | adapter | Req 1.3 | — | faultline-git | P0 | faultline-git | yes |
+| `changed_paths_detects_add_modify_delete_rename` | Git diff parsing detects add, modify, delete, and rename | GitRepoBuilder with mixed ops | faultline-git | — | Diff parsing correctness | — | adapter | — | — | faultline-git | P0 | faultline-git | no |
+| `changed_paths_empty_diff_returns_empty_vec` | Empty diff returns empty changed paths | GitRepoBuilder with no changes | faultline-git | — | Edge case | — | adapter | — | — | faultline-git | P2 | faultline-git | no |
+| `cleans_stale_worktrees_on_construction` | GitAdapter cleans stale worktrees on construction | GitRepoBuilder + stale worktree | faultline-git | — | Cleanup correctness | — | adapter | — | — | faultline-git | P1 | faultline-git | no |
+| `cleanup_checkout_returns_ok_on_missing_directory` | cleanup_checkout returns Ok for missing directory | Non-existent path | faultline-git | — | Graceful degradation | — | adapter | — | — | faultline-git | P2 | faultline-git | no |
+| `exact_first_bad_commit_real_git` | End-to-end localization finds exact first bad commit | GitRepoBuilder + real git | faultline-git | — | Integration correctness | — | adapter | — | — | faultline-git | P0 | faultline-git | no |
+| `first_parent_merge_history_real_git` | First-parent merge history linearized correctly | GitRepoBuilder with merges | faultline-git | — | Linearization correctness | — | adapter | — | — | faultline-git | P0 | faultline-git | no |
+| `invalid_boundaries_real_git` | Invalid boundaries rejected by real git adapter | GitRepoBuilder + invalid boundaries | faultline-git | — | Boundary validation | — | adapter | — | — | faultline-git | P0 | faultline-git | no |
+| `rejects_non_repo_path` | GitAdapter rejects non-repository path | Non-repo temp directory | faultline-git | — | Input validation | — | adapter | — | — | faultline-git | P1 | faultline-git | no |
+| `rename_and_delete_real_git` | Rename and delete detected in real git repo | GitRepoBuilder with rename/delete | faultline-git | — | Diff parsing correctness | — | adapter | — | — | faultline-git | P0 | faultline-git | no |
+| `prop_worktree_path_uniqueness` | Worktree paths are unique for different commit SHAs | `arb SHA strings` | faultline-git | — | Path uniqueness | — | adapter | — | — | faultline-git | P0 | faultline-git | yes |
 
 ### faultline-render
 
@@ -252,6 +287,15 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `prop_html_temporal_observation_order` | Observations in HTML sorted by sequence_index | `arb_analysis_report()` (≥2 obs) | faultline-render | index.html | P30: Temporal order | Req 8.10 | adapter | Req 8.10 | index.html | faultline-render | P0 | faultline-render | yes |
 | `prop_html_execution_surface_separation` | Execution surfaces rendered separately | `arb_analysis_report()` (non-empty exec) | faultline-render | index.html | P31: Surface separation | Req 8.11 | adapter | Req 8.11 | index.html | faultline-render | P0 | faultline-render | yes |
 | `prop_markdown_dossier_contains_required_sections` | Markdown dossier contains all required sections | `arb_analysis_report()` (non-Inconclusive) | faultline-render | dossier.md | P47: Section completeness | Req 2.1–2.5 | adapter | Req 2.1–2.5 | dossier.md | faultline-render | P0 | faultline-render | yes |
+| `html_observation_rows_have_color_classes` | Observation rows have correct CSS color classes | Sample report | faultline-render | index.html | Visual distinction | Req 8.10 | adapter | Req 8.10 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_indeterminate_row_shows_signal_badge` | Indeterminate row with signal_number shows signal badge | Sample report + signal_number | faultline-render | index.html | Signal display | Req 8.10 | adapter | Req 8.10 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_renders_execution_surfaces_section` | Execution surfaces rendered in separate HTML section | Sample report + execution surfaces | faultline-render | index.html | Surface separation | Req 8.11 | adapter | Req 8.11 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_no_execution_surfaces_when_empty` | No execution surfaces section when list is empty | Sample report (empty exec surfaces) | faultline-render | index.html | Conditional rendering | Req 8.11 | adapter | Req 8.11 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_renders_log_links_for_truncated_output` | Truncated stdout renders log file link | Sample report + truncated output | faultline-render | index.html | Log link rendering | Req 8.12 | adapter | Req 8.12 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_renders_log_links_for_truncated_stderr` | Truncated stderr renders log file link | Sample report + truncated stderr | faultline-render | index.html | Log link rendering | Req 8.12 | adapter | Req 8.12 | index.html | faultline-render | P1 | faultline-render | no |
+| `html_no_log_section_when_no_truncation` | No log section when no truncated output | Sample report (no truncation) | faultline-render | index.html | Conditional rendering | Req 8.12 | adapter | Req 8.12 | index.html | faultline-render | P1 | faultline-render | no |
+| `snapshot_analysis_json_structure` | Snapshot test for canonical analysis.json structure | `canonical_fixture_report()` | faultline-render | analysis.json | Structural correctness | Req 6.1, 6.2 | adapter | Req 6.1, 6.2 | analysis.json | faultline-render | P0 | faultline-render | yes |
+| `snapshot_html_report_structure` | Snapshot test for canonical HTML report structure | `canonical_fixture_report()` | faultline-render | index.html | Structural correctness | Req 7.1, 7.2 | adapter | Req 7.1, 7.2 | index.html | faultline-render | P0 | faultline-render | yes |
 
 ### faultline-sarif
 
@@ -261,4 +305,147 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `sarif_suspect_window_produces_warning_level` | SuspectWindow maps to SARIF warning level | SuspectWindow report | faultline-sarif | SARIF JSON | Level mapping | Req 3.6 | adapter | Req 3.6 | SARIF JSON | faultline-sarif | P0 | faultline-sarif | no |
 | `sarif_inconclusive_produces_note_level` | Inconclusive maps to SARIF note level | Inconclusive report | faultline-sarif | SARIF JSON | Level mapping | Req 3.6 | adapter | Req 3.6 | SARIF JSON | faultline-sarif | P0 | faultline-sarif | no |
 | `sarif_empty_changed_paths_produces_empty_locations` | Empty changed_paths produces empty locations | Report with no paths | faultline-sarif | SARIF JSON | Edge case | Req 3.6 | adapter | Req 3.6 | SARIF JSON | faultline-sarif | P2 | faultline-sarif | no |
-| `prop_sarif_export_structural_validity` | SARIF output is structurally valid for all reports | `arb_analysis_report()` | faultline-sarif | SARIF JSON | P41: Structural validity | Req 3.6 | adapter | Req 3.6 | SARIF JSON | faultl
+| `prop_sarif_export_structural_validity` | SARIF output is structurally valid for all reports | `arb_analysis_report()` | faultline-sarif | SARIF JSON | P41: Structural validity | Req 3.6 | adapter | Req 3.6 | SARIF JSON | faultline-sarif | P0 | faultline-sarif | yes |
+
+### faultline-junit
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `junit_first_bad_has_failure_element` | FirstBad maps to JUnit failure element | FirstBad report | faultline-junit | JUnit XML | Failure mapping | — | adapter | — | JUnit XML | faultline-junit | P0 | faultline-junit | no |
+| `junit_suspect_window_has_failure_element` | SuspectWindow maps to JUnit failure element | SuspectWindow report | faultline-junit | JUnit XML | Failure mapping | — | adapter | — | JUnit XML | faultline-junit | P0 | faultline-junit | no |
+| `junit_inconclusive_has_failure_element` | Inconclusive maps to JUnit failure element | Inconclusive report | faultline-junit | JUnit XML | Failure mapping | — | adapter | — | JUnit XML | faultline-junit | P0 | faultline-junit | no |
+| `junit_observations_in_system_out` | Observations rendered in system-out element | FirstBad report with observations | faultline-junit | JUnit XML | Content completeness | — | adapter | — | JUnit XML | faultline-junit | P1 | faultline-junit | no |
+| `junit_empty_observations` | Empty observations produce valid JUnit XML | Report with no observations | faultline-junit | JUnit XML | Edge case | — | adapter | — | JUnit XML | faultline-junit | P2 | faultline-junit | no |
+| `prop_junit_xml_export_structural_validity` | JUnit XML output is structurally valid for all reports | `arb_analysis_report()` | faultline-junit | JUnit XML | P42: Structural validity | — | adapter | — | JUnit XML | faultline-junit | P0 | faultline-junit | yes |
+
+---
+
+## App Tier — Integration and Orchestration Tests
+
+### faultline-app
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `integration_cached_resume_skips_cached_commits` | Cached observations are reused on resume | Mock ports + 5-commit seq | faultline-app | — | Resume correctness | — | app | — | — | faultline-app | P0 | faultline-app | no |
+| `integration_good_boundary_fail_yields_invalid_boundary` | Good boundary returning Fail yields InvalidBoundary error | Mock ports + 5-commit seq | faultline-app | — | Boundary validation | Req 10.1–10.5 | app | Req 10.1–10.5 | — | faultline-app | P0 | faultline-app | no |
+| `integration_bad_boundary_pass_yields_invalid_boundary` | Bad boundary returning Pass yields InvalidBoundary error | Mock ports + 5-commit seq | faultline-app | — | Boundary validation | Req 10.1–10.5 | app | Req 10.1–10.5 | — | faultline-app | P0 | faultline-app | no |
+| `integration_cached_boundary_observations_reused_no_reprobe` | Cached boundary observations are reused without re-probing | Mock ports + TrackingProbe | faultline-app | — | Cache reuse | — | app | — | — | faultline-app | P0 | faultline-app | no |
+| `integration_full_localization_loop_with_mock_ports` | Full localization loop produces correct report with all fields | Mock ports + 10-commit seq | faultline-app | analysis.json | End-to-end correctness | — | app | — | analysis.json | faultline-app | P0 | faultline-app | no |
+| `integration_flake_retries_attach_flake_signal` | Flake retries attach FlakeSignal to observations | Mock ports + retries=2 | faultline-app | — | Flake signal attachment | Req 3.1, 3.4, 3.5 | app | Req 3.1, 3.4, 3.5 | — | faultline-app | P0 | faultline-app | no |
+| `integration_default_retries_no_flake_signal` | Default retries (0) produce no FlakeSignal | Mock ports + default policy | faultline-app | — | Default no signal | Req 3.6 | app | Req 3.6 | — | faultline-app | P1 | faultline-app | no |
+| `integration_flaky_commit_majority_vote` | Flaky commit classified by majority vote | Mock ports + mixed results | faultline-app | — | Majority vote | — | app | — | — | faultline-app | P0 | faultline-app | no |
+| `prop_probe_count_respects_max_probes` | Probe count never exceeds max_probes | `max_probes in 1..=10`, 20-commit seq | faultline-app | — | P3: Budget enforcement | — | app | — | — | faultline-app | P0 | faultline-app | yes |
+| `prop_good_boundary_fail_yields_invalid_boundary` | Good boundary Fail always yields InvalidBoundary | `n in 3..=20` | faultline-app | — | P9: Boundary validation | Req 10.1–10.5 | app | Req 10.1–10.5 | — | faultline-app | P0 | faultline-app | yes |
+| `prop_bad_boundary_pass_yields_invalid_boundary` | Bad boundary Pass always yields InvalidBoundary | `n in 3..=20` | faultline-app | — | P9: Boundary validation | Req 10.1–10.5 | app | Req 10.1–10.5 | — | faultline-app | P0 | faultline-app | yes |
+
+---
+
+## Entry Point Tier — CLI Tests
+
+### faultline-cli
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `rejects_both_cmd_and_program` | Providing both --cmd and --program is rejected | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `rejects_neither_cmd_nor_program` | Providing neither --cmd nor --program is rejected | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `help_output_describes_all_flags` | --help output lists all expected flags | CLI --help | faultline-cli | — | Flag completeness | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `help_output_describes_reproduce_subcommand` | --help output describes reproduce subcommand | CLI --help | faultline-cli | — | Subcommand completeness | Req 4.3 | app | Req 4.3 | — | faultline-cli | P1 | faultline-cli | no |
+| `golden_cli_help` | Golden snapshot of CLI --help text | CLI --help | faultline-cli | help snapshot | Golden contract | Req 3.4 | app | Req 3.4 | — | faultline-cli | P0 | faultline-cli | yes |
+| `exit_code_0_for_first_bad` | FirstBad outcome maps to exit code 0 | Hand-built outcome | faultline-cli | — | Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `exit_code_1_for_suspect_window` | SuspectWindow outcome maps to exit code 1 | Hand-built outcome | faultline-cli | — | Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `exit_code_3_for_inconclusive` | Inconclusive outcome maps to exit code 3 | Hand-built outcome | faultline-cli | — | Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `exit_code_2_for_execution_error` | ExecutionError maps to exit code 2 | OperatorCode | faultline-cli | — | Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `exit_code_4_for_invalid_input` | InvalidInput maps to exit code 4 | OperatorCode | faultline-cli | — | Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `all_exit_codes_are_distinct` | All exit codes are unique | All OperatorCodes | faultline-cli | — | Uniqueness | — | app | — | — | faultline-cli | P0 | faultline-cli | no |
+| `rejects_resume_and_force` | --resume and --force are mutually exclusive | CLI args | faultline-cli | — | Mutual exclusion | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `rejects_resume_and_fresh` | --resume and --fresh are mutually exclusive | CLI args | faultline-cli | — | Mutual exclusion | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `rejects_force_and_fresh` | --force and --fresh are mutually exclusive | CLI args | faultline-cli | — | Mutual exclusion | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `accepts_single_run_modes` | Single run mode flags accepted | CLI args | faultline-cli | — | Happy path | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `accepts_valid_env_vars` | Valid --env KEY=VALUE accepted | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `accepts_env_var_with_equals_in_value` | --env FOO=bar=baz accepted | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `rejects_env_var_missing_equals` | --env without = is rejected | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `accepts_empty_env_list` | Empty --env list accepted | CLI args | faultline-cli | — | Edge case | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `accepts_valid_shell_kinds` | Valid --shell values accepted | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `accepts_no_shell` | No --shell flag accepted | CLI args | faultline-cli | — | Default behavior | — | app | — | — | faultline-cli | P2 | faultline-cli | no |
+| `rejects_unknown_shell` | Unknown --shell value rejected | CLI args | faultline-cli | — | Input validation | — | app | — | — | faultline-cli | P1 | faultline-cli | no |
+| `prop_operator_code_exit_code_mapping` | Exit code mapping is consistent for all outcomes | `arb_localization_outcome()` | faultline-cli | — | P19: Exit code mapping | — | app | — | — | faultline-cli | P0 | faultline-cli | yes |
+| `prop_cli_help_flag_completeness` | CLI --help lists all expected flags | Random seed | faultline-cli | — | P20: Flag completeness | — | app | — | — | faultline-cli | P0 | faultline-cli | yes |
+| `smoke_cli_produces_artifacts` | End-to-end CLI run produces analysis.json and index.html | GitRepoBuilder + real CLI binary | faultline-cli | analysis.json, index.html | Smoke test | — | integration | — | analysis.json, index.html | faultline-cli | P0 | faultline-cli | yes |
+
+---
+
+## Integration Tier — BDD Scenarios
+
+### faultline-render (BDD)
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `scenario_report_generation_end_to_end` | End-to-end report generation produces JSON + HTML + Markdown artifacts | Builder + TempDir | faultline-render | analysis.json, index.html, dossier.md | Artifact existence and content | Req 8.1 | integration | Req 8.1 | analysis.json, index.html, dossier.md | faultline-render | P0 | faultline-render | no |
+| `scenario_resume_rerender_consistency` | Re-rendering from cached report produces consistent output | Builder + serialize/deserialize | faultline-render | analysis.json, index.html | Re-render consistency | Req 8.1 | integration | Req 8.1 | analysis.json, index.html | faultline-render | P0 | faultline-render | no |
+
+### faultline-sarif (BDD)
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `scenario_export_surfaces_sarif_and_junit_consistency` | SARIF + JUnit from same report contain consistent suspect surface data | Builder with suspect surface | faultline-sarif, faultline-junit | SARIF JSON, JUnit XML | Cross-export consistency | Req 8.1 | integration | Req 8.1 | SARIF JSON, JUnit XML | faultline-sarif, faultline-junit | P0 | faultline-sarif | no |
+
+---
+
+## Tooling Tier — Xtask Tests
+
+### xtask
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `xtask_help_lists_all_subcommands` | Xtask --help lists all expected subcommands | CLI --help | xtask | — | Subcommand completeness | Req 5.2, 5.5, 10.1 | app | Req 5.2, 5.5, 10.1 | — | xtask | P1 | xtask | no |
+| `scaffold_help_lists_all_kinds` | Scaffold --help lists all scaffold kinds | CLI --help | xtask | — | Subcommand completeness | — | app | — | — | xtask | P2 | xtask | no |
+| `valid_crate_names` | Valid crate names accepted by scaffold | Fixed names | xtask | — | Input validation | — | app | — | — | xtask | P2 | xtask | no |
+| `invalid_crate_names` | Invalid crate names rejected by scaffold | Fixed names | xtask | — | Input validation | — | app | — | — | xtask | P1 | xtask | no |
+| `valid_sections` | Valid doc sections accepted | Fixed sections | xtask | — | Input validation | — | app | — | — | xtask | P2 | xtask | no |
+| `invalid_sections` | Invalid doc sections rejected | Fixed sections | xtask | — | Input validation | — | app | — | — | xtask | P1 | xtask | no |
+| `empty_strings_rejected` | Empty strings rejected by validators | Empty string | xtask | — | Input validation | — | app | — | — | xtask | P1 | xtask | no |
+| `slugify_works` | Slugify produces correct kebab-case | Fixed strings | xtask | — | String transformation | — | app | — | — | xtask | P2 | xtask | no |
+| `extract_test_names_finds_standard_tests` | Test name extraction finds #[test] functions | Sample source | xtask | — | Extraction correctness | — | app | — | — | xtask | P1 | xtask | no |
+| `extract_test_names_finds_proptest_fns` | Test name extraction finds proptest functions | Sample source | xtask | — | Extraction correctness | — | app | — | — | xtask | P1 | xtask | no |
+| `extract_index_entries_parses_table` | Scenario index table parsing works | Sample Markdown table | xtask | — | Parse correctness | — | app | — | — | xtask | P1 | xtask | no |
+| `check_consistency_reports_symmetric_difference` | Consistency check reports missing/extra entries | Mismatched sets | xtask | — | Diff correctness | — | app | — | — | xtask | P0 | xtask | no |
+| `check_consistency_perfect_match_is_ok` | Consistency check passes for matching sets | Identical sets | xtask | — | Happy path | — | app | — | — | xtask | P1 | xtask | no |
+| `pattern_entry_structural_completeness` | Pattern catalog entries have all required fields | Pattern catalog file | xtask | — | P37: Structural completeness | — | app | — | — | xtask | P1 | xtask | no |
+| `scenario_entry_structural_completeness` | Scenario index entries have all required fields | Scenario index file | xtask | — | P38: Structural completeness | — | app | — | — | xtask | P1 | xtask | no |
+| `scenario_schema_drift_detected_on_modified_report` | Schema drift detected when report type changes | Modified schema | xtask | analysis-report.schema.json | P45: Schema drift detection | Req 8.3 | app | Req 8.3 | analysis-report.schema.json | xtask | P0 | xtask | no |
+| `scenario_schema_no_drift_when_matching` | No schema drift when schema matches types | Correct schema | xtask | analysis-report.schema.json | Schema consistency | Req 8.3 | app | Req 8.3 | analysis-report.schema.json | xtask | P1 | xtask | no |
+| `scenario_schema_drift_field_removal_detected` | Schema drift detected on field removal | Schema with removed field | xtask | analysis-report.schema.json | Schema drift detection | Req 8.3 | app | Req 8.3 | analysis-report.schema.json | xtask | P0 | xtask | no |
+| `tool_detection_error_messages_known_tools` | Tool detection error messages are correct for known tools | Known tool names | xtask | — | P44: Error messages | Req 5.7 | app | Req 5.7 | — | xtask | P1 | xtask | no |
+| `ci_failure_messages_identify_broken_contract` | CI failure messages identify the broken contract | Contract names | xtask | — | P46: CI messages | Req 8.7 | app | Req 8.7 | — | xtask | P0 | xtask | no |
+| `prop_symmetric_difference_is_exact` | Symmetric difference reports exact missing/extra entries | `arb_test_name_set()` × 2 | xtask | — | P39: Atlas consistency | Req 2.5, 8.4 | app | Req 2.5, 8.4 | — | xtask | P0 | xtask | yes |
+| `prop_identical_sets_yield_ok` | Identical test sets yield Ok | `arb_test_name_set()` | xtask | — | P39: Atlas consistency | Req 2.5, 8.4 | app | Req 2.5, 8.4 | — | xtask | P0 | xtask | yes |
+| `prop_extract_and_check_round_trip` | Extract + check round-trips correctly | Random test names | xtask | — | P39: Atlas consistency | Req 2.5, 8.4 | app | Req 2.5, 8.4 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_crate_generation` | Scaffold crate generates valid structure | `arb_crate_suffix()` | xtask | — | P47: Scaffold generation | Req 10.2 | app | Req 10.2 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_adr_sequential_numbering` | Scaffold ADR uses sequential numbering | `existing_count in 0..20` | xtask | — | P48: ADR numbering | Req 10.3 | app | Req 10.3 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_scenario_creates_stub_and_index` | Scaffold scenario creates test stub and index entry | Random names | xtask | — | P49: Scaffold file generation | Req 10.4, 10.5 | app | Req 10.4, 10.5 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_doc_creates_file_and_summary_entry` | Scaffold doc creates file and SUMMARY entry | Random sections | xtask | — | P49: Scaffold file generation | Req 10.4, 10.5 | app | Req 10.4, 10.5 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_rejects_invalid_crate_names` | Scaffold rejects invalid crate names | Invalid name patterns | xtask | — | P50: Input validation | Req 10.6 | app | Req 10.6 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_rejects_empty_adr_titles` | Scaffold rejects empty ADR titles | Empty/whitespace titles | xtask | — | P50: Input validation | Req 10.6 | app | Req 10.6 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_rejects_empty_scenario_names` | Scaffold rejects empty scenario names | Empty/whitespace names | xtask | — | P50: Input validation | Req 10.6 | app | Req 10.6 | — | xtask | P0 | xtask | yes |
+| `prop_scaffold_rejects_invalid_doc_sections` | Scaffold rejects invalid doc sections | Invalid section names | xtask | — | P50: Input validation | Req 10.6 | app | Req 10.6 | — | xtask | P0 | xtask | yes |
+| `prop_schema_drift_detection` | Schema drift detection works for any schema change | Generated schemas | xtask | analysis-report.schema.json | P45: Schema drift | Req 8.3 | app | Req 8.3 | analysis-report.schema.json | xtask | P0 | xtask | yes |
+| `split_fragment_works` | Fragment splitting handles path#anchor, path-only, and anchor-only | Fixed strings | xtask | — | String parsing | — | app | — | — | xtask | P2 | xtask | no |
+| `extract_inline_links` | Inline Markdown links extracted correctly | Fixed Markdown line | xtask | — | Link extraction | — | app | — | — | xtask | P2 | xtask | no |
+| `extract_reference_links` | Reference-style Markdown links extracted correctly | Fixed Markdown line | xtask | — | Link extraction | — | app | — | — | xtask | P2 | xtask | no |
+| `extract_skips_external` | External URLs identified and skipped | Fixed Markdown line | xtask | — | Link filtering | — | app | — | — | xtask | P2 | xtask | no |
+| `check_file_finds_broken_links` | Broken local links detected in Markdown file | TempDir + Markdown file | xtask | — | Link checking | Req 10.2 | app | Req 10.2 | — | xtask | P1 | xtask | no |
+| `check_file_skips_external_and_anchors` | External URLs and anchor links skipped during checking | TempDir + Markdown file | xtask | — | Link filtering | Req 10.2 | app | Req 10.2 | — | xtask | P2 | xtask | no |
+| `check_links_on_clean_dir` | Clean directory passes link check | TempDir + valid links | xtask | — | Happy path | Req 10.2 | app | Req 10.2 | — | xtask | P1 | xtask | no |
+| `check_links_reports_broken` | Broken links reported as error | TempDir + broken link | xtask | — | Error reporting | Req 10.2 | app | Req 10.2 | — | xtask | P1 | xtask | no |
+| `collect_markdown_files_finds_root_and_docs` | Markdown file collection finds root and docs/ files | TempDir + nested Markdown | xtask | — | File discovery | Req 10.2 | app | Req 10.2 | — | xtask | P1 | xtask | no |
+| `fixture_repo_has_three_commits` | Smoke test fixture repo has expected commit count | GitRepoBuilder | xtask | — | Fixture correctness | Req 10.1 | app | Req 10.1 | — | xtask | P1 | xtask | no |
+| `extract_test_names` | Test name extraction function works correctly | Sample source | xtask | — | Extraction correctness | — | app | — | — | xtask | P2 | xtask | no |
+| `my_test_one` | Test data: standard #[test] function detected by scanner | Test data in scenarios.rs | xtask | — | Scanner test data | — | app | — | — | xtask | P2 | xtask | no |
+| `my_test_two` | Test data: second #[test] function detected by scanner | Test data in scenarios.rs | xtask | — | Scanner test data | — | app | — | — | xtask | P2 | xtask | no |
+| `name` | Test data: proptest function name detected by scanner | Test data in scenarios.rs | xtask | — | Scanner test data | — | app | — | — | xtask | P2 | xtask | no |
+| `prop_something` | Test data: proptest function detected by scanner | Test data in scenarios.rs | xtask | — | Scanner test data | — | app | — | — | xtask | P2 | xtask | no |
+| `schema_drift_error_message_format` | Schema drift error message has correct format | Modified schema | xtask | — | Error message format | Req 8.3 | app | Req 8.3 | — | xtask | P1 | xtask | no |
+| `tool_detection_error_message_format` | Tool detection error message format is correct | Random tool names | xtask | — | P44: Error message format | Req 5.7 | app | Req 5.7 | — | xtask | P0 | xtask | yes |
+| `ci_contract_broken_message_contains_contract_name` | CI contract broken message contains contract name | Random contract names | xtask | — | P46: CI message format | Req 8.7 | app | Req 8.7 | — | xtask | P0 | xtask | yes |
+| `ci_golden_failure_message_contains_artifact_and_docs` | CI golden failure message contains artifact and docs refs | Random artifacts | xtask | — | P46: CI message format | Req 8.7 | app | Req 8.7 | — | xtask | P0 | xtask | yes |
+| `ci_missing_scenario_message_contains_files_and_docs` | CI missing scenario message contains file refs and docs | Random file names | xtask | — | P46: CI message format | Req 8.7 | app | Req 8.7 | — | xtask | P0 | xtask | yes |

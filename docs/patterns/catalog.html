@@ -1,0 +1,347 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Pattern Catalog - faultline</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-9ba5fd36.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">faultline</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="pattern-catalog"><a class="header" href="#pattern-catalog">Pattern Catalog</a></h1>
+<p>This catalog defines the 10 named patterns that govern the faultline repository’s architecture, testing, documentation, and operational practices. Each pattern is a reusable decision template that contributors and agents should follow when making changes.</p>
+<hr>
+<h2 id="1-truth-core--translation-edge"><a class="header" href="#1-truth-core--translation-edge">1. Truth Core / Translation Edge</a></h2>
+<p><strong>Definition:</strong> Domain logic lives in pure crates with no I/O; all infrastructure concerns are pushed to adapter crates behind port traits.</p>
+<p><strong>When to use:</strong> Any time you add business logic — it belongs in a domain crate (<code>faultline-codes</code>, <code>faultline-types</code>, <code>faultline-localization</code>, <code>faultline-surface</code>). If the logic requires filesystem, network, or process interaction, it belongs in an adapter crate behind a port trait.</p>
+<p><strong>Example:</strong> <code>faultline-localization</code> contains the binary narrowing algorithm with zero filesystem or process dependencies. It operates on <code>RevisionSequence</code> and <code>ProbeObservation</code> values injected by the app layer. The <code>faultline-git</code> adapter implements <code>HistoryPort</code> and <code>CheckoutPort</code> by shelling out to the system <code>git</code> binary — the domain never touches Git directly.</p>
+<p><strong>Anti-example:</strong> Putting <code>git rev-list</code> parsing inside <code>faultline-localization</code> would violate this pattern — Git CLI interaction belongs in <code>faultline-git</code>. Similarly, writing files directly from <code>faultline-surface</code> would break the boundary.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0001-hexagonal-architecture.html">ADR-0001: Hexagonal Architecture</a>
+<strong>Related Scenarios:</strong> <code>prop_binary_narrowing_selects_valid_midpoint</code>, <code>prop_adjacent_pass_fail_yields_first_bad</code></p>
+<hr>
+<h2 id="2-scenario-atlas"><a class="header" href="#2-scenario-atlas">2. Scenario Atlas</a></h2>
+<p><strong>Definition:</strong> Every test in the workspace is cataloged in a flat index with its problem statement, fixture, crate, artifact, invariant, and cross-references, organized by crate tier.</p>
+<p><strong>When to use:</strong> Whenever you add, remove, or rename a test. The scenario index (<code>docs/scenarios/scenario_index.md</code>) and behavior map (<code>docs/scenarios/behavior_map.md</code>) must stay in sync with the actual test suite. CI enforces this via the scenario atlas consistency check.</p>
+<p><strong>Example:</strong> The property test <code>prop_exit_code_classification</code> in <code>faultline-probe-exec</code> is listed in the scenario index with its generator (<code>arb exit_code × timed_out</code>), the crate it exercises, and the requirement it validates (Req 2.3–2.6).</p>
+<p><strong>Anti-example:</strong> Adding a new property test to <code>faultline-localization</code> without creating a corresponding entry in the scenario index. The CI check will catch this and fail with <code>"contract broken: scenario atlas"</code>.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0003-honest-localization-outcomes.html">ADR-0003: Honest Localization Outcomes</a>
+<strong>Related Scenarios:</strong> See <a href="../scenarios/scenario_index.html">Scenario Index</a></p>
+<hr>
+<h2 id="3-artifact-first-boundary"><a class="header" href="#3-artifact-first-boundary">3. Artifact-First Boundary</a></h2>
+<p><strong>Definition:</strong> Every faultline run produces portable, inspectable artifacts (<code>analysis.json</code>, <code>index.html</code>, and optionally a Markdown dossier) whose structure is governed by a JSON Schema and validated by golden tests.</p>
+<p><strong>When to use:</strong> When changing the <code>AnalysisReport</code> structure, adding new output fields, or modifying the HTML/Markdown renderer. The artifact schema must be regenerated (<code>cargo xtask golden</code>), golden snapshots must be reviewed (<code>cargo insta review</code>), and the schema version must be evaluated for compatibility.</p>
+<p><strong>Example:</strong> <code>faultline-render</code> writes <code>analysis.json</code> (canonical JSON), <code>index.html</code> (self-contained HTML with ranked suspect surface), and a Markdown dossier from an <code>AnalysisReport</code>. Golden tests via <code>insta</code> snapshot both JSON and HTML artifacts against a canonical fixture. The JSON Schema at <code>schemas/analysis-report.schema.json</code> is generated from the Rust types via <code>schemars</code>.</p>
+<p><strong>Anti-example:</strong> Adding a new field to <code>AnalysisReport</code> without regenerating the JSON Schema or updating golden snapshots. CI will fail with <code>"schema drift detected"</code>.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0001-hexagonal-architecture.html">ADR-0001: Hexagonal Architecture</a>
+<strong>Related Scenarios:</strong> <code>golden_analysis_json</code>, <code>golden_index_html</code>, <code>prop_json_schema_validates_all_valid_reports</code></p>
+<hr>
+<h2 id="4-proof-carrying-change"><a class="header" href="#4-proof-carrying-change">4. Proof-Carrying Change</a></h2>
+<p><strong>Definition:</strong> Every change to domain logic or artifact contracts must be accompanied by a test that proves the change is correct — property tests for invariants, golden tests for artifacts, BDD tests for integration flows.</p>
+<p><strong>When to use:</strong> When modifying localization logic, outcome classification, exit code mapping, artifact serialization, or any domain invariant. The verification matrix (<code>docs/verification-matrix.md</code>) specifies which techniques apply to each crate.</p>
+<p><strong>Example:</strong> Adding a new <code>AmbiguityReason</code> variant requires updating the property test <code>prop_ambiguous_observations_yield_suspect_window</code> to cover the new reason, and updating golden snapshots if the HTML rendering changes.</p>
+<p><strong>Anti-example:</strong> Changing the confidence scoring formula in <code>faultline-localization</code> without updating or adding a property test that validates the new behavior. The mutation testing budget for <code>faultline-localization</code> is specifically designed to catch this.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0003-honest-localization-outcomes.html">ADR-0003: Honest Localization Outcomes</a>
+<strong>Related Scenarios:</strong> <code>prop_suspect_window_confidence_cap</code>, <code>prop_first_bad_requires_direct_evidence</code></p>
+<hr>
+<h2 id="5-replayable-run-memory"><a class="header" href="#5-replayable-run-memory">5. Replayable Run Memory</a></h2>
+<p><strong>Definition:</strong> Every faultline run persists its request, observations, and report to disk so that runs can be resumed, replayed, and audited after the fact.</p>
+<p><strong>When to use:</strong> When modifying the run store, observation persistence, or the localization loop’s caching behavior. The store uses atomic writes and lock files to prevent corruption.</p>
+<p><strong>Example:</strong> <code>faultline-store</code> persists observations to <code>{run_dir}/observations.json</code> using atomic writes (write to <code>.tmp</code>, then rename). When a run is resumed, cached observations are loaded and the localization loop skips already-probed commits. The <code>integration_cached_resume_skips_cached_commits</code> test validates this behavior.</p>
+<p><strong>Anti-example:</strong> Writing observations directly to the final path without atomic rename — a crash mid-write would leave a corrupted file that breaks resume.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0002-git-cli-and-disposable-checkouts.html">ADR-0002: Git CLI and Disposable Checkouts</a>
+<strong>Related Scenarios:</strong> <code>prepare_run_creates_directory_and_request_json</code>, <code>save_and_load_single_observation</code>, <code>integration_cached_resume_skips_cached_commits</code></p>
+<hr>
+<h2 id="6-operator-dossier"><a class="header" href="#6-operator-dossier">6. Operator Dossier</a></h2>
+<p><strong>Definition:</strong> The CLI output and HTML report provide the operator with a complete dossier: outcome, confidence, ambiguity reasons, observation timeline, changed surface, and execution surfaces — everything needed to begin investigating without re-running.</p>
+<p><strong>When to use:</strong> When modifying CLI output formatting, HTML rendering, or adding new diagnostic information to the report. The operator should never need to re-run faultline to understand what happened.</p>
+<p><strong>Example:</strong> The HTML report includes outcome-specific CSS classes (<code>outcome-firstbad</code>, <code>outcome-suspect</code>, <code>outcome-inconclusive</code>), ambiguity reason badges, a temporal observation timeline sorted by <code>sequence_index</code>, and a separate execution surfaces section highlighting CI workflows and build scripts.</p>
+<p><strong>Anti-example:</strong> Rendering the observation timeline in commit-hash alphabetical order instead of probe sequence order — the operator needs to see the temporal flow of the investigation.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0003-honest-localization-outcomes.html">ADR-0003: Honest Localization Outcomes</a>
+<strong>Related Scenarios:</strong> <code>prop_html_contains_required_data</code>, <code>prop_html_temporal_observation_order</code>, <code>prop_operator_code_exit_code_mapping</code></p>
+<hr>
+<h2 id="7-human-review-gate-after-failing-property"><a class="header" href="#7-human-review-gate-after-failing-property">7. Human Review Gate After Failing Property</a></h2>
+<p><strong>Definition:</strong> When a property test fails, the failure is reported with the counterexample and the contributor must review and accept the change — automated systems do not silently suppress property test failures.</p>
+<p><strong>When to use:</strong> In CI configuration and the human review process. Property test failures in CI produce actionable messages identifying which contract was broken and linking to remediation documentation. Golden test failures require explicit <code>cargo insta review</code> acceptance.</p>
+<p><strong>Example:</strong> When <code>prop_binary_narrowing_selects_valid_midpoint</code> fails, CI reports the counterexample (the sequence size and observation pattern that triggered the failure) and links to <code>TESTING.md</code> for remediation steps. A maintainer must review the counterexample and either fix the code or update the property.</p>
+<p><strong>Anti-example:</strong> Configuring CI to ignore property test failures or automatically accepting golden snapshot changes without human review.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0003-honest-localization-outcomes.html">ADR-0003: Honest Localization Outcomes</a>
+<strong>Related Scenarios:</strong> <code>prop_schema_drift_detection</code>, all <code>proptest!</code> blocks in the workspace</p>
+<hr>
+<h2 id="8-mutation-on-diff"><a class="header" href="#8-mutation-on-diff">8. Mutation-On-Diff</a></h2>
+<p><strong>Definition:</strong> Mutation testing is applied to the domain crates most critical to correctness — <code>faultline-localization</code> (narrowing + outcome logic) and <code>faultline-app</code> (orchestration loop) — to ensure that the test suite catches meaningful code changes.</p>
+<p><strong>When to use:</strong> When modifying core narrowing logic, outcome classification, or the orchestration loop. Run <code>cargo xtask mutants</code> to verify that surviving mutants are intentional (equivalent mutants) rather than gaps in test coverage.</p>
+<p><strong>Example:</strong> <code>cargo xtask mutants</code> invokes <code>cargo-mutants</code> targeting <code>faultline-localization</code>’s core narrowing and outcome logic. Surviving mutants are reviewed to determine if they represent equivalent mutations or missing test coverage.</p>
+<p><strong>Anti-example:</strong> Running mutation testing on adapter crates like <code>faultline-git</code> where the test suite depends on external state (real Git repos) — mutation testing is most valuable on pure domain logic.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0001-hexagonal-architecture.html">ADR-0001: Hexagonal Architecture</a>
+<strong>Related Scenarios:</strong> <code>prop_monotonic_window_narrowing</code>, <code>prop_probe_count_respects_max_probes</code></p>
+<hr>
+<h2 id="9-golden-artifact-contract"><a class="header" href="#9-golden-artifact-contract">9. Golden Artifact Contract</a></h2>
+<p><strong>Definition:</strong> Key artifacts (JSON report, HTML report, CLI help text) are snapshot-tested via <code>insta</code> so that any change to their structure or content requires explicit human review and acceptance.</p>
+<p><strong>When to use:</strong> When modifying <code>AnalysisReport</code> serialization, HTML rendering, or CLI flag definitions. Run <code>cargo insta test</code> to detect changes, then <code>cargo insta review</code> to accept or reject them.</p>
+<p><strong>Example:</strong> The <code>golden_analysis_json</code> test in <code>faultline-render</code> snapshots the JSON output of a canonical fixture report. The <code>golden_cli_help</code> test in <code>faultline-cli</code> snapshots the <code>--help</code> text. When these change, CI fails with instructions to run <code>cargo insta review</code>.</p>
+<p><strong>Anti-example:</strong> Deleting or regenerating golden snapshots without reviewing the diff — this defeats the purpose of the contract.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0001-hexagonal-architecture.html">ADR-0001: Hexagonal Architecture</a>
+<strong>Related Scenarios:</strong> <code>golden_analysis_json</code>, <code>golden_index_html</code>, <code>golden_cli_help</code></p>
+<hr>
+<h2 id="10-delegation-safe-crate-seam"><a class="header" href="#10-delegation-safe-crate-seam">10. Delegation-Safe Crate Seam</a></h2>
+<p><strong>Definition:</strong> Crate boundaries are drawn at natural seams where a delegated agent or new contributor can work on one crate without understanding the internals of others — each crate has a clear responsibility, a defined tier, and documented dependencies.</p>
+<p><strong>When to use:</strong> When adding a new crate or restructuring existing ones. Use <code>cargo xtask scaffold crate</code> to generate the boilerplate. The crate map (<code>docs/crate-map.md</code>) documents every crate’s tier, dependencies, and responsibility.</p>
+<p><strong>Example:</strong> <code>faultline-sarif</code> and <code>faultline-junit</code> are adapter crates that depend only on <code>faultline-types</code>. A contributor can implement SARIF export without understanding the localization algorithm — they only need the <code>AnalysisReport</code> type definition.</p>
+<p><strong>Anti-example:</strong> Creating a “utils” crate that every other crate depends on — this creates a coupling hub that defeats the purpose of crate seams. Each crate should have a focused, single responsibility.</p>
+<p><strong>Related ADRs:</strong> <a href="../adr/0001-hexagonal-architecture.html">ADR-0001: Hexagonal Architecture</a>
+<strong>Related Scenarios:</strong> <code>prop_sarif_export_structural_validity</code>, <code>prop_junit_xml_export_structural_validity</code></p>
+<hr>
+<h2 id="glossary"><a class="header" href="#glossary">Glossary</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Term</th><th>Definition</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Adapter</strong></td><td>A crate that implements a port trait, bridging domain logic to infrastructure (Git, filesystem, processes).</td></tr>
+<tr><td><strong>Artifact</strong></td><td>A portable output file produced by a faultline run (<code>analysis.json</code>, <code>index.html</code>, Markdown dossier).</td></tr>
+<tr><td><strong>BDD scenario</strong></td><td>A behavior-driven test that exercises an integration flow with realistic fixtures.</td></tr>
+<tr><td><strong>Boundary pair</strong></td><td>The adjacent last-good and first-bad commits that define the regression boundary.</td></tr>
+<tr><td><strong>Confidence</strong></td><td>A score (high/medium/low) indicating how much certainty the evidence supports for a localization outcome.</td></tr>
+<tr><td><strong>Domain crate</strong></td><td>A pure crate with no I/O dependencies that contains business logic.</td></tr>
+<tr><td><strong>FirstBad</strong></td><td>A localization outcome where the exact first-bad commit is identified with high confidence.</td></tr>
+<tr><td><strong>Golden test</strong></td><td>A snapshot test (via <code>insta</code>) that captures the expected output of an artifact for regression detection.</td></tr>
+<tr><td><strong>Inconclusive</strong></td><td>A localization outcome where insufficient evidence prevents narrowing the regression window.</td></tr>
+<tr><td><strong>Localization</strong></td><td>The process of narrowing a regression window by binary search over a revision sequence.</td></tr>
+<tr><td><strong>Mutation testing</strong></td><td>A verification technique that introduces small code changes (mutants) to verify the test suite detects them.</td></tr>
+<tr><td><strong>Non-monotonic evidence</strong></td><td>When a Fail observation appears before a Pass observation in the revision sequence, violating the expected pass→fail transition.</td></tr>
+<tr><td><strong>Operator</strong></td><td>The human or automated system that invokes faultline with a predicate command.</td></tr>
+<tr><td><strong>Port</strong></td><td>A trait defining an outbound boundary between domain logic and infrastructure.</td></tr>
+<tr><td><strong>Predicate</strong></td><td>The operator-supplied command that faultline runs at each candidate revision to determine pass/fail/skip/indeterminate.</td></tr>
+<tr><td><strong>Property test</strong></td><td>A test using <code>proptest</code> that verifies an invariant holds across many randomly generated inputs.</td></tr>
+<tr><td><strong>Revision sequence</strong></td><td>An ordered list of commits between the good and bad boundaries.</td></tr>
+<tr><td><strong>Scenario Atlas</strong></td><td>The collection of documents (<code>scenario_index.md</code>, <code>behavior_map.md</code>) that catalog all tests in the workspace.</td></tr>
+<tr><td><strong>SuspectWindow</strong></td><td>A localization outcome where the regression is narrowed to a range but not an exact commit, with ambiguity reasons.</td></tr>
+<tr><td><strong>Verification matrix</strong></td><td>A per-crate mapping of applicable verification techniques (property, BDD, golden, fuzz, mutation, smoke).</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../reference/exit-codes.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../../../scenarios/scenario_index.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../reference/exit-codes.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../../../scenarios/scenario_index.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>

@@ -318,32 +318,32 @@ This plan implements the v0.1 product sharpening pass across 13 waves organized 
     - Write a test that simulates schema drift (modified `AnalysisReport` without schema regeneration) and verifies xtask detects the mismatch
     - _Requirements: 8.1_
 
-- [-] 16. Wave 10 — Scenario atlas enrichment
-  - [-] 16.1 Add metadata columns to `docs/scenarios/scenario_index.md`
+- [x] 16. Wave 10 — Scenario atlas enrichment
+  - [x] 16.1 Add metadata columns to `docs/scenarios/scenario_index.md`
     - Add columns: `scenario_tier` (domain | adapter | app | integration), `requirement_ids`, `artifact_contract`, `mutation_surface`, `criticality` (P0 | P1 | P2), `ownership_hint`, `human_review_required` (yes | no)
     - Populate metadata for all existing scenarios
     - _Requirements: 9.1, 9.2, 9.3_
 
-  - [~] 16.2 Add scenario entries for all new tests from this spec
+  - [x] 16.2 Add scenario entries for all new tests from this spec
     - Add entries for all property tests P43–P55, fuzz targets, BDD scenarios, and unit tests created in this spec
     - Include full metadata columns for each entry
     - _Requirements: 9.1, 9.2_
 
-- [ ] 17. Checkpoint — Tier 2 complete
+- [x] 17. Checkpoint — Tier 2 complete
   - Run `cargo test` across the entire workspace
   - Verify scenario atlas has metadata columns populated
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 18. Wave 11 — Xtask authority
-  - [~] 18.1 Implement real smoke test in `cargo xtask smoke`
+- [x] 18. Wave 11 — Xtask authority
+  - [x] 18.1 Implement real smoke test in `cargo xtask smoke`
     - Replace placeholder with a real test: use `GitRepoBuilder` (or equivalent) to create a fixture repo with a known regression, run faultline CLI against it, verify exit code and artifact existence
     - _Requirements: 10.1_
 
-  - [~] 18.2 Implement real link checking in `cargo xtask docs-check`
+  - [x] 18.2 Implement real link checking in `cargo xtask docs-check`
     - Integrate `lychee` or `markdown-link-check` for real link validation across all Markdown docs
     - _Requirements: 10.2_
 
-  - [~] 18.3 Add explicit xtask commands
+  - [x] 18.3 Add explicit xtask commands
     - Add `cargo xtask generate-schema` — regenerate `schemas/analysis-report.schema.json` from Rust types
     - Add `cargo xtask check-scenarios` — verify scenario atlas entries match actual tests
     - Add `cargo xtask export-markdown` — run Markdown export from a report directory
@@ -351,8 +351,8 @@ This plan implements the v0.1 product sharpening pass across 13 waves organized 
     - Add `cargo xtask export-junit` — run JUnit export from a report directory
     - _Requirements: 10.3_
 
-- [ ] 19. Wave 12 — Repo-law cleanup
-  - [~] 19.1 Fix workspace metadata and placeholder language
+- [x] 19. Wave 12 — Repo-law cleanup
+  - [x] 19.1 Fix workspace metadata and placeholder language
     - Update `Cargo.toml` workspace `authors` field to correct value
     - Remove or replace placeholder language in docs
     - Align `docs/crate-map.md` with current crate set and new capabilities
@@ -360,20 +360,20 @@ This plan implements the v0.1 product sharpening pass across 13 waves organized 
     - Fix any stale references in documentation
     - _Requirements: 11.1, 11.2, 11.3_
 
-- [ ] 20. Wave 13 — Teaching layer depth
-  - [~] 20.1 Create maintainer playbooks
+- [x] 20. Wave 13 — Teaching layer depth
+  - [x] 20.1 Create maintainer playbooks
     - Write playbook: reviewing failing property tests (in `docs/handbook/` or `MAINTAINERS.md`)
     - Write playbook: deciding test technique (property vs unit vs golden vs fuzz)
     - Write playbook: bumping `schema_version`
     - Write playbook: handling breaking changes
     - _Requirements: 12.1_
 
-  - [~] 20.2 Add worked examples and Diátaxis depth
+  - [x] 20.2 Add worked examples and Diátaxis depth
     - Add worked examples to `docs/handbook/` demonstrating key workflows
     - Strengthen Diátaxis depth: ensure tutorials, how-to guides, reference, and explanation sections are balanced
     - _Requirements: 12.2, 12.3_
 
-- [ ] 21. Final checkpoint — All tiers complete
+- [x] 21. Final checkpoint — All tiers complete
   - Run `cargo test` across the entire workspace
   - Run `cargo xtask ci-full` to verify all contracts pass
   - Regenerate JSON schema: `cargo xtask generate-schema`

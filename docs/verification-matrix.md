@@ -9,17 +9,17 @@ This matrix maps each workspace crate to its applicable verification techniques.
 | `faultline-codes` | domain | ✓ (via types) | ✓ | — | — | — | — |
 | `faultline-types` | domain | ✓ | ✓ | — | ✓ | — | — |
 | `faultline-localization` | domain | ✓ | ✓ | — | — | ✓ | — |
-| `faultline-surface` | domain | ✓ | ✓ | — | — | — | — |
+| `faultline-surface` | domain | ✓ | ✓ | — | — | ✓ | — |
 | `faultline-ports` | ports | — | — | — | — | — | — |
 | `faultline-app` | app | ✓ | ✓ | — | — | ✓ | — |
-| `faultline-git` | adapter | — | ✓ | — | — | — | — |
-| `faultline-probe-exec` | adapter | ✓ | ✓ | — | — | — | — |
-| `faultline-store` | adapter | ✓ | ✓ | — | — | — | — |
-| `faultline-render` | adapter | ✓ | ✓ | ✓ | — | — | — |
-| `faultline-cli` | entry | ✓ | ✓ | ✓ | — | — | ✓ |
+| `faultline-git` | adapter | ✓ | ✓ | — | ✓ | ✓ | — |
+| `faultline-probe-exec` | adapter | ✓ | ✓ | — | — | ✓ | — |
+| `faultline-store` | adapter | ✓ | ✓ | — | ✓ | ✓ | — |
+| `faultline-render` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `faultline-cli` | entry | ✓ | ✓ | ✓ | ✓ | — | ✓ |
 | `faultline-fixtures` | testing | — | — | — | — | — | — |
-| `faultline-sarif` | adapter | ✓ | ✓ | ✓ | — | — | — |
-| `faultline-junit` | adapter | ✓ | ✓ | ✓ | — | — | — |
+| `faultline-sarif` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
+| `faultline-junit` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | `xtask` | tooling | — | ✓ | — | — | — | — |
 
 ## Technique Definitions
@@ -43,15 +43,28 @@ This matrix maps each workspace crate to its applicable verification techniques.
 | Target | Scope | Command |
 |--------|-------|---------|
 | `faultline-localization` | Core narrowing logic + outcome classification | `cargo mutants -p faultline-localization -- --lib` |
-| `faultline-app` | Orchestration loop + boundary validation | `cargo mutants -p faultline-app -- --lib` |
+| `faultline-app` | Orchestration loop + boundary validation + flake retry + capsule generation | `cargo mutants -p faultline-app -- --lib` |
+| `faultline-git` | CODEOWNERS parsing + blame frequency + diff output handling | `cargo mutants -p faultline-git -- --lib` |
+| `faultline-probe-exec` | Predicate execution + timeout enforcement + exit code classification | `cargo mutants -p faultline-probe-exec -- --lib` |
+| `faultline-store` | Atomic writes + lock files + observation persistence | `cargo mutants -p faultline-store -- --lib` |
+| `faultline-render` | HTML/JSON/Markdown rendering + suspect surface display + HTML escaping | `cargo mutants -p faultline-render -- --lib` |
+| `faultline-sarif` | SARIF v2.1.0 export + suspect surface locations | `cargo mutants -p faultline-sarif -- --lib` |
+| `faultline-junit` | JUnit XML export + suspect surface in system-out | `cargo mutants -p faultline-junit -- --lib` |
+| `faultline-surface` | Suspect surface ranking + scoring + owner hint mapping | `cargo mutants -p faultline-surface -- --lib` |
 
-Mutation testing is run via `cargo xtask mutants` and is part of the `ci-extended` tier (manual trigger or release branches).
+Mutation testing is run via `cargo xtask mutants` (supports `--crate <name>` for targeted runs) and is part of the `ci-extended` tier (manual trigger or release branches).
 
 ## Fuzz Testing Budget
 
 | Target | Scope | Default Duration |
 |--------|-------|-----------------|
 | `fuzz_analysis_report` | `AnalysisReport` JSON deserialization | 60 seconds |
+| `fuzz_git_diff_parse` | Git adapter diff output parsing with arbitrary byte strings | 60 seconds |
+| `fuzz_store_json` | Store JSON deserialization with malformed `observations.json` | 60 seconds |
+| `fuzz_html_escape` | Renderer HTML escaping with adversarial strings | 60 seconds |
+| `fuzz_cli_args` | CLI argument parsing via clap with arbitrary string vectors | 60 seconds |
+| `fuzz_sarif_export` | SARIF serialization with arbitrary `AnalysisReport` JSON | 60 seconds |
+| `fuzz_junit_export` | JUnit serialization with arbitrary `AnalysisReport` JSON | 60 seconds |
 
 Fuzz testing is run via `cargo xtask fuzz --duration <seconds>` and is part of the `ci-extended` tier.
 

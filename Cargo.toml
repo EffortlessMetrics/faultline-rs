@@ -22,7 +22,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-authors = ["Steven Zimmerman, CPA"]
+authors = ["faultline contributors"]
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }

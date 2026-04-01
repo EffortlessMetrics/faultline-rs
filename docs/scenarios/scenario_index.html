@@ -1,0 +1,734 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Scenario Atlas - faultline</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-2459343d.css">
+        <link rel="stylesheet" href="../css/chrome-ae938929.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-9ba5fd36.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">faultline</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="scenario-index"><a class="header" href="#scenario-index">Scenario Index</a></h1>
+<p>This index catalogs every BDD scenario and property test in the faultline workspace. Each entry includes the scenario name, problem description, fixture or generator, crate(s) exercised, artifact(s) produced or validated, invariant or property asserted, related references, and enriched metadata (scenario tier, requirement IDs, artifact contract, mutation surface, criticality, ownership hint, human review required).</p>
+<p>Scenarios are organized by crate tier following the verification matrix.</p>
+<hr>
+<h2 id="domain-tier--property-tests"><a class="header" href="#domain-tier--property-tests">Domain Tier — Property Tests</a></h2>
+<h3 id="faultline-codes"><a class="header" href="#faultline-codes">faultline-codes</a></h3>
+<p><em>No dedicated tests. Enum types are exercised transitively through <code>faultline-types</code> and <code>faultline-localization</code> tests.</em></p>
+<h3 id="faultline-types"><a class="header" href="#faultline-types">faultline-types</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>all_types_derive_required_traits</code></td><td>All public types implement Serialize, Deserialize, Debug, Clone, PartialEq, Eq</td><td>Hand-built samples</td><td>faultline-types</td><td>—</td><td>Trait completeness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>stable_hash_deterministic</code></td><td>FNV hash produces identical output for identical input</td><td>Fixed input <code>"hello world"</code></td><td>faultline-types</td><td>—</td><td>Determinism</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>stable_hash_different_inputs_differ</code></td><td>Different inputs produce different hashes</td><td>Fixed inputs <code>"hello"</code>, <code>"world"</code></td><td>faultline-types</td><td>—</td><td>Collision resistance</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>stable_hash_returns_16_hex_chars</code></td><td>Hash output is exactly 16 hex characters</td><td>Fixed input <code>"test"</code></td><td>faultline-types</td><td>—</td><td>Format correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>now_epoch_seconds_returns_reasonable_value</code></td><td>Timestamp is within a plausible range</td><td>System clock</td><td>faultline-types</td><td>—</td><td>Sanity check</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>probe_spec_fingerprint_deterministic</code></td><td>ProbeSpec fingerprint is deterministic</td><td>Sample ProbeSpec</td><td>faultline-types</td><td>—</td><td>Determinism</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>probe_spec_fingerprint_differs_for_different_specs</code></td><td>Different ProbeSpecs produce different fingerprints</td><td>Two distinct ProbeSpecs</td><td>faultline-types</td><td>—</td><td>Uniqueness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>analysis_request_fingerprint_deterministic</code></td><td>AnalysisRequest fingerprint is deterministic</td><td>Sample AnalysisRequest</td><td>faultline-types</td><td>—</td><td>Determinism</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>analysis_request_fingerprint_differs_for_different_requests</code></td><td>Different requests produce different fingerprints</td><td>Two distinct AnalysisRequests</td><td>faultline-types</td><td>—</td><td>Uniqueness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>boundary_pair_first_bad</code></td><td>FirstBad outcome returns correct boundary pair</td><td>Hand-built outcome</td><td>faultline-types</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>boundary_pair_suspect_window</code></td><td>SuspectWindow outcome returns correct boundary pair</td><td>Hand-built outcome</td><td>faultline-types</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>boundary_pair_inconclusive_returns_none</code></td><td>Inconclusive outcome returns None for boundary pair</td><td>Hand-built outcome</td><td>faultline-types</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>confidence_high</code></td><td>Confidence::high() returns score=95, label=“high”</td><td>Constructor</td><td>faultline-types</td><td>—</td><td>Value correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>confidence_medium</code></td><td>Confidence::medium() returns score=65, label=“medium”</td><td>Constructor</td><td>faultline-types</td><td>—</td><td>Value correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>confidence_low</code></td><td>Confidence::low() returns score=25, label=“low”</td><td>Constructor</td><td>faultline-types</td><td>—</td><td>Value correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>search_policy_default</code></td><td>Default SearchPolicy has max_probes=64</td><td>Default constructor</td><td>faultline-types</td><td>—</td><td>Default correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>commit_id_display</code></td><td>CommitId Display impl formats correctly</td><td>Fixed CommitId</td><td>faultline-types</td><td>—</td><td>Display correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>revision_sequence_len_and_is_empty</code></td><td>RevisionSequence len/is_empty work correctly</td><td>Empty and non-empty sequences</td><td>faultline-types</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>faultline_error_from_io</code></td><td>FaultlineError::from(io::Error) produces Io variant</td><td>io::Error</td><td>faultline-types</td><td>—</td><td>Error conversion</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>faultline_error_from_serde_json</code></td><td>FaultlineError::from(serde_json::Error) produces Serde variant</td><td>Invalid JSON</td><td>faultline-types</td><td>—</td><td>Error conversion</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>faultline_error_display</code></td><td>All FaultlineError variants display correctly</td><td>Each variant</td><td>faultline-types</td><td>—</td><td>Display correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>prop_json_serialization_determinism</code></td><td>Serializing the same AnalysisReport twice produces byte-identical JSON</td><td><code>arb_analysis_report()</code></td><td>faultline-types</td><td>—</td><td>P14: Determinism</td><td>Req 6.3</td><td>domain</td><td>Req 6.3</td><td>analysis.json</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_analysis_report_json_round_trip</code></td><td>JSON round-trip preserves equality for AnalysisReport</td><td><code>arb_analysis_report()</code></td><td>faultline-types</td><td>—</td><td>P15: Round-trip</td><td>Req 6.5</td><td>domain</td><td>Req 6.5</td><td>analysis.json</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_json_schema_validates_all_valid_reports</code></td><td>Generated JSON Schema accepts all valid AnalysisReport instances</td><td><code>arb_analysis_report()</code></td><td>faultline-types</td><td>—</td><td>P40: Schema validity</td><td>Req 3.1, 3.2</td><td>domain</td><td>Req 3.1, 3.2</td><td>analysis-report.schema.json</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>flake_policy_default</code></td><td>Default FlakePolicy has retries=0, stability_threshold=1.0</td><td>Default constructor</td><td>faultline-types</td><td>—</td><td>Default correctness</td><td>—</td><td>domain</td><td>Req 3.6</td><td>—</td><td>faultline-types</td><td>P2</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>to_shell_script_exec_variant</code></td><td>Shell script for Exec probe contains required fields</td><td>Hand-built capsule</td><td>faultline-types</td><td>—</td><td>Script correctness</td><td>—</td><td>domain</td><td>Req 4.4</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>to_shell_script_shell_variant</code></td><td>Shell script for Shell probe contains required fields</td><td>Hand-built capsule</td><td>faultline-types</td><td>—</td><td>Script correctness</td><td>—</td><td>domain</td><td>Req 4.4</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>to_shell_script_escapes_single_quotes</code></td><td>Shell script escapes single quotes in arguments</td><td>Hand-built capsule with quotes</td><td>faultline-types</td><td>—</td><td>Security</td><td>—</td><td>domain</td><td>Req 4.4</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>compare_runs_self_comparison_yields_zero_diff</code></td><td>Self-comparison produces zero diff</td><td>Sample report</td><td>faultline-types</td><td>—</td><td>Identity comparison</td><td>—</td><td>domain</td><td>Req 5.3</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>compare_runs_different_outcomes</code></td><td>Different outcomes detected</td><td>Two distinct reports</td><td>faultline-types</td><td>—</td><td>Outcome change detection</td><td>—</td><td>domain</td><td>Req 5.1</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>compare_runs_suspect_path_diffs</code></td><td>Suspect path additions/removals detected</td><td>Reports with different suspect surfaces</td><td>faultline-types</td><td>—</td><td>Path diff correctness</td><td>—</td><td>domain</td><td>Req 5.2</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>compare_runs_never_panics_on_empty_reports</code></td><td>Empty reports compared without panic</td><td>Minimal empty reports</td><td>faultline-types</td><td>—</td><td>Totality</td><td>—</td><td>domain</td><td>Req 5.1</td><td>—</td><td>faultline-types</td><td>P1</td><td>faultline-types</td><td>no</td></tr>
+<tr><td><code>schema_evolution_old_version_deserializes_with_defaults</code></td><td>Old v0.1.0 report deserializes with serde defaults</td><td>Hand-built v0.1.0 JSON</td><td>faultline-types</td><td>—</td><td>Forward compatibility</td><td>—</td><td>domain</td><td>—</td><td>analysis.json</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_flake_signal_stability_classification</code></td><td>FlakeSignal stability matches threshold logic, counts sum to total_runs</td><td><code>arb ObservationClass vec × threshold</code></td><td>faultline-types</td><td>—</td><td>P48: FlakeSignal stability</td><td>Req 3.2, 3.3</td><td>domain</td><td>Req 3.2, 3.3</td><td>—</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_shell_script_contains_required_fields</code></td><td>Shell script contains commit, predicate, timeout, env vars</td><td><code>arb_reproduction_capsule()</code></td><td>faultline-types</td><td>—</td><td>P52: Shell script generation</td><td>Req 4.4</td><td>domain</td><td>Req 4.4</td><td>—</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_reproduction_capsule_structural_correspondence</code></td><td>Capsule count equals observation count, fields match</td><td><code>arb_report_with_capsules()</code></td><td>faultline-types</td><td>—</td><td>P51: Capsule correspondence</td><td>Req 4.1, 4.2</td><td>domain</td><td>Req 4.1, 4.2</td><td>—</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_compare_runs_is_total</code></td><td>compare_runs never panics for any two reports</td><td><code>arb_analysis_report() × 2</code></td><td>faultline-types</td><td>—</td><td>P53: Totality</td><td>Req 5.1</td><td>domain</td><td>Req 5.1</td><td>—</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+<tr><td><code>prop_self_comparison_yields_zero_diff</code></td><td>Self-comparison yields zero diff for any report</td><td><code>arb_analysis_report()</code></td><td>faultline-types</td><td>—</td><td>P54: Self-comparison</td><td>Req 5.3</td><td>domain</td><td>Req 5.3</td><td>—</td><td>faultline-types</td><td>P0</td><td>faultline-types</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-localization"><a class="header" href="#faultline-localization">faultline-localization</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>new_rejects_empty_sequence</code></td><td>Empty revision sequence is rejected</td><td>Empty RevisionSequence</td><td>faultline-localization</td><td>—</td><td>Input validation</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>new_builds_index_by_commit</code></td><td>Session builds correct commit→index mapping</td><td><code>make_seq(["a","b","c"])</code></td><td>faultline-localization</td><td>—</td><td>Index correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>record_rejects_unknown_commit</code></td><td>Recording observation for unknown commit fails</td><td><code>make_seq(["a","b"])</code> + unknown “z”</td><td>faultline-localization</td><td>—</td><td>Input validation</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>record_accepts_known_commit</code></td><td>Recording observation for known commit succeeds</td><td><code>make_seq(["a","b"])</code></td><td>faultline-localization</td><td>—</td><td>Happy path</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>has_observation_and_get_observation</code></td><td>Observation accessors work before and after recording</td><td><code>make_seq(["a","b","c"])</code></td><td>faultline-localization</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>observation_list_returns_all_in_sequence_index_order</code></td><td>observation_list() sorts by sequence_index</td><td><code>make_seq</code> + obs_with_seq</td><td>faultline-localization</td><td>—</td><td>Sort order</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>observation_list_orders_by_sequence_index_not_revision_position</code></td><td>Sort is by sequence_index, not revision position</td><td>5-commit sequence, binary-search order</td><td>faultline-localization</td><td>—</td><td>Sort order</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>record_preserves_preassigned_sequence_index</code></td><td>Pre-assigned sequence_index is preserved</td><td><code>obs_with_seq("a", Pass, 42)</code></td><td>faultline-localization</td><td>—</td><td>Value preservation</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>sequence_accessor</code></td><td>sequence() returns the original RevisionSequence</td><td><code>make_seq(["a","b"])</code></td><td>faultline-localization</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_accessor</code></td><td>max_probes() returns the policy value</td><td>Policy with max_probes=42</td><td>faultline-localization</td><td>—</td><td>Accessor correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_probes_first_boundary_first</code></td><td>First probe targets the first commit</td><td><code>make_seq(["a","b","c"])</code></td><td>faultline-localization</td><td>—</td><td>Boundary-first probing</td><td>—</td><td>domain</td><td>Req 3.1</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_probes_last_boundary_second</code></td><td>Second probe targets the last commit</td><td><code>make_seq</code> + Pass at first</td><td>faultline-localization</td><td>—</td><td>Boundary-first probing</td><td>—</td><td>domain</td><td>Req 3.1</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_binary_narrows_between_boundaries</code></td><td>After boundaries, probe targets median unobserved</td><td>5-commit seq, Pass/Fail at ends</td><td>faultline-localization</td><td>—</td><td>Binary narrowing</td><td>—</td><td>domain</td><td>Req 3.1</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_returns_none_when_converged</code></td><td>No more probes when adjacent pass-fail found</td><td>2-commit seq, Pass+Fail</td><td>faultline-localization</td><td>—</td><td>Convergence detection</td><td>—</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_respects_max_probes</code></td><td>Stops probing when max_probes reached</td><td>max_probes=2, 5-commit seq</td><td>faultline-localization</td><td>—</td><td>Budget enforcement</td><td>—</td><td>domain</td><td>Req 3.8</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>next_probe_single_element_returns_none</code></td><td>Single-element sequence returns None</td><td>1-commit seq</td><td>faultline-localization</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>exact_boundary_when_adjacent</code></td><td>Adjacent Pass-Fail yields FirstBad</td><td>3-commit seq, binary narrowing</td><td>faultline-localization</td><td>—</td><td>Outcome correctness</td><td>Req 3.2</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>skipped_midpoint_yields_suspect_window</code></td><td>Skip between boundaries yields SuspectWindow</td><td>3-commit seq, mid=Skip</td><td>faultline-localization</td><td>—</td><td>Ambiguity detection</td><td>Req 3.3</td><td>domain</td><td>Req 3.3</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>indeterminate_midpoint_yields_suspect_window</code></td><td>Indeterminate between boundaries yields SuspectWindow</td><td>3-commit seq, mid=Indeterminate</td><td>faultline-localization</td><td>—</td><td>Ambiguity detection</td><td>Req 3.4</td><td>domain</td><td>Req 3.4</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>missing_pass_boundary_yields_inconclusive</code></td><td>No Pass observation yields Inconclusive</td><td>Only Fail recorded</td><td>faultline-localization</td><td>—</td><td>Missing boundary</td><td>Req 3.6</td><td>domain</td><td>Req 3.6</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>missing_fail_boundary_yields_inconclusive</code></td><td>No Fail observation yields Inconclusive</td><td>Only Pass recorded</td><td>faultline-localization</td><td>—</td><td>Missing boundary</td><td>Req 3.7</td><td>domain</td><td>Req 3.7</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>non_monotonic_evidence_yields_low_confidence</code></td><td>Fail before Pass yields low confidence</td><td>4-commit seq, non-monotonic</td><td>faultline-localization</td><td>—</td><td>Confidence scoring</td><td>Req 3.5</td><td>domain</td><td>Req 3.5</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>unobserved_between_boundaries_yields_inconclusive</code></td><td>Unobserved commits between boundaries yields Inconclusive</td><td>4-commit seq, gaps</td><td>faultline-localization</td><td>—</td><td>Incomplete evidence</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>first_bad_with_all_between_observed</code></td><td>All observed, clean transition yields FirstBad</td><td>3-commit seq, all observed</td><td>faultline-localization</td><td>—</td><td>Happy path</td><td>—</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_exhausted_with_unobserved_between_boundaries</code></td><td>Max probes + unobserved → Inconclusive with MaxProbesExhausted</td><td>max_probes=2, 5-commit seq</td><td>faultline-localization</td><td>—</td><td>Budget + incomplete</td><td>—</td><td>domain</td><td>Req 3.8</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_exhausted_with_skipped_between_boundaries</code></td><td>Max probes + Skip → SuspectWindow with MaxProbesExhausted</td><td>max_probes=3, 3-commit seq</td><td>faultline-localization</td><td>—</td><td>Budget + ambiguity</td><td>—</td><td>domain</td><td>Req 3.3, 3.8</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_exhausted_missing_pass_boundary</code></td><td>Max probes + no Pass → Inconclusive with both reasons</td><td>max_probes=1, only Fail</td><td>faultline-localization</td><td>—</td><td>Budget + missing boundary</td><td>—</td><td>domain</td><td>Req 3.6, 3.8</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_not_exhausted_no_extra_reason</code></td><td>Converged within budget → no MaxProbesExhausted</td><td>2-commit seq, default policy</td><td>faultline-localization</td><td>—</td><td>Clean convergence</td><td>—</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P2</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>max_probes_exhausted_but_converged_yields_first_bad</code></td><td>Converged exactly at budget → still FirstBad</td><td>max_probes=2, 2-commit seq</td><td>faultline-localization</td><td>—</td><td>Convergence priority</td><td>—</td><td>domain</td><td>Req 3.2, 3.8</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>prop_adjacent_pass_fail_yields_first_bad</code></td><td>Adjacent Pass-Fail always yields FirstBad with high confidence</td><td><code>n in 2..=20</code>, <code>i_frac</code></td><td>faultline-localization</td><td>—</td><td>P5: Adjacent boundary</td><td>Req 3.2</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_binary_narrowing_selects_valid_midpoint</code></td><td>next_probe() returns a valid unobserved midpoint</td><td><code>n in 3..=50</code></td><td>faultline-localization</td><td>—</td><td>P4: Valid midpoint</td><td>Req 3.1</td><td>domain</td><td>Req 3.1</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_first_bad_requires_direct_evidence</code></td><td>FirstBad outcome has direct Pass and Fail observations at boundary</td><td><code>n in 2..=20</code>, <code>i_frac</code></td><td>faultline-localization</td><td>—</td><td>P10: Direct evidence</td><td>Req 3.9, 11.1</td><td>domain</td><td>Req 3.9, 11.1</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_non_monotonic_evidence_yields_low_confidence</code></td><td>Non-monotonic evidence always yields low confidence</td><td><code>n in 4..=20</code>, fill selectors</td><td>faultline-localization</td><td>—</td><td>P7: Low confidence</td><td>Req 3.5</td><td>domain</td><td>Req 3.5</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_only_pass_yields_inconclusive_missing_fail_boundary</code></td><td>All-Pass observations yield Inconclusive with MissingFailBoundary</td><td><code>n in 3..=15</code>, random indices</td><td>faultline-localization</td><td>—</td><td>P8: Missing boundary</td><td>Req 3.6, 3.7</td><td>domain</td><td>Req 3.6, 3.7</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_only_fail_yields_inconclusive_missing_pass_boundary</code></td><td>All-Fail observations yield Inconclusive with MissingPassBoundary</td><td><code>n in 3..=15</code>, random indices</td><td>faultline-localization</td><td>—</td><td>P8: Missing boundary</td><td>Req 3.6, 3.7</td><td>domain</td><td>Req 3.6, 3.7</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_monotonic_window_narrowing</code></td><td>Window never expands during monotonic binary narrowing</td><td><code>n in 3..=20</code>, transition_frac</td><td>faultline-localization</td><td>—</td><td>P21: Monotonic narrowing</td><td>Req 11.2</td><td>domain</td><td>Req 11.2</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_suspect_window_confidence_cap</code></td><td>SuspectWindow confidence is always &lt; high</td><td><code>n in 4..=20</code>, ambig selectors</td><td>faultline-localization</td><td>—</td><td>P22: Confidence cap</td><td>Req 11.3</td><td>domain</td><td>Req 11.3</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_ambiguous_observations_yield_suspect_window</code></td><td>Skip/Indeterminate between boundaries yields SuspectWindow with correct reasons</td><td><code>n in 4..=20</code>, class selectors</td><td>faultline-localization</td><td>—</td><td>P6: Ambiguous observations</td><td>Req 3.3, 3.4</td><td>domain</td><td>Req 3.3, 3.4</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_observation_order_independence</code></td><td>Outcome is independent of observation recording order</td><td><code>n in 3..=12</code>, permutation seeds</td><td>faultline-localization</td><td>—</td><td>P23: Order independence</td><td>Req 11.4</td><td>domain</td><td>Req 11.4</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_max_probe_exhaustion_produces_explicit_outcome</code></td><td>Max probes exhausted always includes MaxProbesExhausted reason</td><td><code>n in 5..=30</code>, <code>max_probes in 2..=5</code></td><td>faultline-localization</td><td>—</td><td>P25: Explicit exhaustion</td><td>Req 3.2</td><td>domain</td><td>Req 3.2</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_observation_sequence_order_preservation</code></td><td>observation_list() returns observations sorted by sequence_index</td><td><code>n in 2..=20</code>, seq_indices</td><td>faultline-localization</td><td>—</td><td>P26: Order preservation</td><td>Req 3.3</td><td>domain</td><td>Req 3.3</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_flaky_observations_degrade_confidence</code></td><td>Flaky observations produce strictly lower confidence than stable</td><td><code>n in 3..=15</code>, metamorphic</td><td>faultline-localization</td><td>—</td><td>P49: Flaky confidence degradation</td><td>Req 3.4</td><td>domain</td><td>Req 3.4</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+<tr><td><code>prop_default_flake_policy_no_signal</code></td><td>Default FlakePolicy (retries=0) produces no FlakeSignal</td><td><code>n in 2..=15</code>, class selectors</td><td>faultline-localization</td><td>—</td><td>P50: Default no signal</td><td>Req 3.6</td><td>domain</td><td>Req 3.6</td><td>—</td><td>faultline-localization</td><td>P0</td><td>faultline-localization</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h4 id="faultline-localization--fixture-scenarios"><a class="header" href="#faultline-localization--fixture-scenarios">faultline-localization — Fixture Scenarios</a></h4>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fixture_skipped_midpoint_yields_suspect_window</code></td><td>Skipped midpoint produces SuspectWindow with SkippedRevision</td><td><code>RevisionSequenceBuilder::with_labels</code></td><td>faultline-localization, faultline-fixtures</td><td>—</td><td>Fixture: skipped midpoint</td><td>Req 7.5</td><td>domain</td><td>Req 7.5</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>fixture_timed_out_midpoint_yields_suspect_window</code></td><td>Timed-out midpoint produces SuspectWindow with IndeterminateRevision</td><td><code>RevisionSequenceBuilder::with_labels</code></td><td>faultline-localization, faultline-fixtures</td><td>—</td><td>Fixture: timed-out midpoint</td><td>Req 7.5</td><td>domain</td><td>Req 7.5</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+<tr><td><code>fixture_non_monotonic_yields_low_confidence</code></td><td>Non-monotonic evidence produces low confidence SuspectWindow</td><td><code>RevisionSequenceBuilder::with_labels</code></td><td>faultline-localization, faultline-fixtures</td><td>—</td><td>Fixture: non-monotonic</td><td>Req 7.5</td><td>domain</td><td>Req 7.5</td><td>—</td><td>faultline-localization</td><td>P1</td><td>faultline-localization</td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-surface"><a class="header" href="#faultline-surface">faultline-surface</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bucket_name_extracts_top_level_directory</code></td><td>Top-level directory extraction</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Bucketing correctness</td><td>—</td><td>domain</td><td>Req 5.2</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>bucket_name_root_level_file_uses_filename</code></td><td>Root-level files use filename as bucket</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Bucketing correctness</td><td>—</td><td>domain</td><td>Req 5.2</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>bucket_name_empty_path_returns_repo_root</code></td><td>Empty path maps to “repo-root”</td><td>Empty/slash paths</td><td>faultline-surface</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_source</code></td><td>Source files classified as “source”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>Req 5.2</td><td>domain</td><td>Req 5.2</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_tests</code></td><td>Test files classified as “tests”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>Req 5.2</td><td>domain</td><td>Req 5.2</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_benchmarks</code></td><td>Benchmark files classified as “benchmarks”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_scripts</code></td><td>Script files classified as “scripts”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_workflows</code></td><td>Workflow files classified as “workflows”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_docs</code></td><td>Doc files classified as “docs”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_build_script</code></td><td>build.rs classified as “build-script”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_lockfile</code></td><td>Lock files classified as “lockfile”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_migrations</code></td><td>Migration files classified as “migrations”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>surface_kind_other</code></td><td>Unrecognized files classified as “other”</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Classification</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>execution_surface_workflows</code></td><td>Workflow files are execution surfaces</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Execution surface</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>execution_surface_build_scripts</code></td><td>build.rs files are execution surfaces</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Execution surface</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>execution_surface_shell_scripts</code></td><td>Shell scripts are execution surfaces</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Execution surface</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>non_execution_surface</code></td><td>Source/config files are not execution surfaces</td><td>Fixed paths</td><td>faultline-surface</td><td>—</td><td>Negative case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_empty_input</code></td><td>Empty input produces empty summary</td><td>Empty slice</td><td>faultline-surface</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_groups_by_top_level_directory</code></td><td>Changes grouped by top-level directory</td><td>Mixed paths</td><td>faultline-surface</td><td>—</td><td>Grouping correctness</td><td>Req 5.3</td><td>domain</td><td>Req 5.3</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_collects_execution_surfaces</code></td><td>Execution surfaces collected separately</td><td>Mixed paths</td><td>faultline-surface</td><td>—</td><td>Separation</td><td>Req 5.4</td><td>domain</td><td>Req 5.4</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_assigns_multiple_surface_kinds_per_bucket</code></td><td>Buckets can have multiple surface kinds</td><td>Mixed paths in one dir</td><td>faultline-surface</td><td>—</td><td>Multi-kind buckets</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_total_changes_equals_input_length</code></td><td>total_changes matches input count</td><td>5 mixed paths</td><td>faultline-surface</td><td>—</td><td>Count correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>summarize_every_path_in_exactly_one_bucket</code></td><td>Every path appears in exactly one bucket</td><td>4 mixed paths</td><td>faultline-surface</td><td>—</td><td>Partition correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>prop_surface_analysis_invariants</code></td><td>Surface analysis maintains all structural invariants</td><td><code>arb_path_change()</code> × 1..30</td><td>faultline-surface</td><td>—</td><td>P13: Surface invariants</td><td>Req 5.2, 5.3, 5.4</td><td>domain</td><td>Req 5.2, 5.3, 5.4</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>yes</td></tr>
+<tr><td><code>rank_suspect_surface_empty_input</code></td><td>Empty input produces empty ranking</td><td>Empty slice</td><td>faultline-surface</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>Req 1.1</td><td>—</td><td>faultline-surface</td><td>P2</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>rank_suspect_surface_single_modified_source</code></td><td>Single modified source scored correctly</td><td>Single PathChange</td><td>faultline-surface</td><td>—</td><td>Scoring correctness</td><td>—</td><td>domain</td><td>Req 1.1, 1.2</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>rank_suspect_surface_scoring_rules</code></td><td>Scoring rules applied correctly for mixed changes</td><td>Mixed PathChange set</td><td>faultline-surface</td><td>—</td><td>Scoring correctness</td><td>—</td><td>domain</td><td>Req 1.1, 1.2</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>rank_suspect_surface_owner_hints</code></td><td>Owner hints populated from owners map</td><td>PathChanges + owners map</td><td>faultline-surface</td><td>—</td><td>Owner hint fidelity</td><td>—</td><td>domain</td><td>Req 1.3, 1.4, 1.5</td><td>—</td><td>faultline-surface</td><td>P1</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>rank_suspect_surface_execution_surface_deleted</code></td><td>Execution surface + deleted file scored highest</td><td>Mixed PathChanges</td><td>faultline-surface</td><td>—</td><td>Score ordering</td><td>—</td><td>domain</td><td>Req 1.2</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>no</td></tr>
+<tr><td><code>prop_suspect_ranking_sorted_and_deterministic</code></td><td>Ranking is sorted by descending score, ascending path, and deterministic</td><td><code>arb_path_change()</code> × 0..30</td><td>faultline-surface</td><td>—</td><td>P43: Sorted &amp; deterministic</td><td>Req 1.1, 1.10</td><td>domain</td><td>Req 1.1, 1.10</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>yes</td></tr>
+<tr><td><code>prop_exec_rename_delete_score_higher_than_ordinary</code></td><td>Execution surfaces, renames, deletes score higher than ordinary</td><td><code>arb_mixed_path_changes()</code></td><td>faultline-surface</td><td>—</td><td>P44: Score ordering</td><td>Req 1.2</td><td>domain</td><td>Req 1.2</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>yes</td></tr>
+<tr><td><code>prop_suspect_entry_preserves_status_and_surface_kind</code></td><td>SuspectEntry preserves change_status and surface_kind</td><td><code>arb_path_change()</code></td><td>faultline-surface</td><td>—</td><td>P45: Field consistency</td><td>Req 1.6, 1.7</td><td>domain</td><td>Req 1.6, 1.7</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>yes</td></tr>
+<tr><td><code>prop_suspect_entry_owner_hint_matches_map</code></td><td>SuspectEntry owner_hint matches owners map</td><td><code>arb_path_change()</code> × 1..20 + owners</td><td>faultline-surface</td><td>—</td><td>P46: Owner hint fidelity</td><td>Req 1.3, 1.4, 1.5</td><td>domain</td><td>Req 1.3, 1.4, 1.5</td><td>—</td><td>faultline-surface</td><td>P0</td><td>faultline-surface</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-fixtures"><a class="header" href="#faultline-fixtures">faultline-fixtures</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>push_and_build_produces_correct_sequence</code></td><td>Push + build produces correct RevisionSequence</td><td><code>RevisionSequenceBuilder::new()</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>exact_boundary_produces_n_commits</code></td><td>exact_boundary(n) produces n-commit sequence</td><td><code>RevisionSequenceBuilder::exact_boundary</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>exact_boundary_zero_produces_empty_sequence</code></td><td>exact_boundary(0) produces empty sequence</td><td><code>RevisionSequenceBuilder::exact_boundary(0)</code></td><td>faultline-fixtures</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P2</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>with_labels_produces_correct_sequence</code></td><td>with_labels produces sequence with given labels</td><td><code>RevisionSequenceBuilder::with_labels</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>with_labels_empty_produces_empty_sequence</code></td><td>with_labels([]) produces empty sequence</td><td><code>RevisionSequenceBuilder::with_labels(&amp;[])</code></td><td>faultline-fixtures</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P2</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>build_with_fewer_than_two_commits_still_works</code></td><td>Builder with &lt;2 commits still produces valid sequence</td><td><code>RevisionSequenceBuilder::new()</code></td><td>faultline-fixtures</td><td>—</td><td>Edge case</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P2</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>git_repo_builder_creates_repo_with_commits</code></td><td>GitRepoBuilder creates real Git repo with commits</td><td><code>GitRepoBuilder::new()</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>git_repo_builder_supports_delete</code></td><td>GitRepoBuilder supports file deletion</td><td><code>GitRepoBuilder + FileOp::Delete</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>git_repo_builder_supports_rename</code></td><td>GitRepoBuilder supports file rename</td><td><code>GitRepoBuilder + FileOp::Rename</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>git_repo_builder_merge</code></td><td>GitRepoBuilder supports merge commits</td><td><code>GitRepoBuilder::merge()</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>git_repo_builder_subdirectories</code></td><td>GitRepoBuilder supports nested directory paths</td><td><code>GitRepoBuilder + nested paths</code></td><td>faultline-fixtures</td><td>—</td><td>Builder correctness</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P1</td><td>faultline-fixtures</td><td>no</td></tr>
+<tr><td><code>prop_revision_sequence_boundary_invariant</code></td><td>RevisionSequence boundary invariant holds for arbitrary SHAs</td><td><code>arb good/bad SHA strings</code></td><td>faultline-fixtures</td><td>—</td><td>Boundary invariant</td><td>—</td><td>domain</td><td>—</td><td>—</td><td>faultline-fixtures</td><td>P0</td><td>faultline-fixtures</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="adapter-tier--bdd-property-and-golden-tests"><a class="header" href="#adapter-tier--bdd-property-and-golden-tests">Adapter Tier — BDD, Property, and Golden Tests</a></h2>
+<h3 id="faultline-probe-exec"><a class="header" href="#faultline-probe-exec">faultline-probe-exec</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>prop_exit_code_classification</code></td><td>Exit codes map to correct ObservationClass</td><td><code>arb exit_code × timed_out</code></td><td>faultline-probe-exec</td><td>—</td><td>P1: Exit code classification</td><td>Req 2.3–2.6</td><td>adapter</td><td>Req 2.3–2.6</td><td>—</td><td>faultline-probe-exec</td><td>P0</td><td>faultline-probe-exec</td><td>yes</td></tr>
+<tr><td><code>prop_signal_aware_exit_code_classification</code></td><td>Signal-aware classification handles all combinations</td><td><code>arb exit_code × timed_out × signal_number</code></td><td>faultline-probe-exec</td><td>—</td><td>P27: Signal-aware classification</td><td>Req 5.1, 5.2</td><td>adapter</td><td>Req 5.1, 5.2</td><td>—</td><td>faultline-probe-exec</td><td>P0</td><td>faultline-probe-exec</td><td>yes</td></tr>
+<tr><td><code>prop_observation_structural_completeness</code></td><td>Probe observations contain all required fields</td><td><code>arb_commit_id() × arb_probe_kind()</code></td><td>faultline-probe-exec</td><td>—</td><td>P2/P28: Structural completeness</td><td>Req 2.7, 4.7, 5.4</td><td>adapter</td><td>Req 2.7, 4.7, 5.4</td><td>—</td><td>faultline-probe-exec</td><td>P0</td><td>faultline-probe-exec</td><td>yes</td></tr>
+<tr><td><code>truncate_output_under_limit_unchanged</code></td><td>Output under limit is unchanged</td><td>Fixed short string</td><td>faultline-probe-exec</td><td>—</td><td>Truncation correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-probe-exec</td><td>P2</td><td>faultline-probe-exec</td><td>no</td></tr>
+<tr><td><code>truncate_output_at_limit_unchanged</code></td><td>Output exactly at limit is unchanged</td><td>String of limit length</td><td>faultline-probe-exec</td><td>—</td><td>Truncation boundary</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-probe-exec</td><td>P2</td><td>faultline-probe-exec</td><td>no</td></tr>
+<tr><td><code>truncate_output_over_limit_truncated</code></td><td>Output over limit is truncated with marker</td><td>String exceeding limit</td><td>faultline-probe-exec</td><td>—</td><td>Truncation correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-probe-exec</td><td>P1</td><td>faultline-probe-exec</td><td>no</td></tr>
+<tr><td><code>truncate_output_empty_string</code></td><td>Empty string is unchanged</td><td>Empty string</td><td>faultline-probe-exec</td><td>—</td><td>Edge case</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-probe-exec</td><td>P2</td><td>faultline-probe-exec</td><td>no</td></tr>
+<tr><td><code>signal_termination_sets_signal_number</code></td><td>Signal-killed process sets signal_number field</td><td>Shell probe with self-SIGTERM</td><td>faultline-probe-exec</td><td>—</td><td>Signal detection</td><td>Req 5.1</td><td>adapter</td><td>Req 5.1</td><td>—</td><td>faultline-probe-exec</td><td>P0</td><td>faultline-probe-exec</td><td>no</td></tr>
+<tr><td><code>probe_output_exceeding_limit_is_truncated</code></td><td>Real probe output exceeding limit is truncated</td><td>Shell probe with large output</td><td>faultline-probe-exec</td><td>—</td><td>Integration truncation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-probe-exec</td><td>P1</td><td>faultline-probe-exec</td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-store"><a class="header" href="#faultline-store">faultline-store</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>prepare_run_creates_directory_and_request_json</code></td><td>Run preparation creates directory and persists request</td><td>Sample request + TempDir</td><td>faultline-store</td><td>request.json</td><td>Persistence</td><td>—</td><td>adapter</td><td>—</td><td>request.json</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prepare_run_sets_resumed_on_second_call</code></td><td>Second prepare_run sets resumed=true</td><td>Same request twice</td><td>faultline-store</td><td>—</td><td>Resume detection</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>load_observations_returns_empty_when_no_file</code></td><td>Missing observations file returns empty vec</td><td>Fresh run</td><td>faultline-store</td><td>—</td><td>Default behavior</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P2</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_and_load_single_observation</code></td><td>Single observation round-trips through store</td><td>Sample observation + TempDir</td><td>faultline-store</td><td>observations.json</td><td>Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>observations.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_observation_upserts_by_commit_id</code></td><td>Saving same commit replaces previous observation</td><td>Two observations, same commit</td><td>faultline-store</td><td>observations.json</td><td>Upsert semantics</td><td>—</td><td>adapter</td><td>—</td><td>observations.json</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_observation_sorts_by_sequence_index</code></td><td>Observations sorted by sequence_index on disk</td><td>Out-of-order observations</td><td>faultline-store</td><td>observations.json</td><td>Sort order</td><td>—</td><td>adapter</td><td>—</td><td>observations.json</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_and_read_report</code></td><td>Report round-trips through store</td><td>Sample report + TempDir</td><td>faultline-store</td><td>report.json</td><td>Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>report.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>load_report_returns_none_when_no_file</code></td><td>Missing report file returns None</td><td>Fresh run</td><td>faultline-store</td><td>—</td><td>Default behavior</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P2</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>load_report_returns_saved_report</code></td><td>Saved report can be loaded back</td><td>Sample report + TempDir</td><td>faultline-store</td><td>report.json</td><td>Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>report.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>new_creates_root_directory</code></td><td>FileRunStore::new creates nested directories</td><td>Deep nested path</td><td>faultline-store</td><td>—</td><td>Directory creation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P2</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prepare_run_creates_lock_file</code></td><td>Lock file created with PID and timestamp</td><td>Sample request + TempDir</td><td>faultline-store</td><td>.lock</td><td>Lock creation</td><td>—</td><td>adapter</td><td>—</td><td>.lock</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prepare_run_allows_same_process_reentry</code></td><td>Same process can re-acquire lock</td><td>Same request twice</td><td>faultline-store</td><td>.lock</td><td>Re-entry</td><td>—</td><td>adapter</td><td>—</td><td>.lock</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prepare_run_rejects_lock_held_by_another_live_process</code></td><td>Lock held by live process is rejected (Unix)</td><td>Lock with PID 1</td><td>faultline-store</td><td>—</td><td>Lock enforcement</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prepare_run_cleans_stale_lock_from_dead_process</code></td><td>Stale lock from dead process is cleaned</td><td>Lock with high PID</td><td>faultline-store</td><td>.lock</td><td>Stale lock cleanup</td><td>—</td><td>adapter</td><td>—</td><td>.lock</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_report_releases_lock</code></td><td>Lock released after saving report</td><td>Full run lifecycle</td><td>faultline-store</td><td>—</td><td>Lock release</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>atomic_write_produces_correct_content_and_no_tmp_file</code></td><td>Atomic write produces correct content, no .tmp residue</td><td>Fixed content + TempDir</td><td>faultline-store</td><td>—</td><td>Atomic write</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_probe_logs_creates_log_files</code></td><td>Probe logs saved to per-commit files</td><td>Sample logs + TempDir</td><td>faultline-store</td><td>logs/*.log</td><td>Log persistence</td><td>—</td><td>adapter</td><td>—</td><td>logs/*.log</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_probe_logs_creates_logs_directory</code></td><td>Logs directory created on first save</td><td>Fresh run</td><td>faultline-store</td><td>logs/</td><td>Directory creation</td><td>—</td><td>adapter</td><td>—</td><td>logs/</td><td>faultline-store</td><td>P2</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_probe_logs_overwrites_existing_logs</code></td><td>Re-saving logs overwrites previous content</td><td>Two saves, same commit</td><td>faultline-store</td><td>logs/*.log</td><td>Overwrite semantics</td><td>—</td><td>adapter</td><td>—</td><td>logs/*.log</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>save_probe_logs_handles_multiple_commits</code></td><td>Multiple commits have separate log files</td><td>Two different commits</td><td>faultline-store</td><td>logs/*.log</td><td>Isolation</td><td>—</td><td>adapter</td><td>—</td><td>logs/*.log</td><td>faultline-store</td><td>P1</td><td>faultline-store</td><td>no</td></tr>
+<tr><td><code>prop_observation_round_trip</code></td><td>Observation round-trips through store</td><td><code>arb_probe_observation()</code></td><td>faultline-store</td><td>observations.json</td><td>P11: Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>observations.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_report_round_trip</code></td><td>Report round-trips through store</td><td><code>arb_analysis_report()</code></td><td>faultline-store</td><td>report.json</td><td>P12: Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>report.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_request_round_trip</code></td><td>Request round-trips through store</td><td><code>arb_analysis_request()</code></td><td>faultline-store</td><td>request.json</td><td>Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>request.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_store_observation_sequence_order</code></td><td>Observations stored in sequence_index order</td><td><code>arb_probe_observation() × 2..10</code></td><td>faultline-store</td><td>observations.json</td><td>P26: Sequence order</td><td>Req 3.3, 6.5</td><td>adapter</td><td>Req 3.3, 6.5</td><td>observations.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_run_store_resumability</code></td><td>Run store supports resume with cached observations</td><td><code>arb_analysis_request() + observations</code></td><td>faultline-store</td><td>observations.json</td><td>Resumability</td><td>Req 4.3</td><td>adapter</td><td>Req 4.3</td><td>observations.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_report_load_round_trip</code></td><td>Report load round-trips through store</td><td><code>arb_analysis_report()</code></td><td>faultline-store</td><td>report.json</td><td>Round-trip</td><td>Req 6.11</td><td>adapter</td><td>Req 6.11</td><td>report.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_schema_version_round_trip</code></td><td>Schema version preserved through store round-trip</td><td><code>arb_analysis_report() + custom version</code></td><td>faultline-store</td><td>report.json</td><td>Version preservation</td><td>Req 1.4, 1.6</td><td>adapter</td><td>Req 1.4, 1.6</td><td>report.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+<tr><td><code>prop_version_metadata_persistence</code></td><td>Version metadata persisted correctly</td><td><code>arb_analysis_request()</code></td><td>faultline-store</td><td>request.json</td><td>Metadata persistence</td><td>Req 6.4</td><td>adapter</td><td>Req 6.4</td><td>request.json</td><td>faultline-store</td><td>P0</td><td>faultline-store</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-git"><a class="header" href="#faultline-git">faultline-git</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>codeowners_parse_valid_file</code></td><td>Valid CODEOWNERS file parsed correctly</td><td>Hand-built content</td><td>faultline-git</td><td>—</td><td>Parse correctness</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_parse_empty_file</code></td><td>Empty CODEOWNERS returns empty rules</td><td>Empty string</td><td>faultline-git</td><td>—</td><td>Edge case</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P2</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_parse_comments_only</code></td><td>Comments-only CODEOWNERS returns empty rules</td><td>Comment lines</td><td>faultline-git</td><td>—</td><td>Edge case</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P2</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_parse_malformed_line_skipped</code></td><td>Malformed lines skipped gracefully</td><td>Mixed valid/invalid lines</td><td>faultline-git</td><td>—</td><td>Graceful degradation</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_last_match_wins</code></td><td>Last matching pattern wins</td><td>Overlapping patterns</td><td>faultline-git</td><td>—</td><td>Match precedence</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_wildcard_matches_all</code></td><td>Wildcard pattern matches all paths</td><td><code>* @owner</code> pattern</td><td>faultline-git</td><td>—</td><td>Wildcard matching</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_directory_pattern</code></td><td>Directory pattern matches paths under directory</td><td><code>/docs/</code> pattern</td><td>faultline-git</td><td>—</td><td>Directory matching</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_doublestar_pattern</code></td><td>Double-star pattern matches recursively</td><td><code>**/*.py</code> pattern</td><td>faultline-git</td><td>—</td><td>Recursive matching</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_no_match_returns_none</code></td><td>Unmatched path returns None</td><td>Non-matching path</td><td>faultline-git</td><td>—</td><td>No-match behavior</td><td>—</td><td>adapter</td><td>Req 1.3, 1.5</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_from_github_dir</code></td><td>CODEOWNERS read from .github/ directory</td><td>GitRepoBuilder + .github/CODEOWNERS</td><td>faultline-git</td><td>—</td><td>File discovery</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_from_repo_root</code></td><td>CODEOWNERS read from repo root</td><td>GitRepoBuilder + CODEOWNERS</td><td>faultline-git</td><td>—</td><td>File discovery</td><td>—</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>codeowners_missing_returns_none_owners</code></td><td>Missing CODEOWNERS returns None for all paths</td><td>GitRepoBuilder without CODEOWNERS</td><td>faultline-git</td><td>—</td><td>Graceful absence</td><td>—</td><td>adapter</td><td>Req 1.3, 1.5</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>blame_frequency_returns_most_frequent_author</code></td><td>Most frequent committer returned as owner</td><td>GitRepoBuilder with multiple commits</td><td>faultline-git</td><td>—</td><td>Frequency heuristic</td><td>—</td><td>adapter</td><td>Req 1.4</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>blame_frequency_no_commits_returns_none</code></td><td>No commits for path returns None</td><td>GitRepoBuilder with empty history</td><td>faultline-git</td><td>—</td><td>Edge case</td><td>—</td><td>adapter</td><td>Req 1.4, 1.5</td><td>—</td><td>faultline-git</td><td>P2</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>prop_codeowners_parser_determinism</code></td><td>CODEOWNERS parsing is deterministic for any content and path</td><td>Random CODEOWNERS content + paths</td><td>faultline-git</td><td>—</td><td>P55: Parser determinism</td><td>Req 1.3</td><td>adapter</td><td>Req 1.3</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>yes</td></tr>
+<tr><td><code>changed_paths_detects_add_modify_delete_rename</code></td><td>Git diff parsing detects add, modify, delete, and rename</td><td>GitRepoBuilder with mixed ops</td><td>faultline-git</td><td>—</td><td>Diff parsing correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>changed_paths_empty_diff_returns_empty_vec</code></td><td>Empty diff returns empty changed paths</td><td>GitRepoBuilder with no changes</td><td>faultline-git</td><td>—</td><td>Edge case</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P2</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>cleans_stale_worktrees_on_construction</code></td><td>GitAdapter cleans stale worktrees on construction</td><td>GitRepoBuilder + stale worktree</td><td>faultline-git</td><td>—</td><td>Cleanup correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>cleanup_checkout_returns_ok_on_missing_directory</code></td><td>cleanup_checkout returns Ok for missing directory</td><td>Non-existent path</td><td>faultline-git</td><td>—</td><td>Graceful degradation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P2</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>exact_first_bad_commit_real_git</code></td><td>End-to-end localization finds exact first bad commit</td><td>GitRepoBuilder + real git</td><td>faultline-git</td><td>—</td><td>Integration correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>first_parent_merge_history_real_git</code></td><td>First-parent merge history linearized correctly</td><td>GitRepoBuilder with merges</td><td>faultline-git</td><td>—</td><td>Linearization correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>invalid_boundaries_real_git</code></td><td>Invalid boundaries rejected by real git adapter</td><td>GitRepoBuilder + invalid boundaries</td><td>faultline-git</td><td>—</td><td>Boundary validation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>rejects_non_repo_path</code></td><td>GitAdapter rejects non-repository path</td><td>Non-repo temp directory</td><td>faultline-git</td><td>—</td><td>Input validation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P1</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>rename_and_delete_real_git</code></td><td>Rename and delete detected in real git repo</td><td>GitRepoBuilder with rename/delete</td><td>faultline-git</td><td>—</td><td>Diff parsing correctness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>no</td></tr>
+<tr><td><code>prop_worktree_path_uniqueness</code></td><td>Worktree paths are unique for different commit SHAs</td><td><code>arb SHA strings</code></td><td>faultline-git</td><td>—</td><td>Path uniqueness</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-git</td><td>P0</td><td>faultline-git</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-render"><a class="header" href="#faultline-render">faultline-render</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>render_writes_analysis_json</code></td><td>Render produces analysis.json</td><td>Sample report + TempDir</td><td>faultline-render</td><td>analysis.json</td><td>File creation</td><td>Req 6.1</td><td>adapter</td><td>Req 6.1</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>analysis_json_contains_all_fields</code></td><td>analysis.json has all required top-level fields</td><td>Sample report</td><td>faultline-render</td><td>analysis.json</td><td>Field completeness</td><td>Req 6.2</td><td>adapter</td><td>Req 6.2</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>analysis_json_is_deterministic</code></td><td>Same report produces identical JSON</td><td>Sample report × 2 dirs</td><td>faultline-render</td><td>analysis.json</td><td>Determinism</td><td>Req 6.3</td><td>adapter</td><td>Req 6.3</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>analysis_json_is_valid_json</code></td><td>analysis.json is valid JSON</td><td>Sample report</td><td>faultline-render</td><td>analysis.json</td><td>Validity</td><td>Req 6.4</td><td>adapter</td><td>Req 6.4</td><td>analysis.json</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>render_creates_output_directory</code></td><td>Render creates output directory if missing</td><td>Non-existent dir</td><td>faultline-render</td><td>—</td><td>Directory creation</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-render</td><td>P2</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>output_dir_returns_configured_path</code></td><td>output_dir() accessor works</td><td>Fixed path</td><td>faultline-render</td><td>—</td><td>Accessor</td><td>—</td><td>adapter</td><td>—</td><td>—</td><td>faultline-render</td><td>P2</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>analysis_json_round_trips</code></td><td>JSON round-trip preserves report equality</td><td>Sample report</td><td>faultline-render</td><td>analysis.json</td><td>Round-trip</td><td>—</td><td>adapter</td><td>—</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>render_writes_index_html</code></td><td>Render produces index.html</td><td>Sample report + TempDir</td><td>faultline-render</td><td>index.html</td><td>File creation</td><td>Req 7.1</td><td>adapter</td><td>Req 7.1</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_run_id</code></td><td>HTML contains the run ID</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_first_bad_outcome</code></td><td>HTML shows FirstBad outcome details</td><td>FirstBad report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_suspect_window_outcome</code></td><td>HTML shows SuspectWindow outcome details</td><td>SuspectWindow report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_inconclusive_outcome</code></td><td>HTML shows Inconclusive outcome</td><td>Inconclusive report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_probe_fingerprint_and_history_mode</code></td><td>HTML contains probe fingerprint and history mode</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_observation_timeline_rows</code></td><td>HTML has correct number of observation rows</td><td>Sample report (2 obs)</td><td>faultline-render</td><td>index.html</td><td>Row count</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_surface_buckets</code></td><td>HTML contains surface bucket information</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_contains_changed_paths</code></td><td>HTML contains changed path information</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Content</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_no_external_dependencies</code></td><td>HTML has no external links, scripts, or images</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Self-contained</td><td>Req 7.3</td><td>adapter</td><td>Req 7.3</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_inline_css</code></td><td>HTML has inline <code>&lt;style&gt;</code> block</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Self-contained</td><td>Req 7.3</td><td>adapter</td><td>Req 7.3</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>escape_html_replaces_special_chars</code></td><td>HTML escaping handles all special characters</td><td>XSS-like input</td><td>faultline-render</td><td>—</td><td>Security</td><td>Req 7.5</td><td>adapter</td><td>Req 7.5</td><td>—</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_escapes_dynamic_content</code></td><td>Dynamic content in HTML is escaped</td><td>Report with <code>&lt;script&gt;</code> in run_id</td><td>faultline-render</td><td>index.html</td><td>Security</td><td>Req 7.5</td><td>adapter</td><td>Req 7.5</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_valid_structure</code></td><td>HTML has doctype, html, head, body</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Structure</td><td>Req 7.1</td><td>adapter</td><td>Req 7.1</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_outcome_firstbad_class</code></td><td>FirstBad uses outcome-firstbad CSS class</td><td>FirstBad report</td><td>faultline-render</td><td>index.html</td><td>Visual distinction</td><td>Req 8.8</td><td>adapter</td><td>Req 8.8</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_outcome_suspect_class</code></td><td>SuspectWindow uses outcome-suspect CSS class</td><td>SuspectWindow report</td><td>faultline-render</td><td>index.html</td><td>Visual distinction</td><td>Req 8.8</td><td>adapter</td><td>Req 8.8</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_has_outcome_inconclusive_class</code></td><td>Inconclusive uses outcome-inconclusive CSS class</td><td>Inconclusive report</td><td>faultline-render</td><td>index.html</td><td>Visual distinction</td><td>Req 8.8</td><td>adapter</td><td>Req 8.8</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_renders_ambiguity_badges_suspect_window</code></td><td>SuspectWindow renders reason badges</td><td>SuspectWindow with reasons</td><td>faultline-render</td><td>index.html</td><td>Badges</td><td>Req 8.9</td><td>adapter</td><td>Req 8.9</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_renders_ambiguity_badges_inconclusive</code></td><td>Inconclusive renders reason badges</td><td>Inconclusive with reasons</td><td>faultline-render</td><td>index.html</td><td>Badges</td><td>Req 8.9</td><td>adapter</td><td>Req 8.9</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_observations_sorted_by_sequence_index</code></td><td>Observations sorted by sequence_index in HTML</td><td>Report with reversed indices</td><td>faultline-render</td><td>index.html</td><td>Sort order</td><td>Req 8.10</td><td>adapter</td><td>Req 8.10</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>golden_analysis_json</code></td><td>Golden snapshot of canonical analysis.json</td><td><code>canonical_fixture_report()</code></td><td>faultline-render</td><td>analysis.json snapshot</td><td>Golden contract</td><td>Req 3.4</td><td>adapter</td><td>Req 3.4</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>golden_index_html</code></td><td>Golden snapshot of canonical index.html</td><td><code>canonical_fixture_report()</code></td><td>faultline-render</td><td>index.html snapshot</td><td>Golden contract</td><td>Req 3.4</td><td>adapter</td><td>Req 3.4</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_contains_required_data</code></td><td>HTML contains all required data from report</td><td><code>arb_analysis_report()</code></td><td>faultline-render</td><td>index.html</td><td>P16: Required data</td><td>Req 7.2</td><td>adapter</td><td>Req 7.2</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_escaping_correctness</code></td><td>HTML escaping prevents injection</td><td>Arbitrary strings with special chars</td><td>faultline-render</td><td>—</td><td>P17: Escaping</td><td>Req 7.5</td><td>adapter</td><td>Req 7.5</td><td>—</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_is_self_contained</code></td><td>HTML has no external dependencies</td><td><code>arb_analysis_report()</code></td><td>faultline-render</td><td>index.html</td><td>P18: Self-contained</td><td>Req 7.3</td><td>adapter</td><td>Req 7.3</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_outcome_visual_distinction_and_badges</code></td><td>Outcome CSS classes and badges are correct</td><td><code>arb_analysis_report()</code></td><td>faultline-render</td><td>index.html</td><td>P29: Visual distinction</td><td>Req 8.8, 8.9</td><td>adapter</td><td>Req 8.8, 8.9</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_temporal_observation_order</code></td><td>Observations in HTML sorted by sequence_index</td><td><code>arb_analysis_report()</code> (≥2 obs)</td><td>faultline-render</td><td>index.html</td><td>P30: Temporal order</td><td>Req 8.10</td><td>adapter</td><td>Req 8.10</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_html_execution_surface_separation</code></td><td>Execution surfaces rendered separately</td><td><code>arb_analysis_report()</code> (non-empty exec)</td><td>faultline-render</td><td>index.html</td><td>P31: Surface separation</td><td>Req 8.11</td><td>adapter</td><td>Req 8.11</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>prop_markdown_dossier_contains_required_sections</code></td><td>Markdown dossier contains all required sections</td><td><code>arb_analysis_report()</code> (non-Inconclusive)</td><td>faultline-render</td><td>dossier.md</td><td>P47: Section completeness</td><td>Req 2.1–2.5</td><td>adapter</td><td>Req 2.1–2.5</td><td>dossier.md</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>html_observation_rows_have_color_classes</code></td><td>Observation rows have correct CSS color classes</td><td>Sample report</td><td>faultline-render</td><td>index.html</td><td>Visual distinction</td><td>Req 8.10</td><td>adapter</td><td>Req 8.10</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_indeterminate_row_shows_signal_badge</code></td><td>Indeterminate row with signal_number shows signal badge</td><td>Sample report + signal_number</td><td>faultline-render</td><td>index.html</td><td>Signal display</td><td>Req 8.10</td><td>adapter</td><td>Req 8.10</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_renders_execution_surfaces_section</code></td><td>Execution surfaces rendered in separate HTML section</td><td>Sample report + execution surfaces</td><td>faultline-render</td><td>index.html</td><td>Surface separation</td><td>Req 8.11</td><td>adapter</td><td>Req 8.11</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_no_execution_surfaces_when_empty</code></td><td>No execution surfaces section when list is empty</td><td>Sample report (empty exec surfaces)</td><td>faultline-render</td><td>index.html</td><td>Conditional rendering</td><td>Req 8.11</td><td>adapter</td><td>Req 8.11</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_renders_log_links_for_truncated_output</code></td><td>Truncated stdout renders log file link</td><td>Sample report + truncated output</td><td>faultline-render</td><td>index.html</td><td>Log link rendering</td><td>Req 8.12</td><td>adapter</td><td>Req 8.12</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_renders_log_links_for_truncated_stderr</code></td><td>Truncated stderr renders log file link</td><td>Sample report + truncated stderr</td><td>faultline-render</td><td>index.html</td><td>Log link rendering</td><td>Req 8.12</td><td>adapter</td><td>Req 8.12</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>html_no_log_section_when_no_truncation</code></td><td>No log section when no truncated output</td><td>Sample report (no truncation)</td><td>faultline-render</td><td>index.html</td><td>Conditional rendering</td><td>Req 8.12</td><td>adapter</td><td>Req 8.12</td><td>index.html</td><td>faultline-render</td><td>P1</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>snapshot_analysis_json_structure</code></td><td>Snapshot test for canonical analysis.json structure</td><td><code>canonical_fixture_report()</code></td><td>faultline-render</td><td>analysis.json</td><td>Structural correctness</td><td>Req 6.1, 6.2</td><td>adapter</td><td>Req 6.1, 6.2</td><td>analysis.json</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+<tr><td><code>snapshot_html_report_structure</code></td><td>Snapshot test for canonical HTML report structure</td><td><code>canonical_fixture_report()</code></td><td>faultline-render</td><td>index.html</td><td>Structural correctness</td><td>Req 7.1, 7.2</td><td>adapter</td><td>Req 7.1, 7.2</td><td>index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-sarif"><a class="header" href="#faultline-sarif">faultline-sarif</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sarif_first_bad_produces_error_level</code></td><td>FirstBad maps to SARIF error level</td><td>FirstBad report</td><td>faultline-sarif</td><td>SARIF JSON</td><td>Level mapping</td><td>Req 3.6</td><td>adapter</td><td>Req 3.6</td><td>SARIF JSON</td><td>faultline-sarif</td><td>P0</td><td>faultline-sarif</td><td>no</td></tr>
+<tr><td><code>sarif_suspect_window_produces_warning_level</code></td><td>SuspectWindow maps to SARIF warning level</td><td>SuspectWindow report</td><td>faultline-sarif</td><td>SARIF JSON</td><td>Level mapping</td><td>Req 3.6</td><td>adapter</td><td>Req 3.6</td><td>SARIF JSON</td><td>faultline-sarif</td><td>P0</td><td>faultline-sarif</td><td>no</td></tr>
+<tr><td><code>sarif_inconclusive_produces_note_level</code></td><td>Inconclusive maps to SARIF note level</td><td>Inconclusive report</td><td>faultline-sarif</td><td>SARIF JSON</td><td>Level mapping</td><td>Req 3.6</td><td>adapter</td><td>Req 3.6</td><td>SARIF JSON</td><td>faultline-sarif</td><td>P0</td><td>faultline-sarif</td><td>no</td></tr>
+<tr><td><code>sarif_empty_changed_paths_produces_empty_locations</code></td><td>Empty changed_paths produces empty locations</td><td>Report with no paths</td><td>faultline-sarif</td><td>SARIF JSON</td><td>Edge case</td><td>Req 3.6</td><td>adapter</td><td>Req 3.6</td><td>SARIF JSON</td><td>faultline-sarif</td><td>P2</td><td>faultline-sarif</td><td>no</td></tr>
+<tr><td><code>prop_sarif_export_structural_validity</code></td><td>SARIF output is structurally valid for all reports</td><td><code>arb_analysis_report()</code></td><td>faultline-sarif</td><td>SARIF JSON</td><td>P41: Structural validity</td><td>Req 3.6</td><td>adapter</td><td>Req 3.6</td><td>SARIF JSON</td><td>faultline-sarif</td><td>P0</td><td>faultline-sarif</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-junit"><a class="header" href="#faultline-junit">faultline-junit</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>junit_first_bad_has_failure_element</code></td><td>FirstBad maps to JUnit failure element</td><td>FirstBad report</td><td>faultline-junit</td><td>JUnit XML</td><td>Failure mapping</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P0</td><td>faultline-junit</td><td>no</td></tr>
+<tr><td><code>junit_suspect_window_has_failure_element</code></td><td>SuspectWindow maps to JUnit failure element</td><td>SuspectWindow report</td><td>faultline-junit</td><td>JUnit XML</td><td>Failure mapping</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P0</td><td>faultline-junit</td><td>no</td></tr>
+<tr><td><code>junit_inconclusive_has_failure_element</code></td><td>Inconclusive maps to JUnit failure element</td><td>Inconclusive report</td><td>faultline-junit</td><td>JUnit XML</td><td>Failure mapping</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P0</td><td>faultline-junit</td><td>no</td></tr>
+<tr><td><code>junit_observations_in_system_out</code></td><td>Observations rendered in system-out element</td><td>FirstBad report with observations</td><td>faultline-junit</td><td>JUnit XML</td><td>Content completeness</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P1</td><td>faultline-junit</td><td>no</td></tr>
+<tr><td><code>junit_empty_observations</code></td><td>Empty observations produce valid JUnit XML</td><td>Report with no observations</td><td>faultline-junit</td><td>JUnit XML</td><td>Edge case</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P2</td><td>faultline-junit</td><td>no</td></tr>
+<tr><td><code>prop_junit_xml_export_structural_validity</code></td><td>JUnit XML output is structurally valid for all reports</td><td><code>arb_analysis_report()</code></td><td>faultline-junit</td><td>JUnit XML</td><td>P42: Structural validity</td><td>—</td><td>adapter</td><td>—</td><td>JUnit XML</td><td>faultline-junit</td><td>P0</td><td>faultline-junit</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="app-tier--integration-and-orchestration-tests"><a class="header" href="#app-tier--integration-and-orchestration-tests">App Tier — Integration and Orchestration Tests</a></h2>
+<h3 id="faultline-app"><a class="header" href="#faultline-app">faultline-app</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>integration_cached_resume_skips_cached_commits</code></td><td>Cached observations are reused on resume</td><td>Mock ports + 5-commit seq</td><td>faultline-app</td><td>—</td><td>Resume correctness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_good_boundary_fail_yields_invalid_boundary</code></td><td>Good boundary returning Fail yields InvalidBoundary error</td><td>Mock ports + 5-commit seq</td><td>faultline-app</td><td>—</td><td>Boundary validation</td><td>Req 10.1–10.5</td><td>app</td><td>Req 10.1–10.5</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_bad_boundary_pass_yields_invalid_boundary</code></td><td>Bad boundary returning Pass yields InvalidBoundary error</td><td>Mock ports + 5-commit seq</td><td>faultline-app</td><td>—</td><td>Boundary validation</td><td>Req 10.1–10.5</td><td>app</td><td>Req 10.1–10.5</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_cached_boundary_observations_reused_no_reprobe</code></td><td>Cached boundary observations are reused without re-probing</td><td>Mock ports + TrackingProbe</td><td>faultline-app</td><td>—</td><td>Cache reuse</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_full_localization_loop_with_mock_ports</code></td><td>Full localization loop produces correct report with all fields</td><td>Mock ports + 10-commit seq</td><td>faultline-app</td><td>analysis.json</td><td>End-to-end correctness</td><td>—</td><td>app</td><td>—</td><td>analysis.json</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_flake_retries_attach_flake_signal</code></td><td>Flake retries attach FlakeSignal to observations</td><td>Mock ports + retries=2</td><td>faultline-app</td><td>—</td><td>Flake signal attachment</td><td>Req 3.1, 3.4, 3.5</td><td>app</td><td>Req 3.1, 3.4, 3.5</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_default_retries_no_flake_signal</code></td><td>Default retries (0) produce no FlakeSignal</td><td>Mock ports + default policy</td><td>faultline-app</td><td>—</td><td>Default no signal</td><td>Req 3.6</td><td>app</td><td>Req 3.6</td><td>—</td><td>faultline-app</td><td>P1</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>integration_flaky_commit_majority_vote</code></td><td>Flaky commit classified by majority vote</td><td>Mock ports + mixed results</td><td>faultline-app</td><td>—</td><td>Majority vote</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>no</td></tr>
+<tr><td><code>prop_probe_count_respects_max_probes</code></td><td>Probe count never exceeds max_probes</td><td><code>max_probes in 1..=10</code>, 20-commit seq</td><td>faultline-app</td><td>—</td><td>P3: Budget enforcement</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>yes</td></tr>
+<tr><td><code>prop_good_boundary_fail_yields_invalid_boundary</code></td><td>Good boundary Fail always yields InvalidBoundary</td><td><code>n in 3..=20</code></td><td>faultline-app</td><td>—</td><td>P9: Boundary validation</td><td>Req 10.1–10.5</td><td>app</td><td>Req 10.1–10.5</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>yes</td></tr>
+<tr><td><code>prop_bad_boundary_pass_yields_invalid_boundary</code></td><td>Bad boundary Pass always yields InvalidBoundary</td><td><code>n in 3..=20</code></td><td>faultline-app</td><td>—</td><td>P9: Boundary validation</td><td>Req 10.1–10.5</td><td>app</td><td>Req 10.1–10.5</td><td>—</td><td>faultline-app</td><td>P0</td><td>faultline-app</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="entry-point-tier--cli-tests"><a class="header" href="#entry-point-tier--cli-tests">Entry Point Tier — CLI Tests</a></h2>
+<h3 id="faultline-cli"><a class="header" href="#faultline-cli">faultline-cli</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>rejects_both_cmd_and_program</code></td><td>Providing both –cmd and –program is rejected</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_neither_cmd_nor_program</code></td><td>Providing neither –cmd nor –program is rejected</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>help_output_describes_all_flags</code></td><td>–help output lists all expected flags</td><td>CLI –help</td><td>faultline-cli</td><td>—</td><td>Flag completeness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>help_output_describes_reproduce_subcommand</code></td><td>–help output describes reproduce subcommand</td><td>CLI –help</td><td>faultline-cli</td><td>—</td><td>Subcommand completeness</td><td>Req 4.3</td><td>app</td><td>Req 4.3</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>golden_cli_help</code></td><td>Golden snapshot of CLI –help text</td><td>CLI –help</td><td>faultline-cli</td><td>help snapshot</td><td>Golden contract</td><td>Req 3.4</td><td>app</td><td>Req 3.4</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>yes</td></tr>
+<tr><td><code>exit_code_0_for_first_bad</code></td><td>FirstBad outcome maps to exit code 0</td><td>Hand-built outcome</td><td>faultline-cli</td><td>—</td><td>Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>exit_code_1_for_suspect_window</code></td><td>SuspectWindow outcome maps to exit code 1</td><td>Hand-built outcome</td><td>faultline-cli</td><td>—</td><td>Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>exit_code_3_for_inconclusive</code></td><td>Inconclusive outcome maps to exit code 3</td><td>Hand-built outcome</td><td>faultline-cli</td><td>—</td><td>Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>exit_code_2_for_execution_error</code></td><td>ExecutionError maps to exit code 2</td><td>OperatorCode</td><td>faultline-cli</td><td>—</td><td>Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>exit_code_4_for_invalid_input</code></td><td>InvalidInput maps to exit code 4</td><td>OperatorCode</td><td>faultline-cli</td><td>—</td><td>Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>all_exit_codes_are_distinct</code></td><td>All exit codes are unique</td><td>All OperatorCodes</td><td>faultline-cli</td><td>—</td><td>Uniqueness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_resume_and_force</code></td><td>–resume and –force are mutually exclusive</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Mutual exclusion</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_resume_and_fresh</code></td><td>–resume and –fresh are mutually exclusive</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Mutual exclusion</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_force_and_fresh</code></td><td>–force and –fresh are mutually exclusive</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Mutual exclusion</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_single_run_modes</code></td><td>Single run mode flags accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Happy path</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_valid_env_vars</code></td><td>Valid –env KEY=VALUE accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_env_var_with_equals_in_value</code></td><td>–env FOO=bar=baz accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_env_var_missing_equals</code></td><td>–env without = is rejected</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_empty_env_list</code></td><td>Empty –env list accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Edge case</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_valid_shell_kinds</code></td><td>Valid –shell values accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>accepts_no_shell</code></td><td>No –shell flag accepted</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Default behavior</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P2</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>rejects_unknown_shell</code></td><td>Unknown –shell value rejected</td><td>CLI args</td><td>faultline-cli</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P1</td><td>faultline-cli</td><td>no</td></tr>
+<tr><td><code>prop_operator_code_exit_code_mapping</code></td><td>Exit code mapping is consistent for all outcomes</td><td><code>arb_localization_outcome()</code></td><td>faultline-cli</td><td>—</td><td>P19: Exit code mapping</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>yes</td></tr>
+<tr><td><code>prop_cli_help_flag_completeness</code></td><td>CLI –help lists all expected flags</td><td>Random seed</td><td>faultline-cli</td><td>—</td><td>P20: Flag completeness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>yes</td></tr>
+<tr><td><code>smoke_cli_produces_artifacts</code></td><td>End-to-end CLI run produces analysis.json and index.html</td><td>GitRepoBuilder + real CLI binary</td><td>faultline-cli</td><td>analysis.json, index.html</td><td>Smoke test</td><td>—</td><td>integration</td><td>—</td><td>analysis.json, index.html</td><td>faultline-cli</td><td>P0</td><td>faultline-cli</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="integration-tier--bdd-scenarios"><a class="header" href="#integration-tier--bdd-scenarios">Integration Tier — BDD Scenarios</a></h2>
+<h3 id="faultline-render-bdd"><a class="header" href="#faultline-render-bdd">faultline-render (BDD)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>scenario_report_generation_end_to_end</code></td><td>End-to-end report generation produces JSON + HTML + Markdown artifacts</td><td>Builder + TempDir</td><td>faultline-render</td><td>analysis.json, index.html, dossier.md</td><td>Artifact existence and content</td><td>Req 8.1</td><td>integration</td><td>Req 8.1</td><td>analysis.json, index.html, dossier.md</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+<tr><td><code>scenario_resume_rerender_consistency</code></td><td>Re-rendering from cached report produces consistent output</td><td>Builder + serialize/deserialize</td><td>faultline-render</td><td>analysis.json, index.html</td><td>Re-render consistency</td><td>Req 8.1</td><td>integration</td><td>Req 8.1</td><td>analysis.json, index.html</td><td>faultline-render</td><td>P0</td><td>faultline-render</td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="faultline-sarif-bdd"><a class="header" href="#faultline-sarif-bdd">faultline-sarif (BDD)</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>scenario_export_surfaces_sarif_and_junit_consistency</code></td><td>SARIF + JUnit from same report contain consistent suspect surface data</td><td>Builder with suspect surface</td><td>faultline-sarif, faultline-junit</td><td>SARIF JSON, JUnit XML</td><td>Cross-export consistency</td><td>Req 8.1</td><td>integration</td><td>Req 8.1</td><td>SARIF JSON, JUnit XML</td><td>faultline-sarif, faultline-junit</td><td>P0</td><td>faultline-sarif</td><td>no</td></tr>
+</tbody>
+</table>
+</div>
+<hr>
+<h2 id="tooling-tier--xtask-tests"><a class="header" href="#tooling-tier--xtask-tests">Tooling Tier — Xtask Tests</a></h2>
+<h3 id="xtask"><a class="header" href="#xtask">xtask</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Scenario</th><th>Problem</th><th>Fixture/Generator</th><th>Crate(s)</th><th>Artifact</th><th>Invariant</th><th>Refs</th><th>Tier</th><th>Req IDs</th><th>Contract</th><th>Mutation Surface</th><th>Crit</th><th>Owner</th><th>Review</th></tr>
+</thead>
+<tbody>
+<tr><td><code>xtask_help_lists_all_subcommands</code></td><td>Xtask –help lists all expected subcommands</td><td>CLI –help</td><td>xtask</td><td>—</td><td>Subcommand completeness</td><td>Req 5.2, 5.5, 10.1</td><td>app</td><td>Req 5.2, 5.5, 10.1</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>scaffold_help_lists_all_kinds</code></td><td>Scaffold –help lists all scaffold kinds</td><td>CLI –help</td><td>xtask</td><td>—</td><td>Subcommand completeness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P2</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>valid_crate_names</code></td><td>Valid crate names accepted by scaffold</td><td>Fixed names</td><td>xtask</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P2</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>invalid_crate_names</code></td><td>Invalid crate names rejected by scaffold</td><td>Fixed names</td><td>xtask</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>valid_sections</code></td><td>Valid doc sections accepted</td><td>Fixed sections</td><td>xtask</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P2</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>invalid_sections</code></td><td>Invalid doc sections rejected</td><td>Fixed sections</td><td>xtask</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>empty_strings_rejected</code></td><td>Empty strings rejected by validators</td><td>Empty string</td><td>xtask</td><td>—</td><td>Input validation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>slugify_works</code></td><td>Slugify produces correct kebab-case</td><td>Fixed strings</td><td>xtask</td><td>—</td><td>String transformation</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P2</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>extract_test_names_finds_standard_tests</code></td><td>Test name extraction finds #[test] functions</td><td>Sample source</td><td>xtask</td><td>—</td><td>Extraction correctness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>extract_test_names_finds_proptest_fns</code></td><td>Test name extraction finds proptest functions</td><td>Sample source</td><td>xtask</td><td>—</td><td>Extraction correctness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>extract_index_entries_parses_table</code></td><td>Scenario index table parsing works</td><td>Sample Markdown table</td><td>xtask</td><td>—</td><td>Parse correctness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>check_consistency_reports_symmetric_difference</code></td><td>Consistency check reports missing/extra entries</td><td>Mismatched sets</td><td>xtask</td><td>—</td><td>Diff correctness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>check_consistency_perfect_match_is_ok</code></td><td>Consistency check passes for matching sets</td><td>Identical sets</td><td>xtask</td><td>—</td><td>Happy path</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>pattern_entry_structural_completeness</code></td><td>Pattern catalog entries have all required fields</td><td>Pattern catalog file</td><td>xtask</td><td>—</td><td>P37: Structural completeness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>scenario_entry_structural_completeness</code></td><td>Scenario index entries have all required fields</td><td>Scenario index file</td><td>xtask</td><td>—</td><td>P38: Structural completeness</td><td>—</td><td>app</td><td>—</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>scenario_schema_drift_detected_on_modified_report</code></td><td>Schema drift detected when report type changes</td><td>Modified schema</td><td>xtask</td><td>analysis-report.schema.json</td><td>P45: Schema drift detection</td><td>Req 8.3</td><td>app</td><td>Req 8.3</td><td>analysis-report.schema.json</td><td>xtask</td><td>P0</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>scenario_schema_no_drift_when_matching</code></td><td>No schema drift when schema matches types</td><td>Correct schema</td><td>xtask</td><td>analysis-report.schema.json</td><td>Schema consistency</td><td>Req 8.3</td><td>app</td><td>Req 8.3</td><td>analysis-report.schema.json</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>scenario_schema_drift_field_removal_detected</code></td><td>Schema drift detected on field removal</td><td>Schema with removed field</td><td>xtask</td><td>analysis-report.schema.json</td><td>Schema drift detection</td><td>Req 8.3</td><td>app</td><td>Req 8.3</td><td>analysis-report.schema.json</td><td>xtask</td><td>P0</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>tool_detection_error_messages_known_tools</code></td><td>Tool detection error messages are correct for known tools</td><td>Known tool names</td><td>xtask</td><td>—</td><td>P44: Error messages</td><td>Req 5.7</td><td>app</td><td>Req 5.7</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>ci_failure_messages_identify_broken_contract</code></td><td>CI failure messages identify the broken contract</td><td>Contract names</td><td>xtask</td><td>—</td><td>P46: CI messages</td><td>Req 8.7</td><td>app</td><td>Req 8.7</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>prop_symmetric_difference_is_exact</code></td><td>Symmetric difference reports exact missing/extra entries</td><td><code>arb_test_name_set()</code> × 2</td><td>xtask</td><td>—</td><td>P39: Atlas consistency</td><td>Req 2.5, 8.4</td><td>app</td><td>Req 2.5, 8.4</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_identical_sets_yield_ok</code></td><td>Identical test sets yield Ok</td><td><code>arb_test_name_set()</code></td><td>xtask</td><td>—</td><td>P39: Atlas consistency</td><td>Req 2.5, 8.4</td><td>app</td><td>Req 2.5, 8.4</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_extract_and_check_round_trip</code></td><td>Extract + check round-trips correctly</td><td>Random test names</td><td>xtask</td><td>—</td><td>P39: Atlas consistency</td><td>Req 2.5, 8.4</td><td>app</td><td>Req 2.5, 8.4</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_crate_generation</code></td><td>Scaffold crate generates valid structure</td><td><code>arb_crate_suffix()</code></td><td>xtask</td><td>—</td><td>P47: Scaffold generation</td><td>Req 10.2</td><td>app</td><td>Req 10.2</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_adr_sequential_numbering</code></td><td>Scaffold ADR uses sequential numbering</td><td><code>existing_count in 0..20</code></td><td>xtask</td><td>—</td><td>P48: ADR numbering</td><td>Req 10.3</td><td>app</td><td>Req 10.3</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_scenario_creates_stub_and_index</code></td><td>Scaffold scenario creates test stub and index entry</td><td>Random names</td><td>xtask</td><td>—</td><td>P49: Scaffold file generation</td><td>Req 10.4, 10.5</td><td>app</td><td>Req 10.4, 10.5</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_doc_creates_file_and_summary_entry</code></td><td>Scaffold doc creates file and SUMMARY entry</td><td>Random sections</td><td>xtask</td><td>—</td><td>P49: Scaffold file generation</td><td>Req 10.4, 10.5</td><td>app</td><td>Req 10.4, 10.5</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_rejects_invalid_crate_names</code></td><td>Scaffold rejects invalid crate names</td><td>Invalid name patterns</td><td>xtask</td><td>—</td><td>P50: Input validation</td><td>Req 10.6</td><td>app</td><td>Req 10.6</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_rejects_empty_adr_titles</code></td><td>Scaffold rejects empty ADR titles</td><td>Empty/whitespace titles</td><td>xtask</td><td>—</td><td>P50: Input validation</td><td>Req 10.6</td><td>app</td><td>Req 10.6</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_rejects_empty_scenario_names</code></td><td>Scaffold rejects empty scenario names</td><td>Empty/whitespace names</td><td>xtask</td><td>—</td><td>P50: Input validation</td><td>Req 10.6</td><td>app</td><td>Req 10.6</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_scaffold_rejects_invalid_doc_sections</code></td><td>Scaffold rejects invalid doc sections</td><td>Invalid section names</td><td>xtask</td><td>—</td><td>P50: Input validation</td><td>Req 10.6</td><td>app</td><td>Req 10.6</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>prop_schema_drift_detection</code></td><td>Schema drift detection works for any schema change</td><td>Generated schemas</td><td>xtask</td><td>analysis-report.schema.json</td><td>P45: Schema drift</td><td>Req 8.3</td><td>app</td><td>Req 8.3</td><td>analysis-report.schema.json</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>schema_drift_error_message_format</code></td><td>Schema drift error message has correct format</td><td>Modified schema</td><td>xtask</td><td>—</td><td>Error message format</td><td>Req 8.3</td><td>app</td><td>Req 8.3</td><td>—</td><td>xtask</td><td>P1</td><td>xtask</td><td>no</td></tr>
+<tr><td><code>tool_detection_error_message_format</code></td><td>Tool detection error message format is correct</td><td>Random tool names</td><td>xtask</td><td>—</td><td>P44: Error message format</td><td>Req 5.7</td><td>app</td><td>Req 5.7</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>ci_contract_broken_message_contains_contract_name</code></td><td>CI contract broken message contains contract name</td><td>Random contract names</td><td>xtask</td><td>—</td><td>P46: CI message format</td><td>Req 8.7</td><td>app</td><td>Req 8.7</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>ci_golden_failure_message_contains_artifact_and_docs</code></td><td>CI golden failure message contains artifact and docs refs</td><td>Random artifacts</td><td>xtask</td><td>—</td><td>P46: CI message format</td><td>Req 8.7</td><td>app</td><td>Req 8.7</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+<tr><td><code>ci_missing_scenario_message_contains_files_and_docs</code></td><td>CI missing scenario message contains file refs and docs</td><td>Random file names</td><td>xtask</td><td>—</td><td>P46: CI message format</td><td>Req 8.7</td><td>app</td><td>Req 8.7</td><td>—</td><td>xtask</td><td>P0</td><td>xtask</td><td>yes</td></tr>
+</tbody>
+</table>
+</div>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../../../patterns/catalog.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../../../crate-map.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../../../patterns/catalog.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../../../crate-map.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-c2a407aa.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
