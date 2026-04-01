@@ -77,6 +77,9 @@ Options:
       --markdown
           Also write a Markdown dossier alongside HTML/JSON
 
+      --json
+          Emit structured JSON output instead of human-readable summary
+
   -h, --help
           Print help
 
