@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use faultline_ports::{CheckoutPort, HistoryPort};
 use faultline_types::{
     ChangeStatus, CheckedOutRevision, CommitId, FaultlineError, HistoryMode, PathChange, Result,
@@ -179,6 +181,205 @@ impl GitAdapter {
         self.scratch_root
             .join(format!("{}-{}-{}", short, stamp, counter))
     }
+
+    /// Run `git log --format='%aN' --since='90 days ago' -- <path>` and return
+    /// the most-frequent author name. Returns `None` if no commits touch the path
+    /// or if the git command fails.
+    fn most_frequent_author(&self, path: &str) -> Option<String> {
+        let output = self.git_output(vec![
+            OsString::from("log"),
+            OsString::from("--format=%aN"),
+            OsString::from("--since=90 days ago"),
+            OsString::from("--"),
+            OsString::from(path),
+        ]);
+
+        let text = match output {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!(
+                    "warning: git log for blame frequency on '{}' failed: {}",
+                    path, e
+                );
+                return None;
+            }
+        };
+
+        if text.trim().is_empty() {
+            return None;
+        }
+
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for line in text.lines() {
+            let name = line.trim();
+            if !name.is_empty() {
+                *counts.entry(name).or_insert(0) += 1;
+            }
+        }
+
+        counts
+            .into_iter()
+            .max_by_key(|&(_, count)| count)
+            .map(|(name, _)| name.to_string())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CODEOWNERS parsing (public for testability)
+// ---------------------------------------------------------------------------
+
+/// A single parsed CODEOWNERS rule: a gitignore-style pattern and its owner.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CodeownersRule {
+    pub pattern: String,
+    pub owner: String,
+}
+
+/// Parse CODEOWNERS file content into a list of rules.
+/// Lines starting with `#` are comments. Empty lines are ignored.
+/// Each non-comment line is `<pattern> <owner> [<owner>...]`.
+/// Malformed lines (no owner) are skipped with a warning.
+pub fn parse_codeowners(content: &str) -> Vec<CodeownersRule> {
+    let mut rules = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 2 {
+            eprintln!("warning: malformed CODEOWNERS line (no owner): {}", trimmed);
+            continue;
+        }
+        let pattern = parts[0].to_string();
+        // Take the first owner listed
+        let owner = parts[1].to_string();
+        rules.push(CodeownersRule { pattern, owner });
+    }
+    rules
+}
+
+/// Match a file path against a CODEOWNERS pattern.
+/// Supports:
+/// - `*` matches anything except `/`
+/// - `**` matches everything including `/`
+/// - Leading `/` anchors to repo root; without leading `/`, matches anywhere
+/// - Trailing `/` matches directories (we treat as prefix match)
+fn codeowners_pattern_matches(pattern: &str, path: &str) -> bool {
+    let pat = pattern.trim();
+    let p = path.trim();
+
+    if pat.is_empty() || p.is_empty() {
+        return false;
+    }
+
+    // Handle trailing `/` — matches as a directory prefix
+    let (pat_str, is_dir_pattern) = if pat.ends_with('/') {
+        (&pat[..pat.len() - 1], true)
+    } else {
+        (pat, false)
+    };
+
+    // Handle leading `/` — anchored to root
+    let (pat_str, anchored) = if pat_str.starts_with('/') {
+        (&pat_str[1..], true)
+    } else {
+        (pat_str, false)
+    };
+
+    if is_dir_pattern {
+        // Directory pattern: path must start with the pattern as a prefix
+        if anchored {
+            return p == pat_str || p.starts_with(&format!("{}/", pat_str));
+        } else {
+            // Match anywhere in the path
+            return p == pat_str
+                || p.starts_with(&format!("{}/", pat_str))
+                || p.contains(&format!("/{}/", pat_str))
+                || p.ends_with(&format!("/{}", pat_str));
+        }
+    }
+
+    if anchored {
+        glob_match(pat_str, p)
+    } else {
+        // Unanchored: if pattern contains `/`, match from root; otherwise match basename
+        if pat_str.contains('/') {
+            glob_match(pat_str, p)
+        } else {
+            // Match against the basename of the path
+            let basename = p.rsplit('/').next().unwrap_or(p);
+            glob_match(pat_str, basename) || glob_match(pat_str, p)
+        }
+    }
+}
+
+/// Simple glob matcher supporting `*` (any non-`/` chars) and `**` (any chars including `/`).
+fn glob_match(pattern: &str, text: &str) -> bool {
+    glob_match_recursive(pattern.as_bytes(), text.as_bytes())
+}
+
+fn glob_match_recursive(pat: &[u8], txt: &[u8]) -> bool {
+    if pat.is_empty() {
+        return txt.is_empty();
+    }
+
+    // Handle `**`
+    if pat.len() >= 2 && pat[0] == b'*' && pat[1] == b'*' {
+        // `**/` or `**` at end
+        let rest = if pat.len() >= 3 && pat[2] == b'/' {
+            &pat[3..]
+        } else {
+            &pat[2..]
+        };
+        // Try matching rest against every suffix of txt
+        for i in 0..=txt.len() {
+            if glob_match_recursive(rest, &txt[i..]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Handle single `*`
+    if pat[0] == b'*' {
+        // Match any sequence of non-`/` characters
+        for i in 0..=txt.len() {
+            if i > 0 && txt[i - 1] == b'/' {
+                break;
+            }
+            if glob_match_recursive(&pat[1..], &txt[i..]) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Handle `?`
+    if pat[0] == b'?' {
+        if txt.is_empty() || txt[0] == b'/' {
+            return false;
+        }
+        return glob_match_recursive(&pat[1..], &txt[1..]);
+    }
+
+    // Literal character match
+    if txt.is_empty() || pat[0] != txt[0] {
+        return false;
+    }
+    glob_match_recursive(&pat[1..], &txt[1..])
+}
+
+/// Given parsed CODEOWNERS rules and a file path, return the matching owner.
+/// CODEOWNERS uses LAST-match-wins semantics.
+pub fn match_codeowners(rules: &[CodeownersRule], path: &str) -> Option<String> {
+    let mut matched_owner: Option<String> = None;
+    for rule in rules {
+        if codeowners_pattern_matches(&rule.pattern, path) {
+            matched_owner = Some(rule.owner.clone());
+        }
+    }
+    matched_owner
 }
 
 impl HistoryPort for GitAdapter {
@@ -274,6 +475,40 @@ impl HistoryPort for GitAdapter {
         }
         Ok(changes)
     }
+
+    fn codeowners_for_paths(&self, paths: &[String]) -> Result<HashMap<String, Option<String>>> {
+        // Try .github/CODEOWNERS first, then CODEOWNERS at repo root
+        let candidates = [
+            self.repo_root.join(".github").join("CODEOWNERS"),
+            self.repo_root.join("CODEOWNERS"),
+        ];
+
+        let content = candidates.iter().find_map(|p| fs::read_to_string(p).ok());
+
+        let rules = match content {
+            Some(text) => parse_codeowners(&text),
+            None => {
+                // No CODEOWNERS file — return empty map
+                return Ok(paths.iter().map(|p| (p.clone(), None)).collect());
+            }
+        };
+
+        let mut result = HashMap::new();
+        for path in paths {
+            let owner = match_codeowners(&rules, path);
+            result.insert(path.clone(), owner);
+        }
+        Ok(result)
+    }
+
+    fn blame_frequency(&self, paths: &[String]) -> Result<HashMap<String, Option<String>>> {
+        let mut result = HashMap::new();
+        for path in paths {
+            let author = self.most_frequent_author(path);
+            result.insert(path.clone(), author);
+        }
+        Ok(result)
+    }
 }
 
 impl CheckoutPort for GitAdapter {
@@ -345,6 +580,156 @@ mod tests {
 
             prop_assert_ne!(path_a, path_b, "two calls to unique_worktree_path must return distinct paths, even for the same commit");
         }
+    }
+
+    // Feature: v01-product-sharpening, Property 55: CODEOWNERS parser determinism
+    // **Validates: Requirements 1.3**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_codeowners_parser_determinism(
+            lines in prop::collection::vec(
+                (
+                    prop_oneof![
+                        Just("*".to_string()),
+                        Just("*.rs".to_string()),
+                        Just("*.js".to_string()),
+                        Just("src/".to_string()),
+                        Just("/docs/".to_string()),
+                        Just("**/*.py".to_string()),
+                        "[a-z/.*]{1,20}".prop_map(|s| s),
+                    ],
+                    prop_oneof![
+                        Just("@team-alpha".to_string()),
+                        Just("@team-beta".to_string()),
+                        Just("user@example.com".to_string()),
+                        "@[a-z]{1,8}".prop_map(|s| s),
+                    ],
+                ),
+                0..15,
+            ),
+            paths in prop::collection::vec("[a-z][a-z0-9/._]{0,25}", 1..10),
+        ) {
+            // Build CODEOWNERS content from generated lines
+            let content: String = lines
+                .iter()
+                .map(|(pattern, owner)| format!("{} {}", pattern, owner))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // Parse twice and match each path twice — results must be identical
+            let rules_a = parse_codeowners(&content);
+            let rules_b = parse_codeowners(&content);
+            prop_assert_eq!(&rules_a, &rules_b, "parsing the same content must produce identical rules");
+
+            for path in &paths {
+                let owner_a = match_codeowners(&rules_a, path);
+                let owner_b = match_codeowners(&rules_b, path);
+                prop_assert_eq!(
+                    &owner_a, &owner_b,
+                    "matching path '{}' must produce deterministic results", path
+                );
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // CODEOWNERS unit tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn codeowners_parse_valid_file() {
+        let content =
+            "# Comment line\n\n*.rs @rust-team\n/docs/ @docs-team\nsrc/lib.rs user@example.com\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(rules.len(), 3);
+        assert_eq!(rules[0].pattern, "*.rs");
+        assert_eq!(rules[0].owner, "@rust-team");
+        assert_eq!(rules[1].pattern, "/docs/");
+        assert_eq!(rules[1].owner, "@docs-team");
+        assert_eq!(rules[2].pattern, "src/lib.rs");
+        assert_eq!(rules[2].owner, "user@example.com");
+    }
+
+    #[test]
+    fn codeowners_parse_empty_file() {
+        let rules = parse_codeowners("");
+        assert!(rules.is_empty());
+    }
+
+    #[test]
+    fn codeowners_parse_comments_only() {
+        let rules = parse_codeowners("# just a comment\n# another\n");
+        assert!(rules.is_empty());
+    }
+
+    #[test]
+    fn codeowners_parse_malformed_line_skipped() {
+        let content = "*.rs @team\nmalformed-no-owner\n*.js @js-team\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(rules.len(), 2);
+        assert_eq!(rules[0].pattern, "*.rs");
+        assert_eq!(rules[1].pattern, "*.js");
+    }
+
+    #[test]
+    fn codeowners_last_match_wins() {
+        let content = "* @default\n*.rs @rust-team\n";
+        let rules = parse_codeowners(content);
+        // For a .rs file, the last matching rule should win
+        let owner = match_codeowners(&rules, "src/main.rs");
+        assert_eq!(owner, Some("@rust-team".to_string()));
+    }
+
+    #[test]
+    fn codeowners_wildcard_matches_all() {
+        let content = "* @default-owner\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(
+            match_codeowners(&rules, "anything.txt"),
+            Some("@default-owner".to_string())
+        );
+        assert_eq!(
+            match_codeowners(&rules, "src/deep/file.rs"),
+            Some("@default-owner".to_string())
+        );
+    }
+
+    #[test]
+    fn codeowners_directory_pattern() {
+        let content = "/docs/ @docs-team\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(
+            match_codeowners(&rules, "docs/readme.md"),
+            Some("@docs-team".to_string())
+        );
+        assert_eq!(match_codeowners(&rules, "src/main.rs"), None);
+    }
+
+    #[test]
+    fn codeowners_doublestar_pattern() {
+        let content = "**/*.py @python-team\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(
+            match_codeowners(&rules, "scripts/test.py"),
+            Some("@python-team".to_string())
+        );
+        assert_eq!(
+            match_codeowners(&rules, "deep/nested/dir/file.py"),
+            Some("@python-team".to_string())
+        );
+        assert_eq!(
+            match_codeowners(&rules, "test.py"),
+            Some("@python-team".to_string())
+        );
+    }
+
+    #[test]
+    fn codeowners_no_match_returns_none() {
+        let content = "*.rs @rust-team\n";
+        let rules = parse_codeowners(content);
+        assert_eq!(match_codeowners(&rules, "readme.md"), None);
     }
 
     /// Helper: run a git command in a directory and return stdout.
@@ -596,6 +981,7 @@ mod fixture_scenario_tests {
             signal_number: None,
             probe_command: String::new(),
             working_dir: String::new(),
+            flake_signal: None,
         }
     }
 
@@ -956,5 +1342,158 @@ mod fixture_scenario_tests {
             result_rev.is_err(),
             "linearize should also fail in the reverse direction"
         );
+    }
+}
+
+#[cfg(test)]
+mod codeowners_integration_tests {
+    use super::*;
+    use faultline_fixtures::{FileOp, GitRepoBuilder};
+    use faultline_ports::HistoryPort;
+
+    #[test]
+    fn codeowners_from_github_dir() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial with CODEOWNERS",
+                vec![
+                    FileOp::Write {
+                        path: ".github/CODEOWNERS".into(),
+                        content: "*.rs @rust-team\n*.md @docs-team\n".into(),
+                    },
+                    FileOp::Write {
+                        path: "src/main.rs".into(),
+                        content: "fn main() {}".into(),
+                    },
+                    FileOp::Write {
+                        path: "README.md".into(),
+                        content: "# Hello".into(),
+                    },
+                ],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let paths = vec![
+            "src/main.rs".to_string(),
+            "README.md".to_string(),
+            "unknown.txt".to_string(),
+        ];
+        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+
+        assert_eq!(
+            owners.get("src/main.rs").unwrap(),
+            &Some("@rust-team".to_string())
+        );
+        assert_eq!(
+            owners.get("README.md").unwrap(),
+            &Some("@docs-team".to_string())
+        );
+        assert_eq!(owners.get("unknown.txt").unwrap(), &None);
+    }
+
+    #[test]
+    fn codeowners_from_repo_root() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial with root CODEOWNERS",
+                vec![
+                    FileOp::Write {
+                        path: "CODEOWNERS".into(),
+                        content: "* @default-owner\n".into(),
+                    },
+                    FileOp::Write {
+                        path: "file.txt".into(),
+                        content: "content".into(),
+                    },
+                ],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let paths = vec!["file.txt".to_string()];
+        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+
+        assert_eq!(
+            owners.get("file.txt").unwrap(),
+            &Some("@default-owner".to_string())
+        );
+    }
+
+    #[test]
+    fn codeowners_missing_returns_none_owners() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "no codeowners",
+                vec![FileOp::Write {
+                    path: "file.txt".into(),
+                    content: "content".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let paths = vec!["file.txt".to_string()];
+        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+
+        assert_eq!(owners.get("file.txt").unwrap(), &None);
+    }
+
+    #[test]
+    fn blame_frequency_returns_most_frequent_author() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "first",
+                vec![FileOp::Write {
+                    path: "file.txt".into(),
+                    content: "v1".into(),
+                }],
+            )
+            .commit(
+                "second",
+                vec![FileOp::Write {
+                    path: "file.txt".into(),
+                    content: "v2".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let paths = vec!["file.txt".to_string()];
+        let result = adapter.blame_frequency(&paths).unwrap();
+
+        // The GitRepoBuilder uses "Fixture" as the author name
+        let owner = result.get("file.txt").unwrap();
+        assert!(owner.is_some(), "should find an author for file.txt");
+        assert_eq!(owner.as_deref(), Some("Fixture"));
+    }
+
+    #[test]
+    fn blame_frequency_no_commits_returns_none() {
+        let repo = GitRepoBuilder::new()
+            .unwrap()
+            .commit(
+                "initial",
+                vec![FileOp::Write {
+                    path: "other.txt".into(),
+                    content: "content".into(),
+                }],
+            )
+            .build()
+            .unwrap();
+
+        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let paths = vec!["nonexistent.txt".to_string()];
+        let result = adapter.blame_frequency(&paths).unwrap();
+
+        assert_eq!(result.get("nonexistent.txt").unwrap(), &None);
     }
 }

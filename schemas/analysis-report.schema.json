@@ -33,6 +33,13 @@
     "outcome": {
       "$ref": "#/definitions/LocalizationOutcome"
     },
+    "reproduction_capsules": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ReproductionCapsule"
+      }
+    },
     "request": {
       "$ref": "#/definitions/AnalysisRequest"
     },
@@ -40,7 +47,7 @@
       "type": "string"
     },
     "schema_version": {
-      "default": "0.1.0",
+      "default": "0.2.0",
       "type": "string"
     },
     "sequence": {
@@ -48,6 +55,13 @@
     },
     "surface": {
       "$ref": "#/definitions/SurfaceSummary"
+    },
+    "suspect_surface": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SuspectEntry"
+      }
     }
   },
   "definitions": {
@@ -123,6 +137,65 @@
         "score": {
           "type": "integer",
           "format": "uint8",
+          "minimum": 0.0
+        }
+      }
+    },
+    "FlakePolicy": {
+      "type": "object",
+      "required": [
+        "retries",
+        "stability_threshold"
+      ],
+      "properties": {
+        "retries": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "stability_threshold": {
+          "type": "number",
+          "format": "double"
+        }
+      }
+    },
+    "FlakeSignal": {
+      "type": "object",
+      "required": [
+        "fail_count",
+        "indeterminate_count",
+        "is_stable",
+        "pass_count",
+        "skip_count",
+        "total_runs"
+      ],
+      "properties": {
+        "fail_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "indeterminate_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "is_stable": {
+          "type": "boolean"
+        },
+        "pass_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "skip_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "total_runs": {
+          "type": "integer",
+          "format": "uint32",
           "minimum": 0.0
         }
       }
@@ -288,6 +361,17 @@
           ],
           "format": "int32"
         },
+        "flake_signal": {
+          "default": null,
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FlakeSignal"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "kind": {
           "$ref": "#/definitions/ProbeKind"
         },
@@ -433,6 +517,48 @@
         }
       ]
     },
+    "ReproductionCapsule": {
+      "type": "object",
+      "required": [
+        "commit",
+        "env",
+        "predicate",
+        "timeout_seconds",
+        "working_dir"
+      ],
+      "properties": {
+        "commit": {
+          "$ref": "#/definitions/CommitId"
+        },
+        "env": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "predicate": {
+          "$ref": "#/definitions/ProbeSpec"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "working_dir": {
+          "type": "string"
+        }
+      }
+    },
     "RevisionSequence": {
       "type": "object",
       "required": [
@@ -456,6 +582,17 @@
         "max_probes"
       ],
       "properties": {
+        "flake_policy": {
+          "default": {
+            "retries": 0,
+            "stability_threshold": 1.0
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/FlakePolicy"
+            }
+          ]
+        },
         "max_probes": {
           "type": "integer",
           "format": "uint",
@@ -527,6 +664,41 @@
           "type": "integer",
           "format": "uint",
           "minimum": 0.0
+        }
+      }
+    },
+    "SuspectEntry": {
+      "type": "object",
+      "required": [
+        "change_status",
+        "is_execution_surface",
+        "path",
+        "priority_score",
+        "surface_kind"
+      ],
+      "properties": {
+        "change_status": {
+          "$ref": "#/definitions/ChangeStatus"
+        },
+        "is_execution_surface": {
+          "type": "boolean"
+        },
+        "owner_hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "priority_score": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "surface_kind": {
+          "type": "string"
         }
       }
     }

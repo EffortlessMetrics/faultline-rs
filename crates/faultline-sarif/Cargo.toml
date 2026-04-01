@@ -13,4 +13,5 @@ serde_json.workspace = true
 [dev-dependencies]
 faultline-codes = { path = "../faultline-codes" }
 faultline-fixtures = { path = "../faultline-fixtures" }
+faultline-junit = { path = "../faultline-junit" }
 proptest = { workspace = true }

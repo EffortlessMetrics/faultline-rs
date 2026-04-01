@@ -1,5 +1,5 @@
-use faultline_types::{PathChange, SubsystemBucket, SurfaceSummary};
-use std::collections::{BTreeMap, BTreeSet};
+use faultline_types::{ChangeStatus, PathChange, SubsystemBucket, SurfaceSummary, SuspectEntry};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[derive(Debug, Default, Clone)]
 pub struct SurfaceAnalyzer;
@@ -49,6 +49,66 @@ impl SurfaceAnalyzer {
             buckets: bucket_items,
             execution_surfaces: execution_surfaces.into_iter().collect(),
         }
+    }
+
+    /// Rank changed paths by investigation priority.
+    /// `owners` maps path → optional owner string (from CODEOWNERS or blame).
+    pub fn rank_suspect_surface(
+        &self,
+        changes: &[PathChange],
+        owners: &HashMap<String, Option<String>>,
+    ) -> Vec<SuspectEntry> {
+        if changes.is_empty() {
+            return Vec::new();
+        }
+
+        let mut entries: Vec<SuspectEntry> = changes
+            .iter()
+            .map(|change| {
+                let mut score: u32 = 100;
+
+                if is_execution_surface(&change.path) {
+                    score += 200;
+                }
+
+                if change.status == ChangeStatus::Deleted {
+                    score += 150;
+                }
+
+                if change.status == ChangeStatus::Renamed {
+                    score += 100;
+                }
+
+                let kind = surface_kind(&change.path);
+
+                if kind == "source" {
+                    score += 50;
+                }
+
+                if kind == "tests" {
+                    score += 25;
+                }
+
+                let owner_hint = owners.get(&change.path).cloned().flatten();
+
+                SuspectEntry {
+                    path: change.path.clone(),
+                    priority_score: score,
+                    surface_kind: kind,
+                    change_status: change.status.clone(),
+                    is_execution_surface: is_execution_surface(&change.path),
+                    owner_hint,
+                }
+            })
+            .collect();
+
+        entries.sort_by(|a, b| {
+            b.priority_score
+                .cmp(&a.priority_score)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+
+        entries
     }
 }
 
@@ -119,6 +179,7 @@ mod tests {
     use super::*;
     use faultline_types::{ChangeStatus, PathChange};
     use proptest::prelude::*;
+    use std::collections::HashMap;
 
     fn pc(path: &str) -> PathChange {
         PathChange {
@@ -340,6 +401,97 @@ mod tests {
         }
     }
 
+    // --- rank_suspect_surface tests ---
+
+    fn pc_with_status(path: &str, status: ChangeStatus) -> PathChange {
+        PathChange {
+            status,
+            path: path.into(),
+        }
+    }
+
+    #[test]
+    fn rank_suspect_surface_empty_input() {
+        let analyzer = SurfaceAnalyzer;
+        let owners = HashMap::new();
+        let result = analyzer.rank_suspect_surface(&[], &owners);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn rank_suspect_surface_single_modified_source() {
+        let analyzer = SurfaceAnalyzer;
+        let owners = HashMap::new();
+        let changes = vec![pc_with_status("src/main.rs", ChangeStatus::Modified)];
+        let result = analyzer.rank_suspect_surface(&changes, &owners);
+        assert_eq!(result.len(), 1);
+        // base 100 + source 50 = 150
+        assert_eq!(result[0].priority_score, 150);
+        assert_eq!(result[0].surface_kind, "source");
+        assert!(!result[0].is_execution_surface);
+        assert_eq!(result[0].change_status, ChangeStatus::Modified);
+        assert_eq!(result[0].owner_hint, None);
+    }
+
+    #[test]
+    fn rank_suspect_surface_scoring_rules() {
+        let analyzer = SurfaceAnalyzer;
+        let owners = HashMap::new();
+        let changes = vec![
+            pc_with_status(".github/workflows/ci.yml", ChangeStatus::Modified), // exec: 100+200 = 300
+            pc_with_status("src/lib.rs", ChangeStatus::Deleted), // source+deleted: 100+150+50 = 300
+            pc_with_status("src/old.rs", ChangeStatus::Renamed), // source+renamed: 100+100+50 = 250
+            pc_with_status("src/main.rs", ChangeStatus::Modified), // source: 100+50 = 150
+            pc_with_status("tests/basic.rs", ChangeStatus::Modified), // test: 100+25 = 125
+            pc_with_status("Cargo.toml", ChangeStatus::Modified), // other: 100
+        ];
+        let result = analyzer.rank_suspect_surface(&changes, &owners);
+        assert_eq!(result.len(), 6);
+        // Descending score, ascending path for ties
+        assert_eq!(result[0].priority_score, 300);
+        assert_eq!(result[1].priority_score, 300);
+        // Tie-break: ascending path
+        assert_eq!(result[0].path, ".github/workflows/ci.yml");
+        assert_eq!(result[1].path, "src/lib.rs");
+        assert_eq!(result[2].priority_score, 250);
+        assert_eq!(result[3].priority_score, 150);
+        assert_eq!(result[4].priority_score, 125);
+        assert_eq!(result[5].priority_score, 100);
+    }
+
+    #[test]
+    fn rank_suspect_surface_owner_hints() {
+        let analyzer = SurfaceAnalyzer;
+        let mut owners = HashMap::new();
+        owners.insert("src/main.rs".to_string(), Some("alice".to_string()));
+        owners.insert("src/lib.rs".to_string(), None);
+        let changes = vec![
+            pc_with_status("src/main.rs", ChangeStatus::Modified),
+            pc_with_status("src/lib.rs", ChangeStatus::Modified),
+            pc_with_status("src/other.rs", ChangeStatus::Modified),
+        ];
+        let result = analyzer.rank_suspect_surface(&changes, &owners);
+        assert_eq!(result.len(), 3);
+        let main_entry = result.iter().find(|e| e.path == "src/main.rs").unwrap();
+        assert_eq!(main_entry.owner_hint, Some("alice".to_string()));
+        let lib_entry = result.iter().find(|e| e.path == "src/lib.rs").unwrap();
+        assert_eq!(lib_entry.owner_hint, None);
+        let other_entry = result.iter().find(|e| e.path == "src/other.rs").unwrap();
+        assert_eq!(other_entry.owner_hint, None);
+    }
+
+    #[test]
+    fn rank_suspect_surface_execution_surface_deleted() {
+        let analyzer = SurfaceAnalyzer;
+        let owners = HashMap::new();
+        // Deleted execution surface: 100 + 200 + 150 = 450
+        let changes = vec![pc_with_status("scripts/deploy.sh", ChangeStatus::Deleted)];
+        let result = analyzer.rank_suspect_surface(&changes, &owners);
+        assert_eq!(result[0].priority_score, 450);
+        assert!(result[0].is_execution_surface);
+        assert_eq!(result[0].change_status, ChangeStatus::Deleted);
+    }
+
     // --- Proptest strategies for Property 13: Surface Analysis Invariants ---
 
     const VALID_SURFACE_KINDS: &[&str] = &[
@@ -437,6 +589,206 @@ mod tests {
                 prop_assert!(
                     is_execution_surface(exec_path),
                     "execution surface '{}' must satisfy is_execution_surface()", exec_path
+                );
+            }
+        }
+    }
+
+    // --- Proptest strategies for Properties 43–46: Suspect Surface Ranking ---
+
+    /// Strategy that generates a mixed set of PathChange values guaranteed to contain
+    /// at least one execution surface, one rename, one delete, and one ordinary modified source.
+    fn arb_mixed_path_changes() -> impl Strategy<Value = Vec<PathChange>> {
+        // Fixed entries that guarantee the required mix
+        let exec_surface = Just(PathChange {
+            status: ChangeStatus::Modified,
+            path: ".github/workflows/ci.yml".into(),
+        });
+        let renamed = Just(PathChange {
+            status: ChangeStatus::Renamed,
+            path: "src/renamed.rs".into(),
+        });
+        let deleted = Just(PathChange {
+            status: ChangeStatus::Deleted,
+            path: "src/deleted.rs".into(),
+        });
+        let ordinary_source = Just(PathChange {
+            status: ChangeStatus::Modified,
+            path: "src/ordinary.rs".into(),
+        });
+        // Additional random changes
+        let extras = prop::collection::vec(arb_path_change(), 0..10);
+
+        (exec_surface, renamed, deleted, ordinary_source, extras).prop_map(
+            |(exec, ren, del, ord, mut extra)| {
+                let mut changes = vec![exec, ren, del, ord];
+                changes.append(&mut extra);
+                changes
+            },
+        )
+    }
+
+    // Feature: v01-product-sharpening, Property 43: Suspect surface ranking is sorted and deterministic
+    // **Validates: Requirements 1.1, 1.10**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_suspect_ranking_sorted_and_deterministic(
+            changes in prop::collection::vec(arb_path_change(), 0..30)
+        ) {
+            let analyzer = SurfaceAnalyzer;
+            // Build a deterministic owners map from the generated changes
+            let owners: HashMap<String, Option<String>> = HashMap::new();
+
+            let result1 = analyzer.rank_suspect_surface(&changes, &owners);
+            let result2 = analyzer.rank_suspect_surface(&changes, &owners);
+
+            // Deterministic: identical calls produce identical output
+            prop_assert_eq!(&result1, &result2, "rank_suspect_surface must be deterministic");
+
+            // Sorted: descending score, ascending path for ties
+            for window in result1.windows(2) {
+                let a = &window[0];
+                let b = &window[1];
+                prop_assert!(
+                    a.priority_score > b.priority_score
+                        || (a.priority_score == b.priority_score && a.path <= b.path),
+                    "entries must be sorted by descending score then ascending path: \
+                     ({}, {}) vs ({}, {})",
+                    a.priority_score, a.path, b.priority_score, b.path
+                );
+            }
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 44: Execution surfaces, renames, and deletes score higher than ordinary modifications
+    // **Validates: Requirements 1.2**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_exec_rename_delete_score_higher_than_ordinary(
+            changes in arb_mixed_path_changes()
+        ) {
+            let analyzer = SurfaceAnalyzer;
+            let owners = HashMap::new();
+            let result = analyzer.rank_suspect_surface(&changes, &owners);
+
+            // Find the ordinary modified source entry
+            let ordinary_score = result
+                .iter()
+                .find(|e| e.path == "src/ordinary.rs")
+                .expect("ordinary source must be present")
+                .priority_score;
+
+            // Execution surface must score higher
+            let exec_score = result
+                .iter()
+                .find(|e| e.path == ".github/workflows/ci.yml")
+                .expect("execution surface must be present")
+                .priority_score;
+            prop_assert!(
+                exec_score > ordinary_score,
+                "execution surface score {} must be > ordinary source score {}",
+                exec_score, ordinary_score
+            );
+
+            // Renamed file must score higher
+            let renamed_score = result
+                .iter()
+                .find(|e| e.path == "src/renamed.rs")
+                .expect("renamed file must be present")
+                .priority_score;
+            prop_assert!(
+                renamed_score > ordinary_score,
+                "renamed file score {} must be > ordinary source score {}",
+                renamed_score, ordinary_score
+            );
+
+            // Deleted file must score higher
+            let deleted_score = result
+                .iter()
+                .find(|e| e.path == "src/deleted.rs")
+                .expect("deleted file must be present")
+                .priority_score;
+            prop_assert!(
+                deleted_score > ordinary_score,
+                "deleted file score {} must be > ordinary source score {}",
+                deleted_score, ordinary_score
+            );
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 45: SuspectEntry preserves change_status and has consistent surface_kind
+    // **Validates: Requirements 1.6, 1.7**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_suspect_entry_preserves_status_and_surface_kind(
+            change in arb_path_change()
+        ) {
+            let analyzer = SurfaceAnalyzer;
+            let owners = HashMap::new();
+            let result = analyzer.rank_suspect_surface(&[change.clone()], &owners);
+
+            prop_assert_eq!(result.len(), 1, "single input must produce single entry");
+            let entry = &result[0];
+
+            // change_status must match input
+            prop_assert_eq!(
+                &entry.change_status, &change.status,
+                "change_status must match input PathChange.status"
+            );
+
+            // surface_kind must match the classification function
+            let expected_kind = surface_kind(&change.path);
+            prop_assert_eq!(
+                &entry.surface_kind, &expected_kind,
+                "surface_kind must match surface_kind() for path '{}'", change.path
+            );
+
+            // is_execution_surface must match the classification function
+            let expected_exec = is_execution_surface(&change.path);
+            prop_assert_eq!(
+                entry.is_execution_surface, expected_exec,
+                "is_execution_surface must match is_execution_surface() for path '{}'", change.path
+            );
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 46: SuspectEntry owner_hint matches the provided owners map
+    // **Validates: Requirements 1.3, 1.4, 1.5**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_suspect_entry_owner_hint_matches_map(
+            changes in prop::collection::vec(arb_path_change(), 1..20)
+        ) {
+            let analyzer = SurfaceAnalyzer;
+
+            // Build a random owners map: for each path, randomly decide whether to include it
+            // and if so, randomly assign Some(owner) or None
+            let mut owners: HashMap<String, Option<String>> = HashMap::new();
+            // Use a simple deterministic pattern based on path length for variety
+            for (i, change) in changes.iter().enumerate() {
+                match i % 3 {
+                    0 => { owners.insert(change.path.clone(), Some(format!("owner{}", i))); }
+                    1 => { owners.insert(change.path.clone(), None); }
+                    _ => { /* absent from map */ }
+                }
+            }
+
+            let result = analyzer.rank_suspect_surface(&changes, &owners);
+
+            for entry in &result {
+                let expected = owners.get(&entry.path).cloned().flatten();
+                prop_assert_eq!(
+                    &entry.owner_hint, &expected,
+                    "owner_hint for path '{}' must match owners map (expected {:?}, got {:?})",
+                    entry.path, expected, entry.owner_hint
                 );
             }
         }

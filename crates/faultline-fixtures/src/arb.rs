@@ -80,7 +80,10 @@ pub fn arb_probe_spec() -> impl Strategy<Value = ProbeSpec> {
 }
 
 pub fn arb_search_policy() -> impl Strategy<Value = SearchPolicy> {
-    (1usize..128).prop_map(|max_probes| SearchPolicy { max_probes })
+    (1usize..128).prop_map(|max_probes| SearchPolicy {
+        max_probes,
+        flake_policy: FlakePolicy::default(),
+    })
 }
 
 pub fn arb_analysis_request() -> impl Strategy<Value = AnalysisRequest> {
@@ -161,6 +164,7 @@ pub fn arb_probe_observation() -> impl Strategy<Value = ProbeObservation> {
                     signal_number,
                     probe_command,
                     working_dir,
+                    flake_signal: None,
                 }
             },
         )
@@ -294,6 +298,8 @@ pub fn arb_analysis_report() -> impl Strategy<Value = AnalysisReport> {
                     outcome,
                     changed_paths,
                     surface,
+                    suspect_surface: vec![],
+                    reproduction_capsules: vec![],
                 }
             },
         )

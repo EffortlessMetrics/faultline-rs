@@ -3,7 +3,8 @@ use faultline_localization::LocalizationSession;
 use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
 use faultline_surface::SurfaceAnalyzer;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, Result, RunHandle, now_epoch_seconds,
+    AnalysisReport, AnalysisRequest, FaultlineError, ReproductionCapsule, Result, RunHandle,
+    compute_flake_signal, now_epoch_seconds,
 };
 
 /// Options controlling the behavior of `FaultlineApp::localize`.
@@ -110,11 +111,42 @@ impl<'a> FaultlineApp<'a> {
 
         let mut probe_count = 0usize;
         let max_probes = session.max_probes();
+        let retries = request.policy.flake_policy.retries;
+        let stability_threshold = request.policy.flake_policy.stability_threshold;
+
         while probe_count < max_probes {
             let Some(commit) = session.next_probe() else {
                 break;
             };
-            let mut observation = self.probe_commit(&request, &commit)?;
+
+            let observation = if retries > 0 {
+                // Flake-aware: probe 1 + retries times, compute FlakeSignal
+                let total_attempts = 1 + retries as usize;
+                let mut results: Vec<faultline_types::ProbeObservation> =
+                    Vec::with_capacity(total_attempts);
+
+                for _ in 0..total_attempts {
+                    let obs = self.probe_commit(&request, &commit)?;
+                    results.push(obs);
+                }
+
+                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
+                let flake_signal = compute_flake_signal(&classes, stability_threshold);
+
+                // Majority vote: pick the most-frequent class
+                let majority_class = Self::majority_class(&classes);
+
+                // Use the first probe result as the base, override class and attach signal
+                let mut observation = results.into_iter().next().unwrap();
+                observation.class = majority_class;
+                observation.flake_signal = Some(flake_signal);
+                observation
+            } else {
+                // Default: single probe, no FlakeSignal
+                self.probe_commit(&request, &commit)?
+            };
+
+            let mut observation = observation;
             observation.sequence_index = next_sequence_index;
             next_sequence_index += 1;
 
@@ -133,16 +165,58 @@ impl<'a> FaultlineApp<'a> {
             Vec::new()
         };
         let surface = self.surface.summarize(&changed_paths);
+
+        // Resolve owner hints: try CODEOWNERS first, fall back to blame frequency
+        let path_strings: Vec<String> = changed_paths.iter().map(|p| p.path.clone()).collect();
+        let owners = if path_strings.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            match self.history.codeowners_for_paths(&path_strings) {
+                Ok(map) => map,
+                Err(_) => {
+                    eprintln!("warning: CODEOWNERS lookup failed, falling back to blame frequency");
+                    match self.history.blame_frequency(&path_strings) {
+                        Ok(map) => map,
+                        Err(_) => {
+                            eprintln!("warning: blame frequency lookup failed, using empty owners");
+                            std::collections::HashMap::new()
+                        }
+                    }
+                }
+            }
+        };
+        let suspect_surface = self.surface.rank_suspect_surface(&changed_paths, &owners);
+
+        let observations = session.observation_list();
+
+        // Generate one ReproductionCapsule per observation
+        let probe_env = match &request.probe {
+            faultline_types::ProbeSpec::Exec { env, .. } => env.clone(),
+            faultline_types::ProbeSpec::Shell { env, .. } => env.clone(),
+        };
+        let reproduction_capsules: Vec<ReproductionCapsule> = observations
+            .iter()
+            .map(|obs| ReproductionCapsule {
+                commit: obs.commit.clone(),
+                predicate: request.probe.clone(),
+                env: probe_env.clone(),
+                working_dir: request.repo_root.to_string_lossy().to_string(),
+                timeout_seconds: request.probe.timeout_seconds(),
+            })
+            .collect();
+
         let report = AnalysisReport {
             schema_version: "0.1.0".into(),
             run_id: run.id.clone(),
             created_at_epoch_seconds: now_epoch_seconds(),
             request,
             sequence,
-            observations: session.observation_list(),
+            observations,
             outcome,
             changed_paths,
             surface,
+            suspect_surface,
+            reproduction_capsules,
         };
         self.store.save_report(&run, &report)?;
         Ok(LocalizedRun { run, report })
@@ -167,7 +241,32 @@ impl<'a> FaultlineApp<'a> {
             .clone();
 
         if !session.has_observation(&commit) {
-            let mut observation = self.probe_commit(request, &commit)?;
+            let retries = request.policy.flake_policy.retries;
+            let stability_threshold = request.policy.flake_policy.stability_threshold;
+
+            let observation = if retries > 0 {
+                let total_attempts = 1 + retries as usize;
+                let mut results: Vec<faultline_types::ProbeObservation> =
+                    Vec::with_capacity(total_attempts);
+
+                for _ in 0..total_attempts {
+                    let obs = self.probe_commit(request, &commit)?;
+                    results.push(obs);
+                }
+
+                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
+                let flake_signal = compute_flake_signal(&classes, stability_threshold);
+                let majority_class = Self::majority_class(&classes);
+
+                let mut observation = results.into_iter().next().unwrap();
+                observation.class = majority_class;
+                observation.flake_signal = Some(flake_signal);
+                observation
+            } else {
+                self.probe_commit(request, &commit)?
+            };
+
+            let mut observation = observation;
             observation.sequence_index = *next_sequence_index;
             *next_sequence_index += 1;
 
@@ -227,6 +326,36 @@ impl<'a> FaultlineApp<'a> {
             (Err(err), Err(_cleanup_err)) => Err(err),
         }
     }
+
+    /// Determine the majority class from a set of observation classes.
+    /// Ties are broken by preferring Fail > Pass > Skip > Indeterminate.
+    fn majority_class(classes: &[ObservationClass]) -> ObservationClass {
+        let mut pass = 0u32;
+        let mut fail = 0u32;
+        let mut skip = 0u32;
+        let mut indeterminate = 0u32;
+
+        for class in classes {
+            match class {
+                ObservationClass::Pass => pass += 1,
+                ObservationClass::Fail => fail += 1,
+                ObservationClass::Skip => skip += 1,
+                ObservationClass::Indeterminate => indeterminate += 1,
+            }
+        }
+
+        // Find the maximum count, break ties: Fail > Pass > Skip > Indeterminate
+        let max_count = pass.max(fail).max(skip).max(indeterminate);
+        if fail == max_count {
+            ObservationClass::Fail
+        } else if pass == max_count {
+            ObservationClass::Pass
+        } else if skip == max_count {
+            ObservationClass::Skip
+        } else {
+            ObservationClass::Indeterminate
+        }
+    }
 }
 
 #[cfg(test)]
@@ -235,9 +364,9 @@ mod tests {
     use faultline_codes::{ObservationClass, ProbeKind};
     use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
     use faultline_types::{
-        AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, HistoryMode, PathChange,
-        ProbeObservation, ProbeSpec, RevisionSequence, RevisionSpec, RunHandle, SearchPolicy,
-        ShellKind,
+        AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, FlakePolicy, HistoryMode,
+        PathChange, ProbeObservation, ProbeSpec, RevisionSequence, RevisionSpec, RunHandle,
+        SearchPolicy, ShellKind,
     };
     use proptest::prelude::*;
     use std::cell::Cell;
@@ -264,6 +393,20 @@ mod tests {
             _to: &CommitId,
         ) -> faultline_types::Result<Vec<PathChange>> {
             Ok(Vec::new())
+        }
+
+        fn codeowners_for_paths(
+            &self,
+            _paths: &[String],
+        ) -> faultline_types::Result<std::collections::HashMap<String, Option<String>>> {
+            Ok(std::collections::HashMap::new())
+        }
+
+        fn blame_frequency(
+            &self,
+            _paths: &[String],
+        ) -> faultline_types::Result<std::collections::HashMap<String, Option<String>>> {
+            Ok(std::collections::HashMap::new())
         }
     }
 
@@ -333,6 +476,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             })
         }
     }
@@ -417,7 +561,10 @@ mod tests {
                 env: vec![],
                 timeout_seconds: 60,
             },
-            policy: SearchPolicy { max_probes },
+            policy: SearchPolicy {
+                max_probes,
+                flake_policy: FlakePolicy::default(),
+            },
         }
     }
 
@@ -458,6 +605,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             })
         }
     }
@@ -475,7 +623,10 @@ mod tests {
                 env: vec![],
                 timeout_seconds: 60,
             },
-            policy: SearchPolicy { max_probes },
+            policy: SearchPolicy {
+                max_probes,
+                flake_policy: FlakePolicy::default(),
+            },
         }
     }
 
@@ -519,6 +670,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             })
         }
     }
@@ -617,6 +769,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             },
             ProbeObservation {
                 commit: CommitId("c4".into()),
@@ -631,6 +784,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             },
             ProbeObservation {
                 commit: CommitId("c2".into()),
@@ -645,6 +799,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             },
         ];
 
@@ -855,6 +1010,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             },
             ProbeObservation {
                 commit: CommitId("c4".into()),
@@ -869,6 +1025,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             },
         ];
 
@@ -1156,6 +1313,253 @@ mod tests {
             report.observations.len() <= max_expected,
             "observation count ({}) should be ≤ {max_expected}",
             report.observations.len(),
+        );
+    }
+
+    // ── Flake retry loop tests ──────────────────────────────────────
+
+    /// Mock probe that returns different classes on successive calls for the same commit.
+    /// Used to test flake retry logic.
+    struct FlakyProbe {
+        /// Maps commit ID → list of classes to return on successive calls.
+        /// Each call pops from the front.
+        schedule: std::cell::RefCell<std::collections::HashMap<String, Vec<ObservationClass>>>,
+        /// Default class when schedule is exhausted or commit not in schedule.
+        default_class: ObservationClass,
+        /// Tracks total probe invocations.
+        call_count: Cell<usize>,
+    }
+
+    impl ProbePort for FlakyProbe {
+        fn run(
+            &self,
+            checkout: &CheckedOutRevision,
+            _probe: &ProbeSpec,
+        ) -> faultline_types::Result<ProbeObservation> {
+            self.call_count.set(self.call_count.get() + 1);
+
+            let class = {
+                let mut schedule = self.schedule.borrow_mut();
+                if let Some(classes) = schedule.get_mut(&checkout.commit.0) {
+                    if !classes.is_empty() {
+                        classes.remove(0)
+                    } else {
+                        self.default_class
+                    }
+                } else {
+                    self.default_class
+                }
+            };
+
+            Ok(ProbeObservation {
+                commit: checkout.commit.clone(),
+                class,
+                kind: ProbeKind::Test,
+                exit_code: Some(match class {
+                    ObservationClass::Pass => 0,
+                    ObservationClass::Skip => 125,
+                    _ => 1,
+                }),
+                timed_out: false,
+                duration_ms: 1,
+                stdout: String::new(),
+                stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
+                flake_signal: None,
+            })
+        }
+    }
+
+    fn make_request_with_flake_policy(
+        n: usize,
+        max_probes: usize,
+        retries: u32,
+        stability_threshold: f64,
+    ) -> AnalysisRequest {
+        AnalysisRequest {
+            repo_root: PathBuf::from("/tmp/repo"),
+            good: RevisionSpec("c0".into()),
+            bad: RevisionSpec(format!("c{}", n - 1)),
+            history_mode: HistoryMode::AncestryPath,
+            probe: ProbeSpec::Shell {
+                kind: ProbeKind::Test,
+                shell: ShellKind::Default,
+                script: "true".into(),
+                env: vec![],
+                timeout_seconds: 60,
+            },
+            policy: SearchPolicy {
+                max_probes,
+                flake_policy: FlakePolicy {
+                    retries,
+                    stability_threshold,
+                },
+            },
+        }
+    }
+
+    // Validates: Requirements 3.1, 3.4, 3.5
+    // When retries > 0, each observation should have a FlakeSignal attached.
+    #[test]
+    fn integration_flake_retries_attach_flake_signal() {
+        let n = 5;
+        let sequence = make_sequence(n);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        // All probes return consistent results: c0=Pass, rest=Fail
+        let mut schedule = std::collections::HashMap::new();
+        // 3 attempts each (1 + 2 retries)
+        schedule.insert("c0".into(), vec![ObservationClass::Pass; 3]);
+        schedule.insert("c1".into(), vec![ObservationClass::Pass; 3]);
+        schedule.insert("c2".into(), vec![ObservationClass::Fail; 3]);
+        schedule.insert("c3".into(), vec![ObservationClass::Fail; 3]);
+        schedule.insert("c4".into(), vec![ObservationClass::Fail; 3]);
+
+        let probe = FlakyProbe {
+            schedule: std::cell::RefCell::new(schedule),
+            default_class: ObservationClass::Fail,
+            call_count: Cell::new(0),
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let request = make_request_with_flake_policy(n, 20, 2, 1.0);
+
+        let result = app.localize(request).expect("localize should succeed");
+
+        // All observations should have flake_signal attached (boundaries + interior)
+        for obs in &result.report.observations {
+            assert!(
+                obs.flake_signal.is_some(),
+                "observation for {} should have flake_signal when retries > 0",
+                obs.commit.0
+            );
+            let signal = obs.flake_signal.as_ref().unwrap();
+            assert_eq!(
+                signal.total_runs, 3,
+                "total_runs should be 3 (1 + 2 retries) for {}",
+                obs.commit.0
+            );
+            assert!(
+                signal.is_stable,
+                "all-consistent results should be stable for {}",
+                obs.commit.0
+            );
+        }
+    }
+
+    // Validates: Requirements 3.6
+    // When retries == 0 (default), no FlakeSignal should be attached.
+    #[test]
+    fn integration_default_retries_no_flake_signal() {
+        let n = 5;
+        let sequence = make_sequence(n);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("c0".into(), ObservationClass::Pass);
+        overrides.insert("c1".into(), ObservationClass::Pass);
+        overrides.insert("c2".into(), ObservationClass::Fail);
+        overrides.insert("c3".into(), ObservationClass::Fail);
+        overrides.insert("c4".into(), ObservationClass::Fail);
+
+        let probe = ConfigurableMockProbe {
+            overrides,
+            default_class: ObservationClass::Fail,
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        // retries=0 (default)
+        let request = make_request_for_sequence(n, 20);
+
+        let result = app.localize(request).expect("localize should succeed");
+
+        // No observation should have flake_signal
+        for obs in &result.report.observations {
+            assert!(
+                obs.flake_signal.is_none(),
+                "observation for {} should NOT have flake_signal when retries == 0",
+                obs.commit.0
+            );
+        }
+    }
+
+    // Validates: Requirements 3.1, 3.4
+    // When a commit is flaky (mixed results), majority vote determines the class
+    // and FlakeSignal.is_stable should be false when below threshold.
+    #[test]
+    fn integration_flaky_commit_majority_vote() {
+        let n = 5;
+        let sequence = make_sequence(n);
+        let history = MockHistory {
+            sequence: sequence.clone(),
+        };
+        let checkout = MockCheckout;
+
+        // c2 is flaky: 2 Fail, 1 Pass out of 3 attempts
+        let mut schedule = std::collections::HashMap::new();
+        schedule.insert("c0".into(), vec![ObservationClass::Pass; 3]);
+        schedule.insert("c1".into(), vec![ObservationClass::Pass; 3]);
+        schedule.insert(
+            "c2".into(),
+            vec![
+                ObservationClass::Fail,
+                ObservationClass::Pass,
+                ObservationClass::Fail,
+            ],
+        );
+        schedule.insert("c3".into(), vec![ObservationClass::Fail; 3]);
+        schedule.insert("c4".into(), vec![ObservationClass::Fail; 3]);
+
+        let probe = FlakyProbe {
+            schedule: std::cell::RefCell::new(schedule),
+            default_class: ObservationClass::Fail,
+            call_count: Cell::new(0),
+        };
+        let store = MockRunStore;
+
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        // retries=2, stability_threshold=1.0 (requires unanimity)
+        let request = make_request_with_flake_policy(n, 20, 2, 1.0);
+
+        let result = app.localize(request).expect("localize should succeed");
+
+        // Find the observation for c2
+        let obs_c2 = result
+            .report
+            .observations
+            .iter()
+            .find(|o| o.commit.0 == "c2")
+            .expect("c2 must be in observations");
+
+        // Majority vote: 2 Fail vs 1 Pass → Fail
+        assert_eq!(
+            obs_c2.class,
+            ObservationClass::Fail,
+            "c2 majority should be Fail (2 Fail vs 1 Pass)"
+        );
+
+        let signal = obs_c2
+            .flake_signal
+            .as_ref()
+            .expect("c2 should have flake_signal");
+        assert_eq!(signal.total_runs, 3);
+        assert_eq!(signal.fail_count, 2);
+        assert_eq!(signal.pass_count, 1);
+        // With stability_threshold=1.0, 2/3 < 1.0 → not stable
+        assert!(
+            !signal.is_stable,
+            "c2 should be unstable (2/3 < 1.0 threshold)"
         );
     }
 }

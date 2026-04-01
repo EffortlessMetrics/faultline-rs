@@ -35,6 +35,13 @@ impl ReportRenderer {
         Ok(())
     }
 
+    /// Render JSON + HTML + Markdown dossier.
+    pub fn render_with_markdown(&self, report: &AnalysisReport) -> Result<()> {
+        self.render(report)?;
+        fs::write(self.output_dir.join("dossier.md"), render_markdown(report))?;
+        Ok(())
+    }
+
     pub fn output_dir(&self) -> &Path {
         &self.output_dir
     }
@@ -177,6 +184,48 @@ impl ReportRenderer {
             .collect::<Vec<_>>()
             .join("\n");
 
+        // Task 3.10: Render suspect surface as a prioritized list
+        let suspect_surface_html = if !report.suspect_surface.is_empty() {
+            let items = report
+                .suspect_surface
+                .iter()
+                .map(|entry| {
+                    let entry_class = if entry.is_execution_surface {
+                        "suspect-entry exec-surface"
+                    } else {
+                        "suspect-entry"
+                    };
+                    let exec_badge = if entry.is_execution_surface {
+                        " <span class=\"badge badge-exec\">exec</span>".to_string()
+                    } else {
+                        String::new()
+                    };
+                    let owner = entry
+                        .owner_hint
+                        .as_ref()
+                        .map(|o| format!(" <span class=\"suspect-owner\">owner: {}</span>", escape_html(o)))
+                        .unwrap_or_default();
+                    format!(
+                        "<li class=\"{}\"><span class=\"suspect-score\">{}</span><code>{}</code>{}<span class=\"suspect-kind\">{}</span><span class=\"suspect-status\">{:?}</span>{}</li>",
+                        entry_class,
+                        entry.priority_score,
+                        escape_html(&entry.path),
+                        exec_badge,
+                        escape_html(&entry.surface_kind),
+                        entry.change_status,
+                        owner,
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                "\n  <h2>Suspect surface</h2>\n  <ul class=\"suspect-list\">{}</ul>",
+                items,
+            )
+        } else {
+            String::new()
+        };
+
         // Task 11.9: Log file links for truncated output
         let log_links = sorted_observations
             .iter()
@@ -233,6 +282,14 @@ impl ReportRenderer {
     .obs-skip {{ background: #f3f4f6; }}
     .obs-indeterminate {{ background: #fefce8; }}
     .execution-surfaces {{ background: #fffbeb; border: 1px solid #f59e0b; border-radius: 4px; padding: 0.5rem; }}
+    .suspect-list {{ list-style: none; padding: 0; }}
+    .suspect-entry {{ padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #e5e7eb; border-radius: 4px; }}
+    .suspect-entry.exec-surface {{ border-left: 4px solid #f59e0b; background: #fffbeb; font-weight: bold; }}
+    .suspect-score {{ display: inline-block; min-width: 3em; text-align: right; margin-right: 0.5rem; color: #6b7280; font-size: 0.85em; }}
+    .suspect-kind {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #e5e7eb; margin-left: 0.5rem; }}
+    .suspect-status {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #dbeafe; margin-left: 0.25rem; }}
+    .suspect-owner {{ color: #6b7280; font-size: 0.85em; margin-left: 0.5rem; }}
+    .badge-exec {{ background: #fef3c7; color: #92400e; }}
   </style>
 </head>
 <body>
@@ -253,7 +310,7 @@ impl ReportRenderer {
   <ul>{}</ul>
   {}
   <h2>Changed paths</h2>
-  <ul>{}</ul>{}
+  <ul>{}</ul>{}{}
 </body>
 </html>"#,
             escape_html(&report.run_id),
@@ -265,9 +322,143 @@ impl ReportRenderer {
             buckets,
             execution_surfaces_html,
             changed_paths,
+            suspect_surface_html,
             log_section,
         )
     }
+}
+
+/// Render a Markdown dossier from an analysis report.
+/// Never fails — returns placeholder text for missing/empty fields.
+pub fn render_markdown(report: &AnalysisReport) -> String {
+    let mut md = String::new();
+
+    // Outcome summary
+    md.push_str("## Outcome\n\n");
+    match &report.outcome {
+        LocalizationOutcome::FirstBad {
+            last_good,
+            first_bad,
+            confidence,
+        } => {
+            md.push_str(&format!(
+                "**FirstBad** — `{}` → `{}` (confidence: {}/{})\n\n",
+                last_good, first_bad, confidence.score, confidence.label
+            ));
+        }
+        LocalizationOutcome::SuspectWindow {
+            lower_bound_exclusive,
+            upper_bound_inclusive,
+            confidence,
+            reasons,
+        } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            md.push_str(&format!(
+                "**SuspectWindow** — `{}` → `{}` (confidence: {}/{}, reasons: {})\n\n",
+                lower_bound_exclusive,
+                upper_bound_inclusive,
+                confidence.score,
+                confidence.label,
+                reasons_str.join(", ")
+            ));
+        }
+        LocalizationOutcome::Inconclusive { reasons } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            md.push_str(&format!(
+                "**Inconclusive** — reasons: {}\n\n",
+                reasons_str.join(", ")
+            ));
+        }
+    }
+
+    // Boundary info
+    md.push_str("## Boundary\n\n");
+    md.push_str(&format!("- Good: `{}`\n", report.request.good.0));
+    md.push_str(&format!("- Bad: `{}`\n", report.request.bad.0));
+    md.push_str(&format!(
+        "- Window width: {} revisions\n\n",
+        report.sequence.revisions.len()
+    ));
+
+    // Ranked suspect surface (top 10)
+    md.push_str("## Suspect Surface\n\n");
+    if report.suspect_surface.is_empty() {
+        md.push_str("No suspect surface available.\n\n");
+    } else {
+        md.push_str("| Score | Path | Kind | Status | Owner |\n");
+        md.push_str("|-------|------|------|--------|-------|\n");
+        for entry in report.suspect_surface.iter().take(10) {
+            let exec_marker = if entry.is_execution_surface {
+                " ⚡"
+            } else {
+                ""
+            };
+            let owner = entry.owner_hint.as_deref().unwrap_or("—");
+            md.push_str(&format!(
+                "| {} | `{}`{} | {} | {:?} | {} |\n",
+                entry.priority_score,
+                entry.path,
+                exec_marker,
+                entry.surface_kind,
+                entry.change_status,
+                owner
+            ));
+        }
+        md.push('\n');
+    }
+
+    // Observation timeline
+    md.push_str("## Observations\n\n");
+    if report.observations.is_empty() {
+        md.push_str("No observations recorded.\n\n");
+    } else {
+        md.push_str("| Commit | Class | Duration (ms) | Flake? |\n");
+        md.push_str("|--------|-------|---------------|--------|\n");
+        for obs in &report.observations {
+            let flake = match &obs.flake_signal {
+                Some(fs) if !fs.is_stable => "⚠ unstable",
+                Some(_) => "stable",
+                None => "—",
+            };
+            md.push_str(&format!(
+                "| `{}` | {:?} | {} | {} |\n",
+                obs.commit, obs.class, obs.duration_ms, flake
+            ));
+        }
+        md.push('\n');
+    }
+
+    // Reproduction command
+    md.push_str("## Reproduction\n\n");
+    if report.reproduction_capsules.is_empty() {
+        md.push_str("No reproduction capsules available.\n\n");
+    } else {
+        // Use the first boundary capsule
+        let boundary_capsule = report
+            .outcome
+            .boundary_pair()
+            .and_then(|(_, bad)| {
+                report
+                    .reproduction_capsules
+                    .iter()
+                    .find(|c| c.commit == *bad)
+            })
+            .or_else(|| report.reproduction_capsules.first());
+        if let Some(capsule) = boundary_capsule {
+            md.push_str(&format!(
+                "```sh\n{}\n```\n\n",
+                capsule.to_shell_script().trim()
+            ));
+        }
+    }
+
+    // Artifact links
+    md.push_str("## Artifacts\n\n");
+    md.push_str(&format!("- Run ID: `{}`\n", report.run_id));
+    md.push_str("- `analysis.json`\n");
+    md.push_str("- `index.html`\n");
+
+    md
 }
 
 fn escape_html(input: &str) -> String {
@@ -322,6 +513,7 @@ mod tests {
                     signal_number: None,
                     probe_command: String::new(),
                     working_dir: String::new(),
+                    flake_signal: None,
                 },
                 ProbeObservation {
                     commit: CommitId("bbb222".into()),
@@ -336,6 +528,7 @@ mod tests {
                     signal_number: None,
                     probe_command: String::new(),
                     working_dir: String::new(),
+                    flake_signal: None,
                 },
             ],
             outcome: LocalizationOutcome::FirstBad {
@@ -357,6 +550,8 @@ mod tests {
                 }],
                 execution_surfaces: vec![],
             },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
         }
     }
 
@@ -970,7 +1165,10 @@ mod tests {
                     env: vec![],
                     timeout_seconds: 300,
                 },
-                policy: SearchPolicy { max_probes: 10 },
+                policy: SearchPolicy {
+                    max_probes: 10,
+                    flake_policy: FlakePolicy::default(),
+                },
             },
             sequence: RevisionSequence {
                 revisions: vec![
@@ -994,6 +1192,7 @@ mod tests {
                     signal_number: None,
                     probe_command: "cargo test".into(),
                     working_dir: "/tmp/scratch/aaa111".into(),
+                    flake_signal: None,
                 },
                 ProbeObservation {
                     commit: CommitId("ddd444".into()),
@@ -1008,6 +1207,7 @@ mod tests {
                     signal_number: None,
                     probe_command: "cargo test".into(),
                     working_dir: "/tmp/scratch/ddd444".into(),
+                    flake_signal: None,
                 },
                 ProbeObservation {
                     commit: CommitId("ccc333".into()),
@@ -1022,6 +1222,7 @@ mod tests {
                     signal_number: None,
                     probe_command: "cargo test".into(),
                     working_dir: "/tmp/scratch/ccc333".into(),
+                    flake_signal: None,
                 },
                 ProbeObservation {
                     commit: CommitId("bbb222".into()),
@@ -1036,6 +1237,7 @@ mod tests {
                     signal_number: None,
                     probe_command: "cargo test".into(),
                     working_dir: "/tmp/scratch/bbb222".into(),
+                    flake_signal: None,
                 },
             ],
             outcome: LocalizationOutcome::FirstBad {
@@ -1063,6 +1265,33 @@ mod tests {
                 }],
                 execution_surfaces: vec![".github/workflows/ci.yml".into()],
             },
+            suspect_surface: vec![
+                SuspectEntry {
+                    path: ".github/workflows/ci.yml".into(),
+                    priority_score: 350,
+                    surface_kind: "workflows".into(),
+                    change_status: ChangeStatus::Modified,
+                    is_execution_surface: true,
+                    owner_hint: Some("@infra-team".into()),
+                },
+                SuspectEntry {
+                    path: "src/bug.rs".into(),
+                    priority_score: 150,
+                    surface_kind: "source".into(),
+                    change_status: ChangeStatus::Added,
+                    is_execution_surface: false,
+                    owner_hint: Some("@alice".into()),
+                },
+                SuspectEntry {
+                    path: "src/lib.rs".into(),
+                    priority_score: 150,
+                    surface_kind: "source".into(),
+                    change_status: ChangeStatus::Modified,
+                    is_execution_surface: false,
+                    owner_hint: None,
+                },
+            ],
+            reproduction_capsules: vec![],
         }
     }
 
@@ -1293,7 +1522,10 @@ mod tests {
     }
 
     fn arb_search_policy() -> impl Strategy<Value = SearchPolicy> {
-        (1usize..128).prop_map(|max_probes| SearchPolicy { max_probes })
+        (1usize..128).prop_map(|max_probes| SearchPolicy {
+            max_probes,
+            flake_policy: FlakePolicy::default(),
+        })
     }
 
     fn arb_analysis_request() -> impl Strategy<Value = AnalysisRequest> {
@@ -1374,6 +1606,7 @@ mod tests {
                         signal_number,
                         probe_command,
                         working_dir,
+                        flake_signal: None,
                     }
                 },
             )
@@ -1509,6 +1742,8 @@ mod tests {
                         outcome,
                         changed_paths,
                         surface,
+                        suspect_surface: vec![],
+                        reproduction_capsules: vec![],
                     }
                 },
             )
@@ -1846,6 +2081,148 @@ mod tests {
                     "HTML must contain execution surface path '{}'",
                     path,
                 );
+            }
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 47: Markdown dossier contains all required sections
+    // **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5**
+
+    /// Strategy for non-Inconclusive reports with at least one observation.
+    fn arb_report_for_markdown() -> impl Strategy<Value = AnalysisReport> {
+        (
+            "[a-z0-9-]{1,20}",
+            any::<u64>(),
+            arb_analysis_request(),
+            arb_revision_sequence(),
+            prop::collection::vec(arb_probe_observation(), 1..5),
+            // Only FirstBad or SuspectWindow
+            prop_oneof![
+                (arb_commit_id(), arb_commit_id(), arb_confidence()).prop_map(
+                    |(last_good, first_bad, confidence)| {
+                        LocalizationOutcome::FirstBad {
+                            last_good,
+                            first_bad,
+                            confidence,
+                        }
+                    }
+                ),
+                (
+                    arb_commit_id(),
+                    arb_commit_id(),
+                    arb_confidence(),
+                    prop::collection::vec(arb_ambiguity_reason(), 1..4),
+                )
+                    .prop_map(
+                        |(lower_bound_exclusive, upper_bound_inclusive, confidence, reasons)| {
+                            LocalizationOutcome::SuspectWindow {
+                                lower_bound_exclusive,
+                                upper_bound_inclusive,
+                                confidence,
+                                reasons,
+                            }
+                        }
+                    ),
+            ],
+            prop::collection::vec(arb_path_change(), 0..5),
+            arb_surface_summary(),
+        )
+            .prop_map(
+                |(
+                    run_id,
+                    created_at_epoch_seconds,
+                    request,
+                    sequence,
+                    observations,
+                    outcome,
+                    changed_paths,
+                    surface,
+                )| {
+                    // Build suspect surface entries from changed_paths
+                    let suspect_surface: Vec<SuspectEntry> = changed_paths
+                        .iter()
+                        .enumerate()
+                        .map(|(i, pc)| SuspectEntry {
+                            path: pc.path.clone(),
+                            priority_score: 100 + (i as u32) * 10,
+                            surface_kind: "source".into(),
+                            change_status: pc.status.clone(),
+                            is_execution_surface: false,
+                            owner_hint: None,
+                        })
+                        .collect();
+
+                    // Build capsules from observations
+                    let reproduction_capsules: Vec<ReproductionCapsule> = observations
+                        .iter()
+                        .map(|obs| ReproductionCapsule {
+                            commit: obs.commit.clone(),
+                            predicate: request.probe.clone(),
+                            env: vec![],
+                            working_dir: request.repo_root.to_string_lossy().to_string(),
+                            timeout_seconds: request.probe.timeout_seconds(),
+                        })
+                        .collect();
+
+                    AnalysisReport {
+                        schema_version: "0.2.0".into(),
+                        run_id,
+                        created_at_epoch_seconds,
+                        request,
+                        sequence,
+                        observations,
+                        outcome,
+                        changed_paths,
+                        surface,
+                        suspect_surface,
+                        reproduction_capsules,
+                    }
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_markdown_dossier_contains_required_sections(report in arb_report_for_markdown()) {
+            let md = render_markdown(&report);
+
+            // (a) Outcome variant name and boundary commit IDs
+            match &report.outcome {
+                LocalizationOutcome::FirstBad { last_good, first_bad, .. } => {
+                    prop_assert!(md.contains("FirstBad"), "markdown must contain 'FirstBad'");
+                    prop_assert!(md.contains(&last_good.0), "markdown must contain last_good SHA");
+                    prop_assert!(md.contains(&first_bad.0), "markdown must contain first_bad SHA");
+                }
+                LocalizationOutcome::SuspectWindow { lower_bound_exclusive, upper_bound_inclusive, .. } => {
+                    prop_assert!(md.contains("SuspectWindow"), "markdown must contain 'SuspectWindow'");
+                    prop_assert!(md.contains(&lower_bound_exclusive.0), "markdown must contain lower bound SHA");
+                    prop_assert!(md.contains(&upper_bound_inclusive.0), "markdown must contain upper bound SHA");
+                }
+                _ => {}
+            }
+
+            // (b) Good and bad revision specs
+            prop_assert!(md.contains(&report.request.good.0), "markdown must contain good revision");
+            prop_assert!(md.contains(&report.request.bad.0), "markdown must contain bad revision");
+
+            // (c) At least one suspect path if non-empty
+            if !report.suspect_surface.is_empty() {
+                let has_any_path = report.suspect_surface.iter().any(|s| md.contains(&s.path));
+                prop_assert!(has_any_path, "markdown must contain at least one suspect path");
+            }
+
+            // (d) Observation table rows with commit ID and class
+            for obs in &report.observations {
+                prop_assert!(md.contains(&obs.commit.0), "markdown must contain observation commit '{}'", obs.commit.0);
+                let class_str = format!("{:?}", obs.class);
+                prop_assert!(md.contains(&class_str), "markdown must contain observation class '{}'", class_str);
+            }
+
+            // (e) Reproduction command if capsules non-empty
+            if !report.reproduction_capsules.is_empty() {
+                prop_assert!(md.contains("```sh"), "markdown must contain shell code block for reproduction");
             }
         }
     }

@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use faultline_app::FaultlineApp;
 use faultline_codes::{OperatorCode, ProbeKind};
 use faultline_git::GitAdapter;
@@ -6,8 +6,8 @@ use faultline_probe_exec::ExecProbeAdapter;
 use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
 use faultline_types::{
-    AnalysisRequest, FaultlineError, HistoryMode, LocalizationOutcome, ProbeSpec, RevisionSpec,
-    SearchPolicy, ShellKind,
+    AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
+    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
 };
 use std::io;
 use std::path::PathBuf;
@@ -17,14 +17,17 @@ use std::path::PathBuf;
 #[command(version)]
 #[command(about = "Local-first regression localization for Git repos")]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     #[arg(long, default_value = ".")]
     repo: PathBuf,
 
     #[arg(long)]
-    good: String,
+    good: Option<String>,
 
     #[arg(long)]
-    bad: String,
+    bad: Option<String>,
 
     #[arg(long, default_value_t = false)]
     first_parent: bool,
@@ -73,12 +76,61 @@ struct Cli {
     /// Environment variable injection (KEY=VALUE), repeatable
     #[arg(long = "env")]
     envs: Vec<String>,
+
+    /// Number of probe retries for flake detection (0 = no retries)
+    #[arg(long, default_value_t = 0)]
+    retries: u32,
+
+    /// Minimum proportion of consistent results to classify as stable (0.0–1.0)
+    #[arg(long, default_value_t = 1.0)]
+    stability_threshold: f64,
+
+    /// Also write a Markdown dossier alongside HTML/JSON
+    #[arg(long, default_value_t = false)]
+    markdown: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum Commands {
+    /// Extract a reproduction capsule from a completed run
+    Reproduce {
+        /// Path to the run directory containing report.json
+        #[arg(long)]
+        run_dir: PathBuf,
+
+        /// Target commit SHA (defaults to boundary commits)
+        #[arg(long)]
+        commit: Option<String>,
+
+        /// Emit shell script to stdout instead of summary
+        #[arg(long, default_value_t = false)]
+        shell: bool,
+    },
+    /// Compare two analysis runs side-by-side
+    DiffRuns {
+        /// Path to the left (baseline) report JSON file
+        #[arg(long)]
+        left: PathBuf,
+
+        /// Path to the right (new) report JSON file
+        #[arg(long)]
+        right: PathBuf,
+
+        /// Emit JSON output instead of human-readable summary
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Export a Markdown dossier from a completed run
+    ExportMarkdown {
+        /// Path to the run directory containing report.json
+        #[arg(long)]
+        run_dir: PathBuf,
+    },
 }
 
 fn main() {
     match try_main() {
-        Ok(outcome) => {
-            let code = exit_code_for_operator_code(outcome_to_operator_code(&outcome));
+        Ok(code) => {
             std::process::exit(code);
         }
         Err(err) => {
@@ -183,12 +235,51 @@ fn validate_shell(shell: &Option<String>) -> Result<(), io::Error> {
     }
 }
 
-fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
+fn validate_stability_threshold(value: f64) -> std::result::Result<(), FaultlineError> {
+    if !(0.0..=1.0).contains(&value) {
+        return Err(FaultlineError::InvalidInput(format!(
+            "invalid --stability-threshold '{}': must be between 0.0 and 1.0",
+            value
+        )));
+    }
+    Ok(())
+}
+
+fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    // Dispatch subcommands
+    if let Some(command) = cli.command {
+        return match command {
+            Commands::Reproduce {
+                run_dir,
+                commit,
+                shell,
+            } => run_reproduce(run_dir, commit, shell),
+            Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
+            Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+        };
+    }
+
+    // Default: localize flow (requires --good and --bad)
+    let good = cli.good.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--good is required for localization",
+        )
+    })?;
+    let bad = cli.bad.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--bad is required for localization",
+        )
+    })?;
+
     validate_cmd_program(&cli.cmd, &cli.program)?;
     validate_run_mode(cli.resume, cli.force, cli.fresh)?;
     validate_env_vars(&cli.envs)?;
     validate_shell(&cli.shell)?;
+    validate_stability_threshold(cli.stability_threshold)?;
 
     let probe_kind = cli.kind.parse::<ProbeKind>().map_err(|_| {
         io::Error::new(
@@ -237,8 +328,8 @@ fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
 
     let request = AnalysisRequest {
         repo_root: cli.repo.clone(),
-        good: RevisionSpec(cli.good),
-        bad: RevisionSpec(cli.bad),
+        good: RevisionSpec(good),
+        bad: RevisionSpec(bad),
         history_mode: if cli.first_parent {
             HistoryMode::FirstParent
         } else {
@@ -247,6 +338,10 @@ fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
         probe,
         policy: SearchPolicy {
             max_probes: cli.max_probes,
+            flake_policy: FlakePolicy {
+                retries: cli.retries,
+                stability_threshold: cli.stability_threshold,
+            },
         },
     };
 
@@ -275,6 +370,9 @@ fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
     let rendered_html = if cli.no_render {
         renderer.render_json_only(&localized.report)?;
         false
+    } else if cli.markdown {
+        renderer.render_with_markdown(&localized.report)?;
+        true
     } else {
         renderer.render(&localized.report)?;
         true
@@ -282,6 +380,7 @@ fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
 
     let analysis_path = renderer.output_dir().join("analysis.json");
     let html_path = renderer.output_dir().join("index.html");
+    let md_path = renderer.output_dir().join("dossier.md");
 
     println!("run-id       {}", localized.report.run_id);
     println!("observations {}", localized.report.observations.len());
@@ -290,9 +389,183 @@ fn try_main() -> Result<LocalizationOutcome, Box<dyn std::error::Error>> {
     if rendered_html {
         println!("             {}", html_path.display());
     }
+    if cli.markdown {
+        println!("             {}", md_path.display());
+    }
     println!("history      {}", history_mode_label);
     println!("outcome      {}", format_outcome(&localized.report.outcome));
-    Ok(localized.report.outcome)
+    let code = exit_code_for_operator_code(outcome_to_operator_code(&localized.report.outcome));
+    Ok(code)
+}
+
+/// Load a report from a run directory.
+fn load_report_from_dir(run_dir: &PathBuf) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
+    let report_path = run_dir.join("report.json");
+    if !report_path.exists() {
+        return Err(FaultlineError::Store(format!(
+            "report.json not found in {}",
+            run_dir.display()
+        ))
+        .into());
+    }
+    let raw = std::fs::read_to_string(&report_path)?;
+    let report: AnalysisReport = serde_json::from_str(&raw)?;
+    Ok(report)
+}
+
+/// Run the `reproduce` subcommand.
+fn run_reproduce(
+    run_dir: PathBuf,
+    commit: Option<String>,
+    shell: bool,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let report = load_report_from_dir(&run_dir)?;
+
+    if report.reproduction_capsules.is_empty() {
+        eprintln!("faultline: no reproduction capsules in report");
+        return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
+    }
+
+    let capsules: Vec<&faultline_types::ReproductionCapsule> = if let Some(ref sha) = commit {
+        // Find capsule(s) matching the given commit
+        report
+            .reproduction_capsules
+            .iter()
+            .filter(|c| c.commit.0 == *sha)
+            .collect()
+    } else {
+        // Default: boundary commits
+        match report.outcome.boundary_pair() {
+            Some((good, bad)) => report
+                .reproduction_capsules
+                .iter()
+                .filter(|c| c.commit == *good || c.commit == *bad)
+                .collect(),
+            None => {
+                // Inconclusive — emit all capsules
+                report.reproduction_capsules.iter().collect()
+            }
+        }
+    };
+
+    if capsules.is_empty() {
+        let msg = if let Some(sha) = commit {
+            format!("no capsule found for commit {}", sha)
+        } else {
+            "no capsule found for boundary commits".to_string()
+        };
+        eprintln!("faultline: {}", msg);
+        return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
+    }
+
+    for capsule in &capsules {
+        if shell {
+            print!("{}", capsule.to_shell_script());
+        } else {
+            println!("commit    {}", capsule.commit);
+            println!("timeout   {}s", capsule.timeout_seconds);
+            println!("work-dir  {}", capsule.working_dir);
+            match &capsule.predicate {
+                ProbeSpec::Exec { program, args, .. } => {
+                    let cmd_str = if args.is_empty() {
+                        program.clone()
+                    } else {
+                        format!("{} {}", program, args.join(" "))
+                    };
+                    println!("predicate {}", cmd_str);
+                }
+                ProbeSpec::Shell { script, .. } => {
+                    println!("predicate sh -c '{}'", script);
+                }
+            }
+            if !capsule.env.is_empty() {
+                for (key, value) in &capsule.env {
+                    println!("env       {}={}", key, value);
+                }
+            }
+            println!();
+        }
+    }
+
+    Ok(0)
+}
+
+/// Load a report from a JSON file path.
+fn load_report_from_file(path: &PathBuf) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Err(
+            FaultlineError::Store(format!("report file not found: {}", path.display())).into(),
+        );
+    }
+    let raw = std::fs::read_to_string(path)?;
+    let report: AnalysisReport = serde_json::from_str(&raw)?;
+    Ok(report)
+}
+
+/// Run the `diff-runs` subcommand.
+fn run_diff_runs(
+    left_path: PathBuf,
+    right_path: PathBuf,
+    json: bool,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let left = load_report_from_file(&left_path)?;
+    let right = load_report_from_file(&right_path)?;
+    let cmp = faultline_types::compare_runs(&left, &right);
+
+    if json {
+        let output = serde_json::to_string_pretty(&cmp)?;
+        println!("{}", output);
+    } else {
+        print_run_comparison(&cmp);
+    }
+
+    Ok(0)
+}
+
+/// Run the `export-markdown` subcommand.
+fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Error>> {
+    let report = load_report_from_dir(&run_dir)?;
+    let md = faultline_render::render_markdown(&report);
+    print!("{}", md);
+    Ok(0)
+}
+
+fn print_run_comparison(cmp: &RunComparison) {
+    println!("left-run     {}", cmp.left_run_id);
+    println!("right-run    {}", cmp.right_run_id);
+    println!(
+        "outcome      {}",
+        if cmp.outcome_changed {
+            "CHANGED"
+        } else {
+            "unchanged"
+        }
+    );
+    println!("confidence   {:+}", cmp.confidence_delta);
+    println!("window       {:+}", cmp.window_width_delta);
+    println!("probes-reused {}", cmp.probes_reused);
+    if !cmp.suspect_paths_added.is_empty() {
+        println!("paths-added  {}", cmp.suspect_paths_added.join(", "));
+    }
+    if !cmp.suspect_paths_removed.is_empty() {
+        println!("paths-removed {}", cmp.suspect_paths_removed.join(", "));
+    }
+    if !cmp.ambiguity_reasons_added.is_empty() {
+        let reasons: Vec<String> = cmp
+            .ambiguity_reasons_added
+            .iter()
+            .map(|r| r.to_string())
+            .collect();
+        println!("reasons-added {}", reasons.join(", "));
+    }
+    if !cmp.ambiguity_reasons_removed.is_empty() {
+        let reasons: Vec<String> = cmp
+            .ambiguity_reasons_removed
+            .iter()
+            .map(|r| r.to_string())
+            .collect();
+        println!("reasons-removed {}", reasons.join(", "));
+    }
 }
 
 fn format_outcome(outcome: &LocalizationOutcome) -> String {
@@ -386,6 +659,9 @@ mod tests {
             "--no-render",
             "--shell",
             "--env",
+            "--retries",
+            "--stability-threshold",
+            "--markdown",
         ];
 
         for flag in &expected_flags {
@@ -394,6 +670,27 @@ mod tests {
                 "--help output missing expected flag '{flag}'.\nFull help:\n{help}"
             );
         }
+    }
+
+    #[test]
+    fn help_output_describes_reproduce_subcommand() {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf).unwrap();
+        let help = String::from_utf8(buf).unwrap();
+
+        assert!(
+            help.contains("reproduce"),
+            "--help output missing 'reproduce' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("diff-runs"),
+            "--help output missing 'diff-runs' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("export-markdown"),
+            "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
+        );
     }
 
     // Req 3.4: Golden snapshot test for CLI --help text
@@ -698,6 +995,9 @@ mod tests {
                 "--no-render",
                 "--shell",
                 "--env",
+                "--retries",
+                "--stability-threshold",
+                "--markdown",
             ];
 
             // All pre-existing flags

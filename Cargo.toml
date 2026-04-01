@@ -22,7 +22,7 @@ resolver = "2"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-authors = ["OpenAI"]
+authors = ["Steven Zimmerman, CPA"]
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -33,5 +33,5 @@ proptest = "1.6"
 libc = "0.2"
 schemars = "0.8"
 insta = { version = "1.40", features = ["json"] }
-quick-xml = "0.37"
+quick-xml = "0.39"
 anyhow = "1.0"

@@ -1,6 +1,7 @@
 use faultline_codes::{AmbiguityReason, ObservationClass, ProbeKind};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -111,18 +112,23 @@ impl ProbeSpec {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SearchPolicy {
     pub max_probes: usize,
+    #[serde(default)]
+    pub flake_policy: FlakePolicy,
 }
 
 impl Default for SearchPolicy {
     fn default() -> Self {
-        Self { max_probes: 64 }
+        Self {
+            max_probes: 64,
+            flake_policy: FlakePolicy::default(),
+        }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AnalysisRequest {
     pub repo_root: PathBuf,
     pub good: RevisionSpec,
@@ -172,6 +178,8 @@ pub struct ProbeObservation {
     pub probe_command: String,
     #[serde(default)]
     pub working_dir: String,
+    #[serde(default)]
+    pub flake_signal: Option<FlakeSignal>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -270,6 +278,330 @@ pub struct SurfaceSummary {
     pub execution_surfaces: Vec<String>,
 }
 
+// --- Suspect Surface ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SuspectEntry {
+    pub path: String,
+    pub priority_score: u32,
+    pub surface_kind: String,
+    pub change_status: ChangeStatus,
+    pub is_execution_surface: bool,
+    pub owner_hint: Option<String>,
+}
+
+// --- Flake-Aware Probing ---
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct FlakePolicy {
+    pub retries: u32,
+    pub stability_threshold: f64,
+}
+
+impl Default for FlakePolicy {
+    fn default() -> Self {
+        Self {
+            retries: 0,
+            stability_threshold: 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FlakeSignal {
+    pub total_runs: u32,
+    pub pass_count: u32,
+    pub fail_count: u32,
+    pub skip_count: u32,
+    pub indeterminate_count: u32,
+    pub is_stable: bool,
+}
+
+/// Compute a `FlakeSignal` from a set of observation results and a stability threshold.
+///
+/// - `results`: the observation classes from repeated probes of the same commit
+/// - `stability_threshold`: proportion in [0.0, 1.0]; the most-frequent class must meet or exceed this to be stable
+///
+/// Empty results: returns all-zero counts with `is_stable = true` (vacuously stable).
+pub fn compute_flake_signal(results: &[ObservationClass], stability_threshold: f64) -> FlakeSignal {
+    let total_runs = results.len() as u32;
+    if total_runs == 0 {
+        return FlakeSignal {
+            total_runs: 0,
+            pass_count: 0,
+            fail_count: 0,
+            skip_count: 0,
+            indeterminate_count: 0,
+            is_stable: true,
+        };
+    }
+
+    let mut pass_count: u32 = 0;
+    let mut fail_count: u32 = 0;
+    let mut skip_count: u32 = 0;
+    let mut indeterminate_count: u32 = 0;
+
+    for class in results {
+        match class {
+            ObservationClass::Pass => pass_count += 1,
+            ObservationClass::Fail => fail_count += 1,
+            ObservationClass::Skip => skip_count += 1,
+            ObservationClass::Indeterminate => indeterminate_count += 1,
+        }
+    }
+
+    let max_count = pass_count
+        .max(fail_count)
+        .max(skip_count)
+        .max(indeterminate_count);
+    let is_stable = (max_count as f64 / total_runs as f64) >= stability_threshold;
+
+    FlakeSignal {
+        total_runs,
+        pass_count,
+        fail_count,
+        skip_count,
+        indeterminate_count,
+        is_stable,
+    }
+}
+
+// --- Reproduction Capsule ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ReproductionCapsule {
+    pub commit: CommitId,
+    pub predicate: ProbeSpec,
+    pub env: Vec<(String, String)>,
+    pub working_dir: String,
+    pub timeout_seconds: u64,
+}
+
+/// Escape a string for safe inclusion in a single-quoted POSIX shell context.
+/// Replaces each `'` with `'\''` (end quote, escaped quote, start quote).
+fn shell_escape(s: &str) -> String {
+    s.replace('\'', "'\\''")
+}
+
+impl ReproductionCapsule {
+    /// Generate a POSIX shell script that reproduces this probe.
+    pub fn to_shell_script(&self) -> String {
+        let mut script = String::from("#!/bin/sh\nset -e\n");
+
+        // cd to working directory
+        script.push_str(&format!("cd '{}'\n", shell_escape(&self.working_dir)));
+
+        // git checkout
+        script.push_str(&format!(
+            "git checkout '{}'\n",
+            shell_escape(&self.commit.0)
+        ));
+
+        // env exports
+        for (key, value) in &self.env {
+            script.push_str(&format!(
+                "export {}='{}'\n",
+                shell_escape(key),
+                shell_escape(value)
+            ));
+        }
+
+        // predicate command with timeout
+        let timeout = self.timeout_seconds;
+        match &self.predicate {
+            ProbeSpec::Exec {
+                program,
+                args,
+                env: probe_env,
+                ..
+            } => {
+                // Export probe-level env vars
+                for (key, value) in probe_env {
+                    script.push_str(&format!(
+                        "export {}='{}'\n",
+                        shell_escape(key),
+                        shell_escape(value)
+                    ));
+                }
+                let mut cmd_parts = vec![format!("'{}'", shell_escape(program))];
+                for arg in args {
+                    cmd_parts.push(format!("'{}'", shell_escape(arg)));
+                }
+                script.push_str(&format!("timeout {} {}\n", timeout, cmd_parts.join(" ")));
+            }
+            ProbeSpec::Shell {
+                script: shell_script,
+                env: probe_env,
+                ..
+            } => {
+                // Export probe-level env vars
+                for (key, value) in probe_env {
+                    script.push_str(&format!(
+                        "export {}='{}'\n",
+                        shell_escape(key),
+                        shell_escape(value)
+                    ));
+                }
+                script.push_str(&format!(
+                    "timeout {} sh -c '{}'\n",
+                    timeout,
+                    shell_escape(shell_script)
+                ));
+            }
+        }
+
+        script
+    }
+}
+
+// --- Run Comparison ---
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunComparison {
+    pub left_run_id: String,
+    pub right_run_id: String,
+    pub outcome_changed: bool,
+    pub confidence_delta: i16,
+    pub window_width_delta: i64,
+    pub probes_reused: usize,
+    pub suspect_paths_added: Vec<String>,
+    pub suspect_paths_removed: Vec<String>,
+    pub ambiguity_reasons_added: Vec<AmbiguityReason>,
+    pub ambiguity_reasons_removed: Vec<AmbiguityReason>,
+}
+
+/// Extract the confidence score from a localization outcome.
+fn outcome_confidence_score(outcome: &LocalizationOutcome) -> i16 {
+    match outcome {
+        LocalizationOutcome::FirstBad { confidence, .. } => confidence.score as i16,
+        LocalizationOutcome::SuspectWindow { confidence, .. } => confidence.score as i16,
+        LocalizationOutcome::Inconclusive { .. } => 0,
+    }
+}
+
+/// Extract the window width from a localization outcome and sequence.
+fn outcome_window_width(outcome: &LocalizationOutcome, sequence: &RevisionSequence) -> i64 {
+    match outcome.boundary_pair() {
+        Some((lower, upper)) => {
+            let lower_idx = sequence
+                .revisions
+                .iter()
+                .position(|c| c == lower)
+                .map(|i| i as i64);
+            let upper_idx = sequence
+                .revisions
+                .iter()
+                .position(|c| c == upper)
+                .map(|i| i as i64);
+            match (lower_idx, upper_idx) {
+                (Some(l), Some(u)) => (u - l).abs(),
+                _ => 0,
+            }
+        }
+        None => sequence.revisions.len() as i64,
+    }
+}
+
+/// Extract ambiguity reasons from a localization outcome.
+fn outcome_ambiguity_reasons(outcome: &LocalizationOutcome) -> Vec<AmbiguityReason> {
+    match outcome {
+        LocalizationOutcome::SuspectWindow { reasons, .. } => reasons.clone(),
+        LocalizationOutcome::Inconclusive { reasons } => reasons.clone(),
+        LocalizationOutcome::FirstBad { .. } => vec![],
+    }
+}
+
+/// Pure function: compare two analysis reports.
+/// Never panics — always returns a RunComparison.
+pub fn compare_runs(left: &AnalysisReport, right: &AnalysisReport) -> RunComparison {
+    let outcome_changed = serde_json::to_string(&left.outcome).unwrap_or_default()
+        != serde_json::to_string(&right.outcome).unwrap_or_default();
+
+    let left_confidence = outcome_confidence_score(&left.outcome);
+    let right_confidence = outcome_confidence_score(&right.outcome);
+    let confidence_delta = right_confidence.saturating_sub(left_confidence);
+
+    let left_width = outcome_window_width(&left.outcome, &left.sequence);
+    let right_width = outcome_window_width(&right.outcome, &right.sequence);
+    let window_width_delta = right_width.saturating_sub(left_width);
+
+    // Count probes reused: matching (commit, class) pairs
+    let left_probes: HashSet<(String, String)> = left
+        .observations
+        .iter()
+        .map(|o| {
+            (
+                o.commit.0.clone(),
+                serde_json::to_string(&o.class).unwrap_or_default(),
+            )
+        })
+        .collect();
+    let right_probes: HashSet<(String, String)> = right
+        .observations
+        .iter()
+        .map(|o| {
+            (
+                o.commit.0.clone(),
+                serde_json::to_string(&o.class).unwrap_or_default(),
+            )
+        })
+        .collect();
+    let probes_reused = left_probes.intersection(&right_probes).count();
+
+    // Suspect paths set diff
+    let left_suspect_paths: HashSet<&str> = left
+        .suspect_surface
+        .iter()
+        .map(|s| s.path.as_str())
+        .collect();
+    let right_suspect_paths: HashSet<&str> = right
+        .suspect_surface
+        .iter()
+        .map(|s| s.path.as_str())
+        .collect();
+    let mut suspect_paths_added: Vec<String> = right_suspect_paths
+        .difference(&left_suspect_paths)
+        .map(|s| s.to_string())
+        .collect();
+    suspect_paths_added.sort();
+    let mut suspect_paths_removed: Vec<String> = left_suspect_paths
+        .difference(&right_suspect_paths)
+        .map(|s| s.to_string())
+        .collect();
+    suspect_paths_removed.sort();
+
+    // Ambiguity reasons set diff
+    let left_reasons: HashSet<String> = outcome_ambiguity_reasons(&left.outcome)
+        .iter()
+        .map(|r| serde_json::to_string(r).unwrap_or_default())
+        .collect();
+    let right_reasons: HashSet<String> = outcome_ambiguity_reasons(&right.outcome)
+        .iter()
+        .map(|r| serde_json::to_string(r).unwrap_or_default())
+        .collect();
+    let ambiguity_reasons_added: Vec<AmbiguityReason> = right_reasons
+        .difference(&left_reasons)
+        .filter_map(|s| serde_json::from_str(s).ok())
+        .collect();
+    let ambiguity_reasons_removed: Vec<AmbiguityReason> = left_reasons
+        .difference(&right_reasons)
+        .filter_map(|s| serde_json::from_str(s).ok())
+        .collect();
+
+    RunComparison {
+        left_run_id: left.run_id.clone(),
+        right_run_id: right.run_id.clone(),
+        outcome_changed,
+        confidence_delta,
+        window_width_delta,
+        probes_reused,
+        suspect_paths_added,
+        suspect_paths_removed,
+        ambiguity_reasons_added,
+        ambiguity_reasons_removed,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunHandle {
     pub id: String,
@@ -287,7 +619,7 @@ pub struct CheckedOutRevision {
     pub path: PathBuf,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AnalysisReport {
     #[serde(default = "default_schema_version")]
     pub schema_version: String,
@@ -299,10 +631,14 @@ pub struct AnalysisReport {
     pub outcome: LocalizationOutcome,
     pub changed_paths: Vec<PathChange>,
     pub surface: SurfaceSummary,
+    #[serde(default)]
+    pub suspect_surface: Vec<SuspectEntry>,
+    #[serde(default)]
+    pub reproduction_capsules: Vec<ReproductionCapsule>,
 }
 
 fn default_schema_version() -> String {
-    "0.1.0".to_string()
+    "0.2.0".to_string()
 }
 
 pub fn stable_hash(data: &[u8]) -> String {
@@ -331,6 +667,13 @@ mod tests {
 
     fn assert_serialize_deserialize_debug_clone_partialeq_eq<
         T: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + Clone + PartialEq + Eq,
+    >(
+        _val: &T,
+    ) {
+    }
+
+    fn assert_serialize_deserialize_debug_clone_partialeq<
+        T: Serialize + for<'de> Deserialize<'de> + std::fmt::Debug + Clone + PartialEq,
     >(
         _val: &T,
     ) {
@@ -379,6 +722,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             }],
             outcome: LocalizationOutcome::FirstBad {
                 last_good: CommitId("abc123".into()),
@@ -399,6 +743,8 @@ mod tests {
                 }],
                 execution_surfaces: vec![],
             },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
         }
     }
 
@@ -408,8 +754,8 @@ mod tests {
         assert_serialize_deserialize_debug_clone_partialeq_eq(&RevisionSpec("a".into()));
         assert_serialize_deserialize_debug_clone_partialeq_eq(&HistoryMode::AncestryPath);
         assert_serialize_deserialize_debug_clone_partialeq_eq(&sample_probe_spec());
-        assert_serialize_deserialize_debug_clone_partialeq_eq(&SearchPolicy::default());
-        assert_serialize_deserialize_debug_clone_partialeq_eq(&sample_analysis_request());
+        assert_serialize_deserialize_debug_clone_partialeq(&SearchPolicy::default());
+        assert_serialize_deserialize_debug_clone_partialeq(&sample_analysis_request());
         assert_serialize_deserialize_debug_clone_partialeq_eq(&RevisionSequence {
             revisions: vec![],
         });
@@ -426,6 +772,7 @@ mod tests {
             signal_number: None,
             probe_command: String::new(),
             working_dir: String::new(),
+            flake_signal: None,
         });
         assert_serialize_deserialize_debug_clone_partialeq_eq(&Confidence::high());
         assert_serialize_deserialize_debug_clone_partialeq_eq(&LocalizationOutcome::Inconclusive {
@@ -457,7 +804,44 @@ mod tests {
             commit: CommitId("a".into()),
             path: PathBuf::from("/tmp"),
         });
-        assert_serialize_deserialize_debug_clone_partialeq_eq(&sample_report());
+        assert_serialize_deserialize_debug_clone_partialeq(&sample_report());
+
+        // New types from v0.1 product sharpening
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&SuspectEntry {
+            path: "src/main.rs".into(),
+            priority_score: 100,
+            surface_kind: "source".into(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: Some("alice".into()),
+        });
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&FlakeSignal {
+            total_runs: 3,
+            pass_count: 2,
+            fail_count: 1,
+            skip_count: 0,
+            indeterminate_count: 0,
+            is_stable: true,
+        });
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&ReproductionCapsule {
+            commit: CommitId("abc123".into()),
+            predicate: sample_probe_spec(),
+            env: vec![("KEY".into(), "val".into())],
+            working_dir: "/tmp/repo".into(),
+            timeout_seconds: 300,
+        });
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&RunComparison {
+            left_run_id: "run-1".into(),
+            right_run_id: "run-2".into(),
+            outcome_changed: false,
+            confidence_delta: 0,
+            window_width_delta: 0,
+            probes_reused: 0,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        });
     }
 
     // --- stable_hash ---
@@ -675,6 +1059,178 @@ mod tests {
         assert_eq!(format!("{}", err), "serialization error: parse");
     }
 
+    // --- FlakePolicy default ---
+
+    #[test]
+    fn flake_policy_default() {
+        let p = FlakePolicy::default();
+        assert_eq!(p.retries, 0);
+        assert!((p.stability_threshold - 1.0).abs() < f64::EPSILON);
+    }
+
+    // --- ReproductionCapsule::to_shell_script ---
+
+    #[test]
+    fn to_shell_script_exec_variant() {
+        let capsule = ReproductionCapsule {
+            commit: CommitId("abc123".into()),
+            predicate: ProbeSpec::Exec {
+                kind: ProbeKind::Test,
+                program: "cargo".into(),
+                args: vec!["test".into(), "--release".into()],
+                env: vec![("RUST_LOG".into(), "debug".into())],
+                timeout_seconds: 300,
+            },
+            env: vec![("CI".into(), "true".into())],
+            working_dir: "/tmp/repo".into(),
+            timeout_seconds: 300,
+        };
+        let script = capsule.to_shell_script();
+        assert!(script.starts_with("#!/bin/sh\n"));
+        assert!(script.contains("set -e"));
+        assert!(script.contains("cd '/tmp/repo'"));
+        assert!(script.contains("git checkout 'abc123'"));
+        assert!(script.contains("export CI='true'"));
+        assert!(script.contains("export RUST_LOG='debug'"));
+        assert!(script.contains("timeout 300"));
+        assert!(script.contains("'cargo' 'test' '--release'"));
+    }
+
+    #[test]
+    fn to_shell_script_shell_variant() {
+        let capsule = ReproductionCapsule {
+            commit: CommitId("def456".into()),
+            predicate: ProbeSpec::Shell {
+                kind: ProbeKind::Custom,
+                shell: ShellKind::PosixSh,
+                script: "make test".into(),
+                env: vec![],
+                timeout_seconds: 60,
+            },
+            env: vec![],
+            working_dir: "/home/user/project".into(),
+            timeout_seconds: 60,
+        };
+        let script = capsule.to_shell_script();
+        assert!(script.contains("cd '/home/user/project'"));
+        assert!(script.contains("git checkout 'def456'"));
+        assert!(script.contains("timeout 60 sh -c 'make test'"));
+    }
+
+    #[test]
+    fn to_shell_script_escapes_single_quotes() {
+        let capsule = ReproductionCapsule {
+            commit: CommitId("abc".into()),
+            predicate: ProbeSpec::Shell {
+                kind: ProbeKind::Custom,
+                shell: ShellKind::Default,
+                script: "echo 'hello world'".into(),
+                env: vec![],
+                timeout_seconds: 30,
+            },
+            env: vec![("VAR".into(), "it's a test".into())],
+            working_dir: "/tmp/it's here".into(),
+            timeout_seconds: 30,
+        };
+        let script = capsule.to_shell_script();
+        assert!(script.contains("cd '/tmp/it'\\''s here'"));
+        assert!(script.contains("export VAR='it'\\''s a test'"));
+        assert!(script.contains("sh -c 'echo '\\''hello world'\\'''"));
+    }
+
+    // --- compare_runs ---
+
+    #[test]
+    fn compare_runs_self_comparison_yields_zero_diff() {
+        let report = sample_report();
+        let cmp = compare_runs(&report, &report);
+        assert!(!cmp.outcome_changed);
+        assert_eq!(cmp.confidence_delta, 0);
+        assert_eq!(cmp.window_width_delta, 0);
+        assert_eq!(cmp.probes_reused, report.observations.len());
+        assert!(cmp.suspect_paths_added.is_empty());
+        assert!(cmp.suspect_paths_removed.is_empty());
+        assert!(cmp.ambiguity_reasons_added.is_empty());
+        assert!(cmp.ambiguity_reasons_removed.is_empty());
+    }
+
+    #[test]
+    fn compare_runs_different_outcomes() {
+        let left = sample_report();
+        let mut right = sample_report();
+        right.outcome = LocalizationOutcome::Inconclusive {
+            reasons: vec![AmbiguityReason::MissingPassBoundary],
+        };
+        let cmp = compare_runs(&left, &right);
+        assert!(cmp.outcome_changed);
+    }
+
+    #[test]
+    fn compare_runs_suspect_path_diffs() {
+        let mut left = sample_report();
+        left.suspect_surface = vec![SuspectEntry {
+            path: "a.rs".into(),
+            priority_score: 100,
+            surface_kind: "source".into(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: None,
+        }];
+        let mut right = sample_report();
+        right.suspect_surface = vec![SuspectEntry {
+            path: "b.rs".into(),
+            priority_score: 100,
+            surface_kind: "source".into(),
+            change_status: ChangeStatus::Added,
+            is_execution_surface: false,
+            owner_hint: None,
+        }];
+        let cmp = compare_runs(&left, &right);
+        assert_eq!(cmp.suspect_paths_added, vec!["b.rs".to_string()]);
+        assert_eq!(cmp.suspect_paths_removed, vec!["a.rs".to_string()]);
+    }
+
+    #[test]
+    fn compare_runs_never_panics_on_empty_reports() {
+        let left = AnalysisReport {
+            schema_version: "0.1.0".into(),
+            run_id: "left".into(),
+            created_at_epoch_seconds: 0,
+            request: sample_analysis_request(),
+            sequence: RevisionSequence { revisions: vec![] },
+            observations: vec![],
+            outcome: LocalizationOutcome::Inconclusive { reasons: vec![] },
+            changed_paths: vec![],
+            surface: SurfaceSummary {
+                total_changes: 0,
+                buckets: vec![],
+                execution_surfaces: vec![],
+            },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
+        };
+        let right = AnalysisReport {
+            schema_version: "0.1.0".into(),
+            run_id: "right".into(),
+            created_at_epoch_seconds: 0,
+            request: sample_analysis_request(),
+            sequence: RevisionSequence { revisions: vec![] },
+            observations: vec![],
+            outcome: LocalizationOutcome::Inconclusive { reasons: vec![] },
+            changed_paths: vec![],
+            surface: SurfaceSummary {
+                total_changes: 0,
+                buckets: vec![],
+                execution_surfaces: vec![],
+            },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
+        };
+        let cmp = compare_runs(&left, &right);
+        assert!(!cmp.outcome_changed);
+        assert_eq!(cmp.confidence_delta, 0);
+    }
+
     // --- Proptest strategies for Property 14: JSON Serialization Determinism ---
 
     fn arb_commit_id() -> impl Strategy<Value = CommitId> {
@@ -748,7 +1304,10 @@ mod tests {
     }
 
     fn arb_search_policy() -> impl Strategy<Value = SearchPolicy> {
-        (1usize..128).prop_map(|max_probes| SearchPolicy { max_probes })
+        (1usize..128).prop_map(|max_probes| SearchPolicy {
+            max_probes,
+            flake_policy: FlakePolicy::default(),
+        })
     }
 
     fn arb_analysis_request() -> impl Strategy<Value = AnalysisRequest> {
@@ -829,6 +1388,7 @@ mod tests {
                         signal_number,
                         probe_command,
                         working_dir,
+                        flake_signal: None,
                     }
                 },
             )
@@ -962,6 +1522,8 @@ mod tests {
                         outcome,
                         changed_paths,
                         surface,
+                        suspect_surface: vec![],
+                        reproduction_capsules: vec![],
                     }
                 },
             )
@@ -1042,5 +1604,412 @@ mod tests {
                 );
             }
         }
+    }
+
+    // Feature: v01-product-sharpening, Property 48: FlakeSignal stability classification
+    // **Validates: Requirements 3.2, 3.3**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_flake_signal_stability_classification(
+            results in prop::collection::vec(arb_observation_class(), 0..50),
+            stability_threshold in 0.0f64..=1.0f64,
+        ) {
+            let signal = compute_flake_signal(&results, stability_threshold);
+
+            // Counts must sum to total_runs
+            prop_assert_eq!(
+                signal.pass_count + signal.fail_count + signal.skip_count + signal.indeterminate_count,
+                signal.total_runs,
+                "counts must sum to total_runs"
+            );
+
+            // total_runs must equal input length
+            prop_assert_eq!(signal.total_runs, results.len() as u32);
+
+            // Verify is_stable matches threshold logic
+            if results.is_empty() {
+                prop_assert!(signal.is_stable, "empty results must be vacuously stable");
+            } else {
+                let max_count = signal.pass_count
+                    .max(signal.fail_count)
+                    .max(signal.skip_count)
+                    .max(signal.indeterminate_count);
+                let proportion = max_count as f64 / signal.total_runs as f64;
+                let expected_stable = proportion >= stability_threshold;
+                prop_assert_eq!(
+                    signal.is_stable, expected_stable,
+                    "is_stable must match threshold logic: proportion={}, threshold={}",
+                    proportion, stability_threshold
+                );
+            }
+        }
+    }
+
+    // --- Arbitrary generator for P52 ---
+
+    fn arb_reproduction_capsule() -> impl Strategy<Value = ReproductionCapsule> {
+        (
+            "[a-f0-9]{8,40}".prop_map(CommitId),
+            arb_probe_spec(),
+            prop::collection::vec(("[A-Z_]{1,6}", "[a-z0-9]{1,10}"), 0..4),
+            "[a-z/]{1,20}",
+            1u64..600,
+        )
+            .prop_map(|(commit, predicate, env, working_dir, timeout_seconds)| {
+                ReproductionCapsule {
+                    commit,
+                    predicate,
+                    env,
+                    working_dir,
+                    timeout_seconds,
+                }
+            })
+    }
+
+    // Feature: v01-product-sharpening, Property 52: Shell script generation contains required fields
+    // **Validates: Requirements 4.4**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_shell_script_contains_required_fields(capsule in arb_reproduction_capsule()) {
+            let script = capsule.to_shell_script();
+
+            // Must contain the commit SHA
+            prop_assert!(
+                script.contains(&capsule.commit.0),
+                "shell script must contain commit SHA '{}'\nScript:\n{}",
+                capsule.commit.0, script
+            );
+
+            // Must contain the timeout value
+            let timeout_str = capsule.timeout_seconds.to_string();
+            prop_assert!(
+                script.contains(&timeout_str),
+                "shell script must contain timeout value '{}'\nScript:\n{}",
+                timeout_str, script
+            );
+
+            // Must contain the predicate command (program name or shell script)
+            match &capsule.predicate {
+                ProbeSpec::Exec { program, .. } => {
+                    prop_assert!(
+                        script.contains(program),
+                        "shell script must contain program '{}'\nScript:\n{}",
+                        program, script
+                    );
+                }
+                ProbeSpec::Shell { script: shell_script, .. } => {
+                    // The shell script content may be escaped, but the core content should be present
+                    // shell_escape replaces ' with '\'' so we check the unescaped content is findable
+                    // by checking the escaped version
+                    let escaped = shell_escape(shell_script);
+                    prop_assert!(
+                        script.contains(&escaped),
+                        "shell script must contain shell script content '{}'\nScript:\n{}",
+                        shell_script, script
+                    );
+                }
+            }
+
+            // Must contain each env key=value pair from the capsule's env field
+            for (key, value) in &capsule.env {
+                prop_assert!(
+                    script.contains(key),
+                    "shell script must contain env key '{}'\nScript:\n{}",
+                    key, script
+                );
+                prop_assert!(
+                    script.contains(value),
+                    "shell script must contain env value '{}'\nScript:\n{}",
+                    value, script
+                );
+            }
+        }
+    }
+
+    // --- Arbitrary generator for P51 ---
+
+    /// Generate an AnalysisReport with reproduction capsules properly populated
+    /// from observations (simulating what faultline-app produces).
+    fn arb_report_with_capsules() -> impl Strategy<Value = AnalysisReport> {
+        (
+            "[a-z0-9-]{1,20}",
+            any::<u64>(),
+            arb_analysis_request(),
+            arb_revision_sequence(),
+            prop::collection::vec(arb_probe_observation(), 1..6),
+            arb_localization_outcome(),
+            prop::collection::vec(arb_path_change(), 0..5),
+            arb_surface_summary(),
+        )
+            .prop_map(
+                |(
+                    run_id,
+                    created_at_epoch_seconds,
+                    request,
+                    sequence,
+                    observations,
+                    outcome,
+                    changed_paths,
+                    surface,
+                )| {
+                    // Build capsules from observations, mirroring faultline-app logic
+                    let probe_env = match &request.probe {
+                        ProbeSpec::Exec { env, .. } => env.clone(),
+                        ProbeSpec::Shell { env, .. } => env.clone(),
+                    };
+                    let reproduction_capsules: Vec<ReproductionCapsule> = observations
+                        .iter()
+                        .map(|obs| ReproductionCapsule {
+                            commit: obs.commit.clone(),
+                            predicate: request.probe.clone(),
+                            env: probe_env.clone(),
+                            working_dir: request.repo_root.to_string_lossy().to_string(),
+                            timeout_seconds: request.probe.timeout_seconds(),
+                        })
+                        .collect();
+
+                    AnalysisReport {
+                        schema_version: "0.2.0".into(),
+                        run_id,
+                        created_at_epoch_seconds,
+                        request,
+                        sequence,
+                        observations,
+                        outcome,
+                        changed_paths,
+                        surface,
+                        suspect_surface: vec![],
+                        reproduction_capsules,
+                    }
+                },
+            )
+    }
+
+    // Feature: v01-product-sharpening, Property 51: ReproductionCapsule structural correspondence
+    // **Validates: Requirements 4.1, 4.2**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_reproduction_capsule_structural_correspondence(report in arb_report_with_capsules()) {
+            // Capsule count must equal observation count
+            prop_assert_eq!(
+                report.reproduction_capsules.len(),
+                report.observations.len(),
+                "capsule count ({}) must equal observation count ({})",
+                report.reproduction_capsules.len(),
+                report.observations.len()
+            );
+
+            // Each capsule must have a matching observation commit
+            for capsule in &report.reproduction_capsules {
+                let has_matching_observation = report.observations.iter().any(|obs| obs.commit == capsule.commit);
+                prop_assert!(
+                    has_matching_observation,
+                    "capsule commit '{}' must have a matching observation",
+                    capsule.commit.0
+                );
+            }
+
+            // Each capsule's predicate must equal request.probe
+            for capsule in &report.reproduction_capsules {
+                prop_assert_eq!(
+                    &capsule.predicate,
+                    &report.request.probe,
+                    "capsule predicate must equal request.probe"
+                );
+            }
+
+            // Each capsule's timeout must equal probe spec timeout
+            let expected_timeout = report.request.probe.timeout_seconds();
+            for capsule in &report.reproduction_capsules {
+                prop_assert_eq!(
+                    capsule.timeout_seconds,
+                    expected_timeout,
+                    "capsule timeout ({}) must equal probe spec timeout ({})",
+                    capsule.timeout_seconds,
+                    expected_timeout
+                );
+            }
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 53: compare_runs is total
+    // **Validates: Requirements 5.1**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_compare_runs_is_total(
+            left in arb_analysis_report(),
+            right in arb_analysis_report(),
+        ) {
+            // compare_runs must return without panicking for any two valid reports
+            let result = compare_runs(&left, &right);
+
+            // Basic structural assertions: run IDs match the inputs
+            prop_assert_eq!(&result.left_run_id, &left.run_id);
+            prop_assert_eq!(&result.right_run_id, &right.run_id);
+        }
+    }
+
+    // Feature: v01-product-sharpening, Property 54: Self-comparison yields zero diff
+    // **Validates: Requirements 5.3**
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_self_comparison_yields_zero_diff(report in arb_analysis_report()) {
+            let cmp = compare_runs(&report, &report.clone());
+
+            prop_assert!(
+                !cmp.outcome_changed,
+                "self-comparison must have outcome_changed == false"
+            );
+            prop_assert_eq!(
+                cmp.confidence_delta, 0,
+                "self-comparison must have confidence_delta == 0"
+            );
+            prop_assert_eq!(
+                cmp.window_width_delta, 0,
+                "self-comparison must have window_width_delta == 0"
+            );
+            prop_assert_eq!(
+                cmp.probes_reused, report.observations.len(),
+                "self-comparison probes_reused ({}) must equal observations.len() ({})",
+                cmp.probes_reused, report.observations.len()
+            );
+            prop_assert!(
+                cmp.suspect_paths_added.is_empty(),
+                "self-comparison must have empty suspect_paths_added"
+            );
+            prop_assert!(
+                cmp.suspect_paths_removed.is_empty(),
+                "self-comparison must have empty suspect_paths_removed"
+            );
+            prop_assert!(
+                cmp.ambiguity_reasons_added.is_empty(),
+                "self-comparison must have empty ambiguity_reasons_added"
+            );
+            prop_assert!(
+                cmp.ambiguity_reasons_removed.is_empty(),
+                "self-comparison must have empty ambiguity_reasons_removed"
+            );
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // 15.3: Schema evolution scenario
+    // Validates: Requirements 8.1
+    //
+    // Deserialize an old-version (0.1.0) report JSON that lacks the new fields
+    // (suspect_surface, reproduction_capsules, flake_signal) into the current
+    // AnalysisReport struct. Verify forward compatibility via #[serde(default)].
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn schema_evolution_old_version_deserializes_with_defaults() {
+        // A JSON string representing a v0.1.0 report WITHOUT the new fields:
+        // suspect_surface, reproduction_capsules, and flake_signal on observations.
+        let old_json = r#"{
+            "schema_version": "0.1.0",
+            "run_id": "old-run-001",
+            "created_at_epoch_seconds": 1700000000,
+            "request": {
+                "repo_root": "/tmp/repo",
+                "good": "abc123",
+                "bad": "def456",
+                "history_mode": "AncestryPath",
+                "probe": {
+                    "Exec": {
+                        "kind": "Test",
+                        "program": "cargo",
+                        "args": ["test"],
+                        "env": [],
+                        "timeout_seconds": 300
+                    }
+                },
+                "policy": {
+                    "max_probes": 64
+                }
+            },
+            "sequence": {
+                "revisions": ["abc123", "def456"]
+            },
+            "observations": [
+                {
+                    "commit": "abc123",
+                    "class": "Pass",
+                    "kind": "Test",
+                    "exit_code": 0,
+                    "timed_out": false,
+                    "duration_ms": 100,
+                    "stdout": "ok",
+                    "stderr": ""
+                }
+            ],
+            "outcome": {
+                "FirstBad": {
+                    "last_good": "abc123",
+                    "first_bad": "def456",
+                    "confidence": { "score": 95, "label": "high" }
+                }
+            },
+            "changed_paths": [
+                { "status": "Modified", "path": "src/main.rs" }
+            ],
+            "surface": {
+                "total_changes": 1,
+                "buckets": [],
+                "execution_surfaces": []
+            }
+        }"#;
+
+        let report: AnalysisReport =
+            serde_json::from_str(old_json).expect("old v0.1.0 JSON must deserialize");
+
+        // Verify the explicitly set fields
+        assert_eq!(report.schema_version, "0.1.0");
+        assert_eq!(report.run_id, "old-run-001");
+        assert_eq!(report.observations.len(), 1);
+
+        // Verify the NEW fields default to empty/None via #[serde(default)]
+        assert!(
+            report.suspect_surface.is_empty(),
+            "suspect_surface must default to empty vec"
+        );
+        assert!(
+            report.reproduction_capsules.is_empty(),
+            "reproduction_capsules must default to empty vec"
+        );
+
+        // Verify observation-level new fields default correctly
+        let obs = &report.observations[0];
+        assert_eq!(obs.sequence_index, 0, "sequence_index must default to 0");
+        assert_eq!(
+            obs.signal_number, None,
+            "signal_number must default to None"
+        );
+        assert!(
+            obs.flake_signal.is_none(),
+            "flake_signal must default to None"
+        );
+        assert!(
+            obs.probe_command.is_empty(),
+            "probe_command must default to empty string"
+        );
+        assert!(
+            obs.working_dir.is_empty(),
+            "working_dir must default to empty string"
+        );
+
+        // Verify the report can be re-serialized and re-deserialized
+        let reserialized = serde_json::to_string_pretty(&report).unwrap();
+        let roundtrip: AnalysisReport = serde_json::from_str(&reserialized).unwrap();
+        assert_eq!(report, roundtrip, "round-trip must preserve the report");
     }
 }

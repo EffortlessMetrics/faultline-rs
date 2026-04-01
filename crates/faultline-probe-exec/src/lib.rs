@@ -92,6 +92,7 @@ impl ExecProbeAdapter {
             signal_number,
             probe_command: format_probe_command(probe),
             working_dir: checkout.path.display().to_string(),
+            flake_signal: None,
         })
     }
 }

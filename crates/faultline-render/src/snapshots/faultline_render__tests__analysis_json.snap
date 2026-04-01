@@ -23,7 +23,11 @@ expression: json
       }
     },
     "policy": {
-      "max_probes": 10
+      "max_probes": 10,
+      "flake_policy": {
+        "retries": 0,
+        "stability_threshold": 1.0
+      }
     }
   },
   "sequence": {
@@ -47,7 +51,8 @@ expression: json
       "sequence_index": 0,
       "signal_number": null,
       "probe_command": "cargo test",
-      "working_dir": "/tmp/scratch/aaa111"
+      "working_dir": "/tmp/scratch/aaa111",
+      "flake_signal": null
     },
     {
       "commit": "ddd444",
@@ -61,7 +66,8 @@ expression: json
       "sequence_index": 1,
       "signal_number": null,
       "probe_command": "cargo test",
-      "working_dir": "/tmp/scratch/ddd444"
+      "working_dir": "/tmp/scratch/ddd444",
+      "flake_signal": null
     },
     {
       "commit": "ccc333",
@@ -75,7 +81,8 @@ expression: json
       "sequence_index": 2,
       "signal_number": null,
       "probe_command": "cargo test",
-      "working_dir": "/tmp/scratch/ccc333"
+      "working_dir": "/tmp/scratch/ccc333",
+      "flake_signal": null
     },
     {
       "commit": "bbb222",
@@ -89,7 +96,8 @@ expression: json
       "sequence_index": 3,
       "signal_number": null,
       "probe_command": "cargo test",
-      "working_dir": "/tmp/scratch/bbb222"
+      "working_dir": "/tmp/scratch/bbb222",
+      "flake_signal": null
     }
   ],
   "outcome": {
@@ -130,5 +138,32 @@ expression: json
     "execution_surfaces": [
       ".github/workflows/ci.yml"
     ]
-  }
+  },
+  "suspect_surface": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "priority_score": 350,
+      "surface_kind": "workflows",
+      "change_status": "Modified",
+      "is_execution_surface": true,
+      "owner_hint": "@infra-team"
+    },
+    {
+      "path": "src/bug.rs",
+      "priority_score": 150,
+      "surface_kind": "source",
+      "change_status": "Added",
+      "is_execution_surface": false,
+      "owner_hint": "@alice"
+    },
+    {
+      "path": "src/lib.rs",
+      "priority_score": 150,
+      "surface_kind": "source",
+      "change_status": "Modified",
+      "is_execution_surface": false,
+      "owner_hint": null
+    }
+  ],
+  "reproduction_capsules": []
 }

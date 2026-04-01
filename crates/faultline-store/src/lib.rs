@@ -241,9 +241,9 @@ mod tests {
     use super::*;
     use faultline_codes::{AmbiguityReason, ObservationClass, ProbeKind};
     use faultline_types::{
-        AnalysisReport, AnalysisRequest, ChangeStatus, CommitId, Confidence, HistoryMode,
-        LocalizationOutcome, PathChange, ProbeObservation, ProbeSpec, RevisionSequence,
-        RevisionSpec, SearchPolicy, ShellKind, SubsystemBucket, SurfaceSummary,
+        AnalysisReport, AnalysisRequest, ChangeStatus, CommitId, Confidence, FlakePolicy,
+        HistoryMode, LocalizationOutcome, PathChange, ProbeObservation, ProbeSpec,
+        RevisionSequence, RevisionSpec, SearchPolicy, ShellKind, SubsystemBucket, SurfaceSummary,
     };
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -283,6 +283,7 @@ mod tests {
             signal_number: None,
             probe_command: String::new(),
             working_dir: String::new(),
+            flake_signal: None,
         }
     }
 
@@ -315,6 +316,8 @@ mod tests {
                 }],
                 execution_surfaces: vec![],
             },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
         }
     }
 
@@ -822,6 +825,7 @@ mod tests {
                         signal_number,
                         probe_command,
                         working_dir,
+                        flake_signal: None,
                     }
                 },
             )
@@ -884,7 +888,10 @@ mod tests {
     }
 
     fn arb_search_policy() -> impl Strategy<Value = SearchPolicy> {
-        (1usize..128).prop_map(|max_probes| SearchPolicy { max_probes })
+        (1usize..128).prop_map(|max_probes| SearchPolicy {
+            max_probes,
+            flake_policy: FlakePolicy::default(),
+        })
     }
 
     fn arb_analysis_request() -> impl Strategy<Value = AnalysisRequest> {
@@ -1042,6 +1049,8 @@ mod tests {
                         outcome,
                         changed_paths,
                         surface,
+                        suspect_surface: vec![],
+                        reproduction_capsules: vec![],
                     }
                 },
             )

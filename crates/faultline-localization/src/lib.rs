@@ -194,12 +194,20 @@ impl LocalizationSession {
             reasons.push(AmbiguityReason::NonMonotonicEvidence);
         }
 
+        let has_unstable = self.has_unstable_observations();
+
         if reasons.is_empty() {
             // Clean boundary: FirstBad
+            let confidence = if has_unstable {
+                // Flaky observations degrade confidence from high to medium
+                Confidence::medium()
+            } else {
+                Confidence::high()
+            };
             LocalizationOutcome::FirstBad {
                 last_good: lower_commit,
                 first_bad: upper_commit,
-                confidence: Confidence::high(),
+                confidence,
             }
         } else {
             // Window has not converged to a clean adjacent pass-fail pair
@@ -208,6 +216,9 @@ impl LocalizationSession {
             }
             // Ambiguous: SuspectWindow
             let confidence = if non_monotonic {
+                Confidence::low()
+            } else if has_unstable {
+                // Flaky observations degrade confidence from medium to low
                 Confidence::low()
             } else {
                 Confidence::medium()
@@ -223,6 +234,13 @@ impl LocalizationSession {
 
     fn index_of(&self, commit: &CommitId) -> Option<usize> {
         self.index_by_commit.get(commit).copied()
+    }
+
+    /// Check if any observation has an unstable flake signal.
+    fn has_unstable_observations(&self) -> bool {
+        self.observations
+            .values()
+            .any(|obs| obs.flake_signal.as_ref().map_or(false, |fs| !fs.is_stable))
     }
 
     /// Compute the pass/fail boundary indices only (no reason collection).
@@ -280,7 +298,7 @@ impl LocalizationSession {
 mod tests {
     use super::*;
     use faultline_codes::{ObservationClass, ProbeKind};
-    use faultline_types::{ProbeObservation, SearchPolicy};
+    use faultline_types::{FlakePolicy, FlakeSignal, ProbeObservation, SearchPolicy};
 
     fn obs(commit: &str, class: ObservationClass) -> ProbeObservation {
         ProbeObservation {
@@ -300,6 +318,7 @@ mod tests {
             signal_number: None,
             probe_command: String::new(),
             working_dir: String::new(),
+            flake_signal: None,
         }
     }
 
@@ -1364,7 +1383,7 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let policy = SearchPolicy { max_probes };
+                let policy = SearchPolicy { max_probes, flake_policy: FlakePolicy::default() };
                 let mut session = LocalizationSession::new(seq, policy).unwrap();
 
                 // Record exactly max_probes observations that do NOT converge.
@@ -1477,10 +1496,129 @@ mod tests {
                     );
                 }
             }
+
+            // Feature: v01-product-sharpening, Property 49: Flaky observations degrade confidence
+            // **Validates: Requirements 3.4**
+            #[test]
+            fn prop_flaky_observations_degrade_confidence(
+                n in 3usize..=15,
+                transition_frac in 0.0f64..1.0,
+                unstable_frac in 0.0f64..1.0,
+            ) {
+                // Pick a monotonic transition point
+                let transition = (transition_frac * (n - 1) as f64).floor() as usize;
+                let transition = transition.min(n - 2);
+
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+
+                // Build a stable session (no flake signals)
+                let seq_stable = RevisionSequence { revisions: labels.clone() };
+                let mut session_stable = LocalizationSession::new(seq_stable, SearchPolicy::default()).unwrap();
+
+                for idx in 0..n {
+                    let class = if idx <= transition {
+                        ObservationClass::Pass
+                    } else {
+                        ObservationClass::Fail
+                    };
+                    session_stable.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                }
+
+                let outcome_stable = session_stable.outcome();
+
+                // Build an unstable session (same observations, but one has unstable flake signal)
+                let seq_unstable = RevisionSequence { revisions: labels.clone() };
+                let mut session_unstable = LocalizationSession::new(seq_unstable, SearchPolicy::default()).unwrap();
+
+                // Pick which observation gets the unstable flake signal
+                let unstable_idx = (unstable_frac * (n - 1) as f64).floor() as usize;
+                let unstable_idx = unstable_idx.min(n - 1);
+
+                for idx in 0..n {
+                    let class = if idx <= transition {
+                        ObservationClass::Pass
+                    } else {
+                        ObservationClass::Fail
+                    };
+                    let mut observation = obs(&format!("commit-{idx}"), class);
+                    if idx == unstable_idx {
+                        observation.flake_signal = Some(FlakeSignal {
+                            total_runs: 3,
+                            pass_count: 1,
+                            fail_count: 2,
+                            skip_count: 0,
+                            indeterminate_count: 0,
+                            is_stable: false,
+                        });
+                    }
+                    session_unstable.record(observation).unwrap();
+                }
+
+                let outcome_unstable = session_unstable.outcome();
+
+                // Extract confidence scores
+                let score_stable = match &outcome_stable {
+                    LocalizationOutcome::FirstBad { confidence, .. } => confidence.score,
+                    LocalizationOutcome::SuspectWindow { confidence, .. } => confidence.score,
+                    LocalizationOutcome::Inconclusive { .. } => return Ok(()),
+                };
+                let score_unstable = match &outcome_unstable {
+                    LocalizationOutcome::FirstBad { confidence, .. } => confidence.score,
+                    LocalizationOutcome::SuspectWindow { confidence, .. } => confidence.score,
+                    LocalizationOutcome::Inconclusive { .. } => return Ok(()),
+                };
+
+                prop_assert!(
+                    score_unstable < score_stable,
+                    "unstable confidence {} must be strictly less than stable confidence {}",
+                    score_unstable, score_stable
+                );
+            }
+
+            // Feature: v01-product-sharpening, Property 50: Default FlakePolicy produces no FlakeSignal
+            // **Validates: Requirements 3.6**
+            #[test]
+            fn prop_default_flake_policy_no_signal(
+                n in 2usize..=15,
+                class_selectors in prop::collection::vec(0u8..4, 15),
+            ) {
+                let labels: Vec<CommitId> = (0..n)
+                    .map(|idx| CommitId(format!("commit-{idx}")))
+                    .collect();
+                let seq = RevisionSequence { revisions: labels.clone() };
+
+                // Use default SearchPolicy which has default FlakePolicy (retries=0)
+                let policy = SearchPolicy::default();
+                prop_assert_eq!(policy.flake_policy.retries, 0,
+                    "default FlakePolicy must have retries=0");
+
+                let mut session = LocalizationSession::new(seq, policy).unwrap();
+
+                // Record observations without flake_signal (as the app layer would with retries=0)
+                for idx in 0..n {
+                    let class = match class_selectors[idx % class_selectors.len()] % 4 {
+                        0 => ObservationClass::Pass,
+                        1 => ObservationClass::Fail,
+                        2 => ObservationClass::Skip,
+                        _ => ObservationClass::Indeterminate,
+                    };
+                    let observation = obs(&format!("commit-{idx}"), class);
+                    session.record(observation).unwrap();
+                }
+
+                // Verify all observations have flake_signal == None
+                for (_, observation) in &session.observations {
+                    prop_assert!(
+                        observation.flake_signal.is_none(),
+                        "with default FlakePolicy (retries=0), observation for {} should have flake_signal == None, got {:?}",
+                        observation.commit.0, observation.flake_signal
+                    );
+                }
+            }
         }
     }
-
-    // ── Fixture scenarios for localization edge cases (Task 13.6) ────
     // Validates: Requirements 7.5, 7.6, 7.7
     //
     // These use RevisionSequenceBuilder from faultline-fixtures to construct

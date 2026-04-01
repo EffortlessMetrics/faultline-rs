@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 clap.workspace = true
+serde_json.workspace = true
 faultline-app = { path = "../faultline-app" }
 faultline-codes = { path = "../faultline-codes" }
 faultline-git = { path = "../faultline-git" }
@@ -18,5 +19,4 @@ faultline-types = { path = "../faultline-types" }
 [dev-dependencies]
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }
-serde_json.workspace = true
 insta = { workspace = true }

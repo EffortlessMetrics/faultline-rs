@@ -116,23 +116,38 @@ pub fn to_junit_xml(report: &AnalysisReport) -> String {
 }
 
 fn build_observations_summary(report: &AnalysisReport) -> String {
-    if report.observations.is_empty() {
-        return "No observations recorded.".to_string();
-    }
     let mut lines = Vec::new();
-    lines.push("Observations:".to_string());
-    for obs in &report.observations {
-        lines.push(format!(
-            "  {} [{}] {:?} exit={} duration={}ms",
-            obs.commit,
-            obs.kind,
-            obs.class,
-            obs.exit_code
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| "N/A".into()),
-            obs.duration_ms,
-        ));
+
+    if report.observations.is_empty() {
+        lines.push("No observations recorded.".to_string());
+    } else {
+        lines.push("Observations:".to_string());
+        for obs in &report.observations {
+            lines.push(format!(
+                "  {} [{}] {:?} exit={} duration={}ms",
+                obs.commit,
+                obs.kind,
+                obs.class,
+                obs.exit_code
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "N/A".into()),
+                obs.duration_ms,
+            ));
+        }
     }
+
+    if !report.suspect_surface.is_empty() {
+        lines.push(String::new());
+        lines.push("Suspect Surface:".to_string());
+        for entry in &report.suspect_surface {
+            let owner = entry.owner_hint.as_deref().unwrap_or("none");
+            lines.push(format!(
+                "  [{}] {} ({}, {:?}) owner={}",
+                entry.priority_score, entry.path, entry.surface_kind, entry.change_status, owner,
+            ));
+        }
+    }
+
     lines.join("\n")
 }
 
@@ -178,6 +193,7 @@ mod tests {
                 signal_number: None,
                 probe_command: String::new(),
                 working_dir: String::new(),
+                flake_signal: None,
             }],
             outcome,
             changed_paths: vec![PathChange {
@@ -189,6 +205,8 @@ mod tests {
                 buckets: vec![],
                 execution_surfaces: vec![],
             },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
         }
     }
 

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use faultline_types::{
     AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, HistoryMode, PathChange,
     ProbeObservation, ProbeSpec, Result, RevisionSequence, RevisionSpec, RunHandle,
@@ -12,6 +14,12 @@ pub trait HistoryPort {
     ) -> Result<RevisionSequence>;
 
     fn changed_paths(&self, from: &CommitId, to: &CommitId) -> Result<Vec<PathChange>>;
+
+    /// Parse CODEOWNERS and return owner for each path. Returns empty map if no CODEOWNERS.
+    fn codeowners_for_paths(&self, paths: &[String]) -> Result<HashMap<String, Option<String>>>;
+
+    /// Derive owner from git-blame frequency (most-frequent committer in last 90 days).
+    fn blame_frequency(&self, paths: &[String]) -> Result<HashMap<String, Option<String>>>;
 }
 
 pub trait CheckoutPort {

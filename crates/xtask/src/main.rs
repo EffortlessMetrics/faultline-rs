@@ -24,7 +24,11 @@ enum Command {
     /// Run and update golden/snapshot tests
     Golden,
     /// Run cargo-mutants on configured surfaces
-    Mutants,
+    Mutants {
+        /// Target a specific crate (e.g., faultline-localization)
+        #[arg(long)]
+        crate_name: Option<String>,
+    },
     /// Run fuzz targets (default 60s, --duration to override)
     Fuzz {
         #[arg(long, default_value_t = 60)]
@@ -104,14 +108,18 @@ fn main() -> Result<()> {
             println!("\n=== golden passed ===");
         }
 
-        Command::Mutants => {
+        Command::Mutants { crate_name } => {
             tools::ensure_tool("cargo-mutants", "cargo install cargo-mutants");
             println!("=== mutants ===\n");
-            run_cmd(
-                "mutation testing",
-                "cargo",
-                &["mutants", "-p", "faultline-localization", "--", "--lib"],
-            )?;
+            if let Some(ref name) = crate_name {
+                run_cmd(
+                    "mutation testing",
+                    "cargo",
+                    &["mutants", "-p", name, "--", "--lib"],
+                )?;
+            } else {
+                run_cmd("mutation testing", "cargo", &["mutants", "--", "--lib"])?;
+            }
             println!("\n=== mutants passed ===");
         }
 

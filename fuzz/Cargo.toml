@@ -10,6 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 faultline-types = { path = "../crates/faultline-types" }
+faultline-sarif = { path = "../crates/faultline-sarif" }
+faultline-junit = { path = "../crates/faultline-junit" }
 serde_json = "1.0"
 
 # Prevent this from interfering with workspace
@@ -19,4 +21,34 @@ members = ["."]
 [[bin]]
 name = "fuzz_analysis_report"
 path = "fuzz_targets/fuzz_analysis_report.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_git_diff_parse"
+path = "fuzz_targets/fuzz_git_diff_parse.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_store_json"
+path = "fuzz_targets/fuzz_store_json.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_html_escape"
+path = "fuzz_targets/fuzz_html_escape.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_cli_args"
+path = "fuzz_targets/fuzz_cli_args.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_sarif_export"
+path = "fuzz_targets/fuzz_sarif_export.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_junit_export"
+path = "fuzz_targets/fuzz_junit_export.rs"
 doc = false

@@ -68,7 +68,38 @@ fn build_run(report: &AnalysisReport) -> SarifRun {
                 version: report.schema_version.clone(),
             },
         },
-        results: vec![result],
+        results: {
+            let mut results = vec![result];
+
+            // Add suspect_surface entries as additional results
+            if !report.suspect_surface.is_empty() {
+                let suspect_locations: Vec<SarifLocation> = report
+                    .suspect_surface
+                    .iter()
+                    .map(|entry| SarifLocation {
+                        physical_location: SarifPhysicalLocation {
+                            artifact_location: SarifArtifactLocation {
+                                uri: entry.path.clone(),
+                            },
+                        },
+                    })
+                    .collect();
+
+                results.push(SarifResult {
+                    rule_id: "faultline/suspect-surface".to_string(),
+                    level: "note".to_string(),
+                    message: SarifMessage {
+                        text: format!(
+                            "Ranked suspect surface: {} paths",
+                            report.suspect_surface.len()
+                        ),
+                    },
+                    locations: suspect_locations,
+                });
+            }
+
+            results
+        },
     }
 }
 
@@ -176,6 +207,8 @@ mod tests {
                 buckets: vec![],
                 execution_surfaces: vec![],
             },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![],
         }
     }
 
