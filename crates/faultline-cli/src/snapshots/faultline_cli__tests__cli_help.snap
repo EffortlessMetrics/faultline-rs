@@ -1,5 +1,6 @@
 ---
 source: crates/faultline-cli/src/main.rs
+assertion_line: 774
 expression: help
 ---
 Local-first regression localization for Git repos
@@ -10,6 +11,8 @@ Commands:
   reproduce        Extract a reproduction capsule from a completed run
   diff-runs        Compare two analysis runs side-by-side
   export-markdown  Export a Markdown dossier from a completed run
+  export-sarif     Export SARIF v2.1.0 from a completed run
+  export-junit     Export JUnit XML from a completed run
   help             Print this message or the help of the given subcommand(s)
 
 Options:
