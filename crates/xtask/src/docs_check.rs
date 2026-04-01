@@ -42,12 +42,11 @@ pub fn collect_markdown_files(root: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(root) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext.eq_ignore_ascii_case("md") {
-                        files.push(path);
-                    }
-                }
+            if path.is_file()
+                && let Some(ext) = path.extension()
+                && ext.eq_ignore_ascii_case("md")
+            {
+                files.push(path);
             }
         }
     }
@@ -72,12 +71,11 @@ fn walk_dir_for_md(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             walk_dir_for_md(&path, out);
-        } else if path.is_file() {
-            if let Some(ext) = path.extension() {
-                if ext.eq_ignore_ascii_case("md") {
-                    out.push(path);
-                }
-            }
+        } else if path.is_file()
+            && let Some(ext) = path.extension()
+            && ext.eq_ignore_ascii_case("md")
+        {
+            out.push(path);
         }
     }
 }
@@ -100,10 +98,10 @@ pub fn extract_links(line: &str) -> Vec<String> {
 
     // Reference-style link definitions: [label]: target
     let ref_re = Regex::new(r"^\s{0,3}\[[^\]]+\]:\s+(\S+)").unwrap();
-    if let Some(cap) = ref_re.captures(line) {
-        if let Some(m) = cap.get(1) {
-            links.push(m.as_str().to_string());
-        }
+    if let Some(cap) = ref_re.captures(line)
+        && let Some(m) = cap.get(1)
+    {
+        links.push(m.as_str().to_string());
     }
 
     links

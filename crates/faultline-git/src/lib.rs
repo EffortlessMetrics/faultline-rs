@@ -274,15 +274,15 @@ fn codeowners_pattern_matches(pattern: &str, path: &str) -> bool {
     }
 
     // Handle trailing `/` — matches as a directory prefix
-    let (pat_str, is_dir_pattern) = if pat.ends_with('/') {
-        (&pat[..pat.len() - 1], true)
+    let (pat_str, is_dir_pattern) = if let Some(stripped) = pat.strip_suffix('/') {
+        (stripped, true)
     } else {
         (pat, false)
     };
 
     // Handle leading `/` — anchored to root
-    let (pat_str, anchored) = if pat_str.starts_with('/') {
-        (&pat_str[1..], true)
+    let (pat_str, anchored) = if let Some(stripped) = pat_str.strip_prefix('/') {
+        (stripped, true)
     } else {
         (pat_str, false)
     };

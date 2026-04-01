@@ -240,7 +240,7 @@ impl LocalizationSession {
     fn has_unstable_observations(&self) -> bool {
         self.observations
             .values()
-            .any(|obs| obs.flake_signal.as_ref().map_or(false, |fs| !fs.is_stable))
+            .any(|obs| obs.flake_signal.as_ref().is_some_and(|fs| !fs.is_stable))
     }
 
     /// Compute the pass/fail boundary indices only (no reason collection).

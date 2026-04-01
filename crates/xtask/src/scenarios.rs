@@ -146,11 +146,11 @@ fn scan_dir_recursive(dir: &Path, tests: &mut BTreeSet<String>) {
                 continue;
             }
             scan_dir_recursive(&path, tests);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                let names = extract_test_names(&content);
-                tests.extend(names);
-            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
+            && let Ok(content) = std::fs::read_to_string(&path)
+        {
+            let names = extract_test_names(&content);
+            tests.extend(names);
         }
     }
 }

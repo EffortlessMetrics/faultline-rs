@@ -399,7 +399,9 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
 }
 
 /// Load a report from a run directory.
-fn load_report_from_dir(run_dir: &PathBuf) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
+fn load_report_from_dir(
+    run_dir: &std::path::Path,
+) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
     let report_path = run_dir.join("report.json");
     if !report_path.exists() {
         return Err(FaultlineError::Store(format!(
@@ -491,7 +493,9 @@ fn run_reproduce(
 }
 
 /// Load a report from a JSON file path.
-fn load_report_from_file(path: &PathBuf) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
+fn load_report_from_file(
+    path: &std::path::Path,
+) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
     if !path.exists() {
         return Err(
             FaultlineError::Store(format!("report file not found: {}", path.display())).into(),

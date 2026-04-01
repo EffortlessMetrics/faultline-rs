@@ -167,12 +167,11 @@ pub fn next_adr_number(adr_dir: &Path) -> Result<u32> {
             let name = entry.file_name();
             let name = name.to_string_lossy();
             // Match files like 0001-something.md
-            if let Some(prefix) = name.split('-').next() {
-                if let Ok(n) = prefix.parse::<u32>() {
-                    if n > max {
-                        max = n;
-                    }
-                }
+            if let Some(prefix) = name.split('-').next()
+                && let Ok(n) = prefix.parse::<u32>()
+                && n > max
+            {
+                max = n;
             }
         }
     }
