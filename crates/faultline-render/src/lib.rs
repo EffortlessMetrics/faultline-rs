@@ -42,6 +42,16 @@ impl ReportRenderer {
         Ok(())
     }
 
+    /// Render JSON + HTML + compact Markdown dossier.
+    pub fn render_with_markdown_compact(&self, report: &AnalysisReport) -> Result<()> {
+        self.render(report)?;
+        fs::write(
+            self.output_dir.join("dossier.md"),
+            render_markdown_compact(report),
+        )?;
+        Ok(())
+    }
+
     pub fn output_dir(&self) -> &Path {
         &self.output_dir
     }
@@ -457,6 +467,102 @@ pub fn render_markdown(report: &AnalysisReport) -> String {
     md.push_str(&format!("- Run ID: `{}`\n", report.run_id));
     md.push_str("- `analysis.json`\n");
     md.push_str("- `index.html`\n");
+
+    md
+}
+
+/// Render a compact Markdown dossier from an analysis report.
+/// Produces a short (~20-30 line) summary ideal for PR comments, issue threads, or Slack.
+/// Never fails — returns placeholder text for missing/empty fields.
+pub fn render_markdown_compact(report: &AnalysisReport) -> String {
+    let mut md = String::new();
+
+    // One-line outcome summary with commit range and confidence
+    match &report.outcome {
+        LocalizationOutcome::FirstBad {
+            last_good,
+            first_bad,
+            confidence,
+        } => {
+            md.push_str(&format!(
+                "**FirstBad** `{}` -> `{}` (confidence {}/{})\n\n",
+                last_good, first_bad, confidence.score, confidence.label
+            ));
+        }
+        LocalizationOutcome::SuspectWindow {
+            lower_bound_exclusive,
+            upper_bound_inclusive,
+            confidence,
+            reasons,
+        } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            md.push_str(&format!(
+                "**SuspectWindow** `{}` -> `{}` (confidence {}/{}, reasons: {})\n\n",
+                lower_bound_exclusive,
+                upper_bound_inclusive,
+                confidence.score,
+                confidence.label,
+                reasons_str.join(", ")
+            ));
+        }
+        LocalizationOutcome::Inconclusive { reasons } => {
+            let reasons_str: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+            md.push_str(&format!(
+                "**Inconclusive** (reasons: {})\n\n",
+                reasons_str.join(", ")
+            ));
+        }
+    }
+
+    // "Read these first" section: top 3 suspect paths with scores and owners
+    if !report.suspect_surface.is_empty() {
+        md.push_str("**Read these first:**\n");
+        for entry in report.suspect_surface.iter().take(3) {
+            let owner = entry.owner_hint.as_deref().unwrap_or("unowned");
+            md.push_str(&format!(
+                "- `{}` (score {}, {})\n",
+                entry.path, entry.priority_score, owner
+            ));
+        }
+        md.push('\n');
+    }
+
+    // One-line window width + observation count
+    md.push_str(&format!(
+        "Window: {} revisions, {} observations\n\n",
+        report.sequence.revisions.len(),
+        report.observations.len()
+    ));
+
+    // One-line reproduction command (truncated if long)
+    if !report.reproduction_capsules.is_empty() {
+        let boundary_capsule = report
+            .outcome
+            .boundary_pair()
+            .and_then(|(_, bad)| {
+                report
+                    .reproduction_capsules
+                    .iter()
+                    .find(|c| c.commit == *bad)
+            })
+            .or_else(|| report.reproduction_capsules.first());
+        if let Some(capsule) = boundary_capsule {
+            let script = capsule.to_shell_script();
+            let oneline = script.trim().replace('\n', " && ");
+            let truncated = if oneline.len() > 120 {
+                format!("{}...", &oneline[..117])
+            } else {
+                oneline
+            };
+            md.push_str(&format!("Repro: `{}`\n\n", truncated));
+        }
+    }
+
+    // One-line link to full artifacts
+    md.push_str(&format!(
+        "Full report: `{}` / `analysis.json` / `index.html`\n",
+        report.run_id
+    ));
 
     md
 }
@@ -2184,6 +2290,38 @@ mod tests {
     proptest! {
         #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
 
+        // Feature: compact-dossier, Property 56: Compact Markdown Contains Outcome and Suspect Paths
+        // Verify compact output always contains outcome keyword and at least one suspect path
+        // when suspect_surface is non-empty.
+        #[test]
+        fn prop_compact_markdown_contains_outcome_and_paths(report in arb_report_for_markdown()) {
+            let md = render_markdown_compact(&report);
+
+            // Must contain the outcome keyword
+            match &report.outcome {
+                LocalizationOutcome::FirstBad { .. } => {
+                    prop_assert!(md.contains("FirstBad"), "compact markdown must contain 'FirstBad'");
+                }
+                LocalizationOutcome::SuspectWindow { .. } => {
+                    prop_assert!(md.contains("SuspectWindow"), "compact markdown must contain 'SuspectWindow'");
+                }
+                LocalizationOutcome::Inconclusive { .. } => {
+                    prop_assert!(md.contains("Inconclusive"), "compact markdown must contain 'Inconclusive'");
+                }
+            }
+
+            // Must contain at least one suspect path when suspect_surface is non-empty
+            if !report.suspect_surface.is_empty() {
+                let has_any_path = report.suspect_surface.iter().take(3).any(|s| md.contains(&s.path));
+                prop_assert!(has_any_path, "compact markdown must contain at least one suspect path");
+            }
+
+            // Must contain observation count
+            let obs_count = report.observations.len().to_string();
+            prop_assert!(md.contains(&obs_count), "compact markdown must contain observation count '{}'", obs_count);
+        }
+
+        // Feature: v01-product-sharpening, Property 47: Markdown dossier contains all required sections
         #[test]
         fn prop_markdown_dossier_contains_required_sections(report in arb_report_for_markdown()) {
             let md = render_markdown(&report);
