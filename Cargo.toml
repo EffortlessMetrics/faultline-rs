@@ -35,3 +35,4 @@ schemars = "0.8"
 insta = { version = "1.40", features = ["json"] }
 quick-xml = "0.39"
 anyhow = "1.0"
+criterion = { version = "0.5", default-features = false }
