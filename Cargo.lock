@@ -297,6 +297,8 @@ version = "0.1.0"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
+ "faultline-junit",
+ "faultline-sarif",
  "faultline-types",
  "insta",
  "proptest",
