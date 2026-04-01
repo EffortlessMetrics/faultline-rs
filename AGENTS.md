@@ -90,6 +90,39 @@ All repo operations are available through `cargo xtask` subcommands, with ergono
 
 Tool versions are pinned in [.mise.toml](.mise.toml).
 
+### CLI Subcommands
+
+The `faultline` binary exposes these subcommands for post-analysis workflows:
+
+| Subcommand | Purpose |
+|------------|---------|
+| `faultline reproduce --run-dir <path> [--commit <sha>] [--shell]` | Extract a reproduction capsule from a completed run |
+| `faultline diff-runs --left <path> --right <path> [--json] [--markdown]` | Compare two analysis runs side by side |
+| `faultline export-markdown --run-dir <path> [--output <file>] [--compact]` | Export a run as a Markdown report |
+| `faultline export-sarif --run-dir <path> [--output <file>]` | Export a run as SARIF v2.1.0 |
+| `faultline export-junit --run-dir <path> [--output <file>]` | Export a run as JUnit XML |
+| `faultline list-runs [--repo <path>] [--json]` | List all stored analysis runs |
+| `faultline clean [--repo <path>] [--older-than-days <N>] [--all] [--dry-run]` | Remove old run artifacts |
+| `faultline completions <shell>` | Emit shell completions (bash, zsh, fish, etc.) |
+
+### CLI Flags
+
+Top-level flags accepted by the main `faultline` command:
+
+| Flag | Purpose |
+|------|---------|
+| `--json` | Emit machine-readable JSON output instead of human-friendly text |
+| `--markdown` | Emit Markdown-formatted output |
+| `--compact` | Use a condensed output layout (fewer blank lines, shorter tables) |
+| `--retries <N>` | Number of times to retry a flaky predicate before recording a verdict |
+| `--stability-threshold <N>` | Minimum consecutive consistent results before accepting a verdict |
+| `--resume` | Resume an interrupted analysis run from its last checkpoint |
+| `--force` | Overwrite existing run data without prompting |
+| `--fresh` | Ignore cached results and re-run from scratch |
+| `--no-render` | Skip HTML report generation after analysis |
+| `--shell` | Drop into an interactive shell at the candidate revision (useful with `reproduce`) |
+| `--env <KEY=VALUE>` | Inject an environment variable into the predicate execution environment |
+
 ## Artifact Contracts
 
 faultline produces machine-readable artifacts with versioned contracts:
