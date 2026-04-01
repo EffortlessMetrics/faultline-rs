@@ -7,7 +7,7 @@ use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
 use faultline_types::{
     AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
-    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
+    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind, SignalAssessment,
 };
 use std::io;
 use std::path::PathBuf;
@@ -506,6 +506,14 @@ fn load_report_from_file(
     Ok(report)
 }
 
+/// JSON wrapper that includes the signal assessment alongside the comparison.
+#[derive(serde::Serialize)]
+struct RunComparisonWithSignal<'a> {
+    #[serde(flatten)]
+    comparison: &'a RunComparison,
+    signal: SignalAssessment,
+}
+
 /// Run the `diff-runs` subcommand.
 fn run_diff_runs(
     left_path: PathBuf,
@@ -517,7 +525,11 @@ fn run_diff_runs(
     let cmp = faultline_types::compare_runs(&left, &right);
 
     if json {
-        let output = serde_json::to_string_pretty(&cmp)?;
+        let wrapper = RunComparisonWithSignal {
+            signal: faultline_types::signal_assessment(&cmp),
+            comparison: &cmp,
+        };
+        let output = serde_json::to_string_pretty(&wrapper)?;
         println!("{}", output);
     } else {
         print_run_comparison(&cmp);
@@ -535,6 +547,8 @@ fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Erro
 }
 
 fn print_run_comparison(cmp: &RunComparison) {
+    let signal = faultline_types::signal_assessment(cmp);
+    println!("signal       {}", signal);
     println!("left-run     {}", cmp.left_run_id);
     println!("right-run    {}", cmp.right_run_id);
     println!(
@@ -545,8 +559,22 @@ fn print_run_comparison(cmp: &RunComparison) {
             "unchanged"
         }
     );
-    println!("confidence   {:+}", cmp.confidence_delta);
-    println!("window       {:+}", cmp.window_width_delta);
+    let conf_dir = if cmp.confidence_delta > 0 {
+        "(better)"
+    } else if cmp.confidence_delta < 0 {
+        "(worse)"
+    } else {
+        "(same)"
+    };
+    println!("confidence   {:+} {}", cmp.confidence_delta, conf_dir);
+    let win_dir = if cmp.window_width_delta < 0 {
+        "(narrower)"
+    } else if cmp.window_width_delta > 0 {
+        "(wider)"
+    } else {
+        "(same)"
+    };
+    println!("window       {:+} {}", cmp.window_width_delta, win_dir);
     println!("probes-reused {}", cmp.probes_reused);
     if !cmp.suspect_paths_added.is_empty() {
         println!("paths-added  {}", cmp.suspect_paths_added.join(", "));
