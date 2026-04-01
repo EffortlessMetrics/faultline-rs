@@ -6,4 +6,5 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+faultline-codes = { path = "../faultline-codes" }
 faultline-types = { path = "../faultline-types" }

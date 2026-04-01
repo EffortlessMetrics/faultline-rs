@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use faultline_codes::ObservationClass;
 use faultline_types::{
     AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, HistoryMode, PathChange,
     ProbeObservation, ProbeSpec, Result, RevisionSequence, RevisionSpec, RunHandle,
@@ -50,4 +51,20 @@ pub trait RunStorePort {
     fn clear_observations(&self, run: &RunHandle) -> Result<()>;
     /// Delete the entire run directory (used by --fresh).
     fn delete_run(&self, run: &RunHandle) -> Result<()>;
+}
+
+/// Callback port for reporting localization progress to the user.
+pub trait ProgressPort {
+    fn on_probe_start(&self, commit: &CommitId, probe_index: usize, total_estimate: usize);
+    fn on_probe_complete(&self, commit: &CommitId, class: ObservationClass, duration_ms: u64);
+    fn on_session_complete(&self, total_probes: usize);
+}
+
+/// No-op implementation that silently discards all progress events.
+pub struct SilentProgress;
+
+impl ProgressPort for SilentProgress {
+    fn on_probe_start(&self, _: &CommitId, _: usize, _: usize) {}
+    fn on_probe_complete(&self, _: &CommitId, _: ObservationClass, _: u64) {}
+    fn on_session_complete(&self, _: usize) {}
 }
