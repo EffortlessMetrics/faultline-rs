@@ -212,6 +212,7 @@ dependencies = [
  "faultline-codes",
  "faultline-fixtures",
  "faultline-git",
+ "faultline-ports",
  "faultline-probe-exec",
  "faultline-render",
  "faultline-store",
@@ -277,6 +278,7 @@ dependencies = [
 name = "faultline-ports"
 version = "0.1.0"
 dependencies = [
+ "faultline-codes",
  "faultline-types",
 ]
 

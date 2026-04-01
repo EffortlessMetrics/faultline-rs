@@ -1,6 +1,6 @@
 use faultline_codes::ObservationClass;
 use faultline_localization::LocalizationSession;
-use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
+use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, ProgressPort, RunStorePort};
 use faultline_surface::SurfaceAnalyzer;
 use faultline_types::{
     AnalysisReport, AnalysisRequest, FaultlineError, ReproductionCapsule, Result, RunHandle,
@@ -30,6 +30,7 @@ pub struct FaultlineApp<'a> {
     checkout: &'a dyn CheckoutPort,
     probe: &'a dyn ProbePort,
     store: &'a dyn RunStorePort,
+    progress: &'a dyn ProgressPort,
     surface: SurfaceAnalyzer,
 }
 
@@ -39,12 +40,14 @@ impl<'a> FaultlineApp<'a> {
         checkout: &'a dyn CheckoutPort,
         probe: &'a dyn ProbePort,
         store: &'a dyn RunStorePort,
+        progress: &'a dyn ProgressPort,
     ) -> Self {
         Self {
             history,
             checkout,
             probe,
             store,
+            progress,
             surface: SurfaceAnalyzer,
         }
     }
@@ -119,6 +122,9 @@ impl<'a> FaultlineApp<'a> {
                 break;
             };
 
+            self.progress
+                .on_probe_start(&commit, probe_count, max_probes);
+
             let observation = if retries > 0 {
                 // Flake-aware: probe 1 + retries times, compute FlakeSignal
                 let total_attempts = 1 + retries as usize;
@@ -150,6 +156,12 @@ impl<'a> FaultlineApp<'a> {
             observation.sequence_index = next_sequence_index;
             next_sequence_index += 1;
 
+            self.progress.on_probe_complete(
+                &observation.commit,
+                observation.class,
+                observation.duration_ms,
+            );
+
             // Full-log persistence: if stdout/stderr was truncated, save full logs
             self.persist_truncated_logs(&run, &observation);
 
@@ -157,6 +169,8 @@ impl<'a> FaultlineApp<'a> {
             session.record(observation)?;
             probe_count += 1;
         }
+
+        self.progress.on_session_complete(probe_count);
 
         let outcome = session.outcome();
         let changed_paths = if let Some((from, to)) = outcome.boundary_pair() {
@@ -362,7 +376,7 @@ impl<'a> FaultlineApp<'a> {
 mod tests {
     use super::*;
     use faultline_codes::{ObservationClass, ProbeKind};
-    use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
+    use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort, SilentProgress};
     use faultline_types::{
         AnalysisReport, AnalysisRequest, CheckedOutRevision, CommitId, FlakePolicy, HistoryMode,
         PathChange, ProbeObservation, ProbeSpec, RevisionSequence, RevisionSpec, RunHandle,
@@ -818,7 +832,7 @@ mod tests {
             cached_observations,
         };
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_for_sequence(5, 20);
 
         let result = app.localize(request).expect("localize should succeed");
@@ -927,7 +941,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_for_sequence(5, 20);
 
         match app.localize(request) {
@@ -963,7 +977,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_for_sequence(5, 20);
 
         match app.localize(request) {
@@ -1045,7 +1059,7 @@ mod tests {
             cached_observations,
         };
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_for_sequence(5, 20);
 
         let result = app.localize(request).expect("localize should succeed");
@@ -1103,7 +1117,7 @@ mod tests {
             };
             let store = MockRunStore;
 
-            let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+            let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
             let request = make_request(max_probes);
 
             let _result = app.localize(request);
@@ -1146,7 +1160,7 @@ mod tests {
             };
             let store = MockRunStore;
 
-            let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+            let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
             let request = make_request_for_sequence(n, 10);
 
             let result = app.localize(request);
@@ -1186,7 +1200,7 @@ mod tests {
             };
             let store = MockRunStore;
 
-            let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+            let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
             let request = make_request_for_sequence(n, 10);
 
             let result = app.localize(request);
@@ -1243,7 +1257,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_for_sequence(n, 30);
 
         let result = app.localize(request).expect("localize should succeed");
@@ -1428,7 +1442,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         let request = make_request_with_flake_policy(n, 20, 2, 1.0);
 
         let result = app.localize(request).expect("localize should succeed");
@@ -1478,7 +1492,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         // retries=0 (default)
         let request = make_request_for_sequence(n, 20);
 
@@ -1528,7 +1542,7 @@ mod tests {
         };
         let store = MockRunStore;
 
-        let app = FaultlineApp::new(&history, &checkout, &probe, &store);
+        let app = FaultlineApp::new(&history, &checkout, &probe, &store, &SilentProgress);
         // retries=2, stability_threshold=1.0 (requires unanimity)
         let request = make_request_with_flake_policy(n, 20, 2, 1.0);
 
