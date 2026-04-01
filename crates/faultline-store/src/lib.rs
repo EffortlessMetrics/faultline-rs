@@ -23,9 +23,23 @@ fn atomic_write(target: &Path, content: &[u8]) -> std::io::Result<()> {
 fn is_process_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
+        // PIDs must be positive; negative or zero values have special meaning
+        // in kill() (process groups) and must not be used for liveness checks.
+        let pid_i32 = pid as libc::pid_t;
+        if pid_i32 <= 0 {
+            return false;
+        }
         // SAFETY: kill with signal 0 does not send a signal — it only checks
         // whether the process exists and we have permission to signal it.
-        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+        // Returns 0 if we can signal, or -1 with:
+        //   ESRCH  — process does not exist (dead)
+        //   EPERM  — process exists but we lack permission (alive)
+        let ret = unsafe { libc::kill(pid_i32, 0) };
+        if ret == 0 {
+            return true;
+        }
+        // EPERM means the process exists but we can't signal it — still alive
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
     #[cfg(not(unix))]
     {
