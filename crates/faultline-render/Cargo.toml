@@ -13,5 +13,9 @@ faultline-codes = { path = "../faultline-codes" }
 [dev-dependencies]
 proptest.workspace = true
 insta = { workspace = true }
+serde_json.workspace = true
+faultline-codes = { path = "../faultline-codes" }
 faultline-fixtures = { path = "../faultline-fixtures" }
+faultline-sarif = { path = "../faultline-sarif" }
+faultline-junit = { path = "../faultline-junit" }
 tempfile = "3"
