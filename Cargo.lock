@@ -218,7 +218,9 @@ dependencies = [
  "faultline-types",
  "insta",
  "proptest",
+ "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
