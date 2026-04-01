@@ -1,4 +1,4 @@
-use faultline_types::{AnalysisReport, LocalizationOutcome, Result};
+use faultline_types::{AnalysisReport, ChangeStatus, LocalizationOutcome, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -184,8 +184,16 @@ impl ReportRenderer {
             .collect::<Vec<_>>()
             .join("\n");
 
-        // Task 3.10: Render suspect surface as a prioritized list
+        // Task 3.10: Render suspect surface as a prioritized list with visual badges
         let suspect_surface_html = if !report.suspect_surface.is_empty() {
+            // Find the maximum score for normalizing the score bar widths
+            let max_score = report
+                .suspect_surface
+                .iter()
+                .map(|e| e.priority_score)
+                .max()
+                .unwrap_or(1)
+                .max(1);
             let items = report
                 .suspect_surface
                 .iter()
@@ -195,24 +203,43 @@ impl ReportRenderer {
                     } else {
                         "suspect-entry"
                     };
+                    // Score bar: width proportional to max, color shifts toward red
+                    let pct = (entry.priority_score as f64 / max_score as f64 * 100.0).min(100.0);
+                    let score_color = score_to_color(entry.priority_score, max_score);
+                    let score_bar = format!(
+                        "<span class=\"suspect-score-bar\"><span class=\"score-fill\" style=\"width:{}px;background:{};\"></span><span class=\"score-label\" style=\"color:{};\">{}</span></span>",
+                        (pct * 0.6).max(4.0) as u32,
+                        score_color,
+                        score_color,
+                        entry.priority_score,
+                    );
+                    // Change status badge
+                    let status_badge = match entry.change_status {
+                        ChangeStatus::Deleted => "<span class=\"badge badge-deleted\">\u{1F5D1} DELETED</span>".to_string(),
+                        ChangeStatus::Renamed => "<span class=\"badge badge-renamed\">\u{21AA} RENAMED</span>".to_string(),
+                        ChangeStatus::Added => "<span class=\"badge badge-added\">+ ADDED</span>".to_string(),
+                        ChangeStatus::Modified => "<span class=\"badge badge-modified\">\u{270E} MODIFIED</span>".to_string(),
+                        _ => format!("<span class=\"badge\">{:?}</span>", entry.change_status),
+                    };
+                    // Execution surface badge
                     let exec_badge = if entry.is_execution_surface {
-                        " <span class=\"badge badge-exec\">exec</span>".to_string()
+                        " <span class=\"badge badge-exec\">\u{26A1} EXEC</span>".to_string()
                     } else {
                         String::new()
                     };
                     let owner = entry
                         .owner_hint
                         .as_ref()
-                        .map(|o| format!(" <span class=\"suspect-owner\">owner: {}</span>", escape_html(o)))
+                        .map(|o| format!(" <span class=\"suspect-owner\">{}</span>", escape_html(o)))
                         .unwrap_or_default();
                     format!(
-                        "<li class=\"{}\"><span class=\"suspect-score\">{}</span><code>{}</code>{}<span class=\"suspect-kind\">{}</span><span class=\"suspect-status\">{:?}</span>{}</li>",
+                        "<li class=\"{}\">{}<code>{}</code>{}{}<span class=\"suspect-kind\">{}</span>{}</li>",
                         entry_class,
-                        entry.priority_score,
+                        score_bar,
                         escape_html(&entry.path),
                         exec_badge,
+                        status_badge,
                         escape_html(&entry.surface_kind),
-                        entry.change_status,
                         owner,
                     )
                 })
@@ -275,21 +302,26 @@ impl ReportRenderer {
     .outcome-firstbad {{ border-left: 4px solid #22c55e; padding: 0.75rem; margin: 0.5rem 0; }}
     .outcome-suspect {{ border-left: 4px solid #f59e0b; padding: 0.75rem; margin: 0.5rem 0; }}
     .outcome-inconclusive {{ border-left: 4px solid #ef4444; padding: 0.75rem; margin: 0.5rem 0; }}
-    .badge {{ display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85em; background: #e5e7eb; margin: 0.1rem; }}
+    .badge {{ display: inline-block; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.85em; background: #e5e7eb; margin: 0.1rem; font-weight: 600; }}
     .badge-signal {{ background: #fef3c7; color: #92400e; }}
+    .badge-deleted {{ background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }}
+    .badge-renamed {{ background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }}
+    .badge-exec {{ background: #faf5ff; color: #6b21a8; border: 1px solid #c4b5fd; }}
+    .badge-added {{ background: #f0fdf4; color: #166534; border: 1px solid #86efac; }}
+    .badge-modified {{ background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }}
     .obs-pass {{ background: #f0fdf4; }}
     .obs-fail {{ background: #fef2f2; }}
     .obs-skip {{ background: #f3f4f6; }}
     .obs-indeterminate {{ background: #fefce8; }}
     .execution-surfaces {{ background: #fffbeb; border: 1px solid #f59e0b; border-radius: 4px; padding: 0.5rem; }}
     .suspect-list {{ list-style: none; padding: 0; }}
-    .suspect-entry {{ padding: 0.5rem; margin: 0.25rem 0; border: 1px solid #e5e7eb; border-radius: 4px; }}
-    .suspect-entry.exec-surface {{ border-left: 4px solid #f59e0b; background: #fffbeb; font-weight: bold; }}
-    .suspect-score {{ display: inline-block; min-width: 3em; text-align: right; margin-right: 0.5rem; color: #6b7280; font-size: 0.85em; }}
-    .suspect-kind {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #e5e7eb; margin-left: 0.5rem; }}
-    .suspect-status {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #dbeafe; margin-left: 0.25rem; }}
-    .suspect-owner {{ color: #6b7280; font-size: 0.85em; margin-left: 0.5rem; }}
-    .badge-exec {{ background: #fef3c7; color: #92400e; }}
+    .suspect-entry {{ display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; margin: 0.25rem 0; border: 1px solid #e5e7eb; border-radius: 4px; flex-wrap: wrap; }}
+    .suspect-entry.exec-surface {{ border-left: 4px solid #f59e0b; background: #fffbeb; }}
+    .suspect-score-bar {{ display: inline-flex; align-items: center; gap: 0.35rem; min-width: 5em; }}
+    .suspect-score-bar .score-fill {{ display: inline-block; height: 0.6rem; border-radius: 3px; }}
+    .suspect-score-bar .score-label {{ font-size: 0.8em; font-weight: 600; }}
+    .suspect-kind {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #e5e7eb; }}
+    .suspect-owner {{ display: inline-block; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8em; background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }}
   </style>
 </head>
 <body>
@@ -300,7 +332,7 @@ impl ReportRenderer {
   {}
   </div>
   <p><strong>Probe fingerprint:</strong> <code>{}</code></p>
-  <p><strong>History mode:</strong> {:?}</p>
+  <p><strong>History mode:</strong> {:?}</p>{}
   <h2>Observation timeline</h2>
   <table>
     <thead><tr><th>Commit</th><th>Class</th><th>Kind</th><th>Exit</th><th>Duration ms</th></tr></thead>
@@ -310,7 +342,7 @@ impl ReportRenderer {
   <ul>{}</ul>
   {}
   <h2>Changed paths</h2>
-  <ul>{}</ul>{}{}
+  <ul>{}</ul>{}
 </body>
 </html>"#,
             escape_html(&report.run_id),
@@ -318,11 +350,11 @@ impl ReportRenderer {
             outcome_html,
             escape_html(&report.request.probe.fingerprint()),
             report.request.history_mode,
+            suspect_surface_html,
             observations,
             buckets,
             execution_surfaces_html,
             changed_paths,
-            suspect_surface_html,
             log_section,
         )
     }
@@ -468,6 +500,24 @@ fn escape_html(input: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+/// Map a priority score to a CSS color that shifts from green (low) through amber to red (high).
+fn score_to_color(score: u32, max_score: u32) -> &'static str {
+    let ratio = if max_score == 0 {
+        0.0
+    } else {
+        score as f64 / max_score as f64
+    };
+    if ratio >= 0.75 {
+        "#dc2626" // red-600
+    } else if ratio >= 0.5 {
+        "#ea580c" // orange-600
+    } else if ratio >= 0.25 {
+        "#ca8a04" // yellow-600
+    } else {
+        "#16a34a" // green-600
+    }
 }
 
 #[cfg(test)]
