@@ -1,0 +1,143 @@
+name: "Faultline Regression Localization"
+description: >
+  Run faultline binary search over Git history to pinpoint the commit
+  that introduced a regression.  Produces analysis.json, index.html,
+  and an optional Markdown dossier.
+
+branding:
+  icon: "search"
+  color: "red"
+
+# ---------------------------------------------------------------------------
+# Inputs
+# ---------------------------------------------------------------------------
+inputs:
+  good:
+    description: "Known-good commit SHA"
+    required: true
+  bad:
+    description: "Known-bad commit SHA"
+    required: true
+  cmd:
+    description: "Predicate command to run at each commit"
+    required: true
+  kind:
+    description: "Probe kind (build | test | lint | perf-threshold | custom)"
+    default: "test"
+    required: false
+  timeout:
+    description: "Timeout per probe in seconds"
+    default: "300"
+    required: false
+  output-dir:
+    description: "Directory to write report artifacts into"
+    default: "faultline-report"
+    required: false
+  markdown:
+    description: "Generate a Markdown dossier alongside HTML/JSON"
+    default: "true"
+    required: false
+  rust-version:
+    description: "Rust toolchain to install (e.g. stable, nightly, 1.78)"
+    default: "stable"
+    required: false
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+outputs:
+  exit-code:
+    description: >
+      Faultline exit code: 0=FirstBad, 1=SuspectWindow,
+      2=Error, 3=Inconclusive, 4=InvalidInput
+    value: ${{ steps.run.outputs.exit-code }}
+  report-dir:
+    description: "Absolute path to the output directory"
+    value: ${{ steps.run.outputs.report-dir }}
+  outcome:
+    description: "Outcome keyword parsed from faultline stdout (FirstBad | SuspectWindow | Inconclusive | unknown)"
+    value: ${{ steps.run.outputs.outcome }}
+
+# ---------------------------------------------------------------------------
+# Steps
+# ---------------------------------------------------------------------------
+runs:
+  using: "composite"
+  steps:
+    # 1. Install Rust toolchain
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.rust-version }}
+
+    # 2. Cache cargo registry and faultline binary
+    - name: Cache cargo registry and faultline binary
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin/faultline-cli
+        key: faultline-${{ runner.os }}-${{ inputs.rust-version }}-v1
+
+    # 3. Install faultline from source (skipped when cached binary exists)
+    - name: Install faultline-cli
+      shell: bash
+      run: |
+        if ! command -v faultline-cli &>/dev/null; then
+          echo "::group::Installing faultline-cli from source"
+          cargo install --git https://github.com/EffortlessMetrics/faultline-rs faultline-cli
+          echo "::endgroup::"
+        else
+          echo "faultline-cli already installed (cache hit)"
+        fi
+        faultline-cli --version
+
+    # 4. Run faultline
+    - name: Run faultline
+      id: run
+      shell: bash
+      run: |
+        set +e
+
+        MARKDOWN_FLAG=""
+        if [ "${{ inputs.markdown }}" = "true" ]; then
+          MARKDOWN_FLAG="--markdown"
+        fi
+
+        faultline-cli \
+          --repo . \
+          --good "${{ inputs.good }}" \
+          --bad "${{ inputs.bad }}" \
+          --cmd "${{ inputs.cmd }}" \
+          --kind "${{ inputs.kind }}" \
+          --timeout-seconds "${{ inputs.timeout }}" \
+          --output-dir "${{ inputs.output-dir }}" \
+          $MARKDOWN_FLAG \
+          2>&1 | tee faultline-stdout.log
+
+        EXIT_CODE=${PIPESTATUS[0]}
+
+        echo "exit-code=${EXIT_CODE}" >> "$GITHUB_OUTPUT"
+        echo "report-dir=$(pwd)/${{ inputs.output-dir }}" >> "$GITHUB_OUTPUT"
+
+        # Parse outcome keyword from stdout (e.g. "outcome      FirstBad  ...")
+        OUTCOME=$(grep -oP '^outcome\s+\K\S+' faultline-stdout.log || echo "unknown")
+        echo "outcome=${OUTCOME}" >> "$GITHUB_OUTPUT"
+
+        # Exit codes 0 (FirstBad), 1 (SuspectWindow), 3 (Inconclusive) are
+        # valid analysis results -- only 2 (Error) and 4 (InvalidInput) are
+        # true failures.
+        if [ "$EXIT_CODE" -eq 2 ] || [ "$EXIT_CODE" -eq 4 ]; then
+          echo "::error::faultline exited with code ${EXIT_CODE}"
+          exit "$EXIT_CODE"
+        fi
+
+    # 5. Upload report artifacts
+    - name: Upload faultline report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: faultline-report
+        path: ${{ inputs.output-dir }}/
+        if-no-files-found: warn
