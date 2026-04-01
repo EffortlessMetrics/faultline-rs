@@ -77,6 +77,9 @@ Options:
       --markdown
           Also write a Markdown dossier alongside HTML/JSON
 
+      --compact
+          Use compact dossier format (ideal for PR comments)
+
   -h, --help
           Print help
 
