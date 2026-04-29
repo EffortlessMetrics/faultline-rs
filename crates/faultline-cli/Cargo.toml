@@ -10,6 +10,7 @@ clap.workspace = true
 serde_json.workspace = true
 faultline-app = { path = "../faultline-app" }
 faultline-codes = { path = "../faultline-codes" }
+faultline-ports = { path = "../faultline-ports" }
 faultline-git = { path = "../faultline-git" }
 faultline-probe-exec = { path = "../faultline-probe-exec" }
 faultline-render = { path = "../faultline-render" }
