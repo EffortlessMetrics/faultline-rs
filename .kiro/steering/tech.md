@@ -4,7 +4,7 @@
 
 - Rust (stable)
 - Cargo workspace with resolver v2
-- Edition 2021
+- Edition 2024
 
 ## Core Dependencies
 

@@ -34,8 +34,9 @@ impl ScenarioCheckResult {
 pub fn extract_test_names(source: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
 
-    // Match #[test] fn <name>(
-    let test_fn_re = Regex::new(r"#\[test\]\s*\n\s*fn\s+(\w+)\s*\(").unwrap();
+    // Match #[test] fn <name>( — allows additional attributes (e.g. #[cfg(...)]) between #[test] and fn
+    let test_fn_re =
+        Regex::new(r"#\[test\](?:\s*\n\s*#\[[^\]]*\])*\s*\n\s*fn\s+(\w+)\s*\(").unwrap();
     for cap in test_fn_re.captures_iter(source) {
         if let Some(m) = cap.get(1) {
             names.insert(m.as_str().to_string());
