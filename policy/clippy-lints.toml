@@ -1,0 +1,251 @@
+# Effortless Metrics Rust policy: Clippy + rustc lint policy for faultline-rs.
+#
+# This file is the source of truth for which lints the workspace is on, what
+# severity each lint runs at, and which lints are *planned* but not yet active
+# (typically because they require a future MSRV).
+#
+# `cargo xtask check-lint-policy` reads this file and verifies:
+#   - workspace MSRV matches `msrv` here
+#   - every active lint listed here appears in the workspace `[lints]` table
+#   - no `clippy.toml` test carveout knobs are set
+#   - no bare `#[allow(...)]` attributes (use `#[expect(..., reason = "...")]`)
+#
+# Schema is intentionally simple. Treat this as policy, not configuration.
+
+schema_version = "1.0"
+msrv = "1.93"
+
+[policy]
+# Tests must not panic without a receipted exception.
+panic_free_tests = true
+# No `clippy.toml` carveouts like `allow-unwrap-in-tests` etc.
+allow_test_carveouts = false
+# Suppressions must be `#[expect(..., reason = "...")]`, never bare `#[allow(...)]`.
+suppression_style = "expect-with-reason"
+# Do not adopt blanket category profiles (`clippy::all`, `clippy::pedantic`,
+# `clippy::nursery`, `clippy::restriction`) at workspace scope.
+blanket_categories = false
+
+# ---------------------------------------------------------------------------
+# Active lints: cross-reference for the [workspace.lints] table in Cargo.toml.
+#
+# `cargo xtask check-lint-policy` verifies these are wired up. The Cargo.toml
+# table is what `cargo` actually consumes; this file is the policy receipt.
+# ---------------------------------------------------------------------------
+
+# Panic-family / abrupt-exit lints. Staged at "warn" while the no-panic
+# allowlist is being baselined; the semantic checker is the blocking gate.
+# Promote to "deny" once `cargo xtask check-no-panic-family` reports zero
+# unreceipted findings for the family.
+[[active]]
+name = "clippy::dbg_macro"
+level = "deny"
+
+[[active]]
+name = "clippy::todo"
+level = "warn"
+
+[[active]]
+name = "clippy::unimplemented"
+level = "warn"
+
+[[active]]
+name = "clippy::panic"
+level = "warn"
+
+[[active]]
+name = "clippy::unreachable"
+level = "warn"
+
+[[active]]
+name = "clippy::unwrap_used"
+level = "warn"
+
+[[active]]
+name = "clippy::expect_used"
+level = "warn"
+
+[[active]]
+name = "clippy::get_unwrap"
+level = "warn"
+
+[[active]]
+name = "clippy::unwrap_in_result"
+level = "warn"
+
+[[active]]
+name = "clippy::indexing_slicing"
+level = "warn"
+
+[[active]]
+name = "clippy::string_slice"
+level = "warn"
+
+# Silent-failure lints.
+[[active]]
+name = "clippy::let_underscore_future"
+level = "deny"
+
+[[active]]
+name = "clippy::let_underscore_lock"
+level = "deny"
+
+[[active]]
+name = "clippy::let_underscore_must_use"
+level = "warn"
+
+[[active]]
+name = "clippy::map_err_ignore"
+level = "warn"
+
+[[active]]
+name = "clippy::lines_filter_map_ok"
+level = "warn"
+
+# Async / concurrency lints.
+[[active]]
+name = "clippy::await_holding_lock"
+level = "deny"
+
+[[active]]
+name = "clippy::await_holding_refcell_ref"
+level = "deny"
+
+[[active]]
+name = "clippy::rc_mutex"
+level = "deny"
+
+[[active]]
+name = "clippy::mut_mutex_lock"
+level = "deny"
+
+[[active]]
+name = "clippy::readonly_write_lock"
+level = "deny"
+
+# Unsafe / memory.
+[[active]]
+name = "clippy::mem_forget"
+level = "deny"
+
+[[active]]
+name = "clippy::undocumented_unsafe_blocks"
+level = "warn"
+
+# Numeric correctness — kept at warn first; the parser surface is small.
+[[active]]
+name = "clippy::float_cmp"
+level = "warn"
+
+[[active]]
+name = "clippy::cast_possible_wrap"
+level = "warn"
+
+[[active]]
+name = "clippy::cast_possible_truncation"
+level = "warn"
+
+[[active]]
+name = "clippy::cast_precision_loss"
+level = "warn"
+
+[[active]]
+name = "clippy::cast_sign_loss"
+level = "warn"
+
+[[active]]
+name = "clippy::lossy_float_literal"
+level = "warn"
+
+# File / process / path footguns.
+[[active]]
+name = "clippy::suspicious_open_options"
+level = "deny"
+
+[[active]]
+name = "clippy::path_buf_push_overwrite"
+level = "deny"
+
+[[active]]
+name = "clippy::join_absolute_paths"
+level = "deny"
+
+[[active]]
+name = "clippy::exit"
+level = "warn"
+
+# Format-string footguns.
+[[active]]
+name = "clippy::format_in_format_args"
+level = "warn"
+
+[[active]]
+name = "clippy::to_string_in_format_args"
+level = "warn"
+
+[[active]]
+name = "clippy::uninlined_format_args"
+level = "warn"
+
+# Suppression governance.
+[[active]]
+name = "clippy::allow_attributes"
+level = "deny"
+
+[[active]]
+name = "clippy::allow_attributes_without_reason"
+level = "deny"
+
+# rustc-side lints.
+[[active]]
+name = "unsafe_op_in_unsafe_fn"
+level = "deny"
+
+[[active]]
+name = "unused_must_use"
+level = "deny"
+
+[[active]]
+name = "unexpected_cfgs"
+level = "warn"
+
+# ---------------------------------------------------------------------------
+# Planned: tracked here so flips on MSRV bump are deliberate and reviewed,
+# not surprises. `check-lint-policy` verifies these are NOT active early.
+# ---------------------------------------------------------------------------
+
+[[planned]]
+name = "clippy::same_length_and_capacity"
+level = "deny"
+activate_when_msrv = "1.94"
+reason = "Catches raw-parts reconstruction mistakes."
+
+[[planned]]
+name = "clippy::manual_ilog2"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Prefer the standard integer log helper."
+
+[[planned]]
+name = "clippy::needless_type_cast"
+level = "warn"
+activate_when_msrv = "1.94"
+reason = "Avoid stale numeric type drift."
+
+[[planned]]
+name = "clippy::manual_checked_ops"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Prefer checked arithmetic over manual divide-by-zero guards."
+
+[[planned]]
+name = "clippy::manual_take"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Use the standard ownership helper instead of local reimplementation."
+
+[[planned]]
+name = "clippy::duration_suboptimal_units"
+level = "warn"
+activate_when_msrv = "1.95"
+reason = "Make durations legible without mental unit conversion."

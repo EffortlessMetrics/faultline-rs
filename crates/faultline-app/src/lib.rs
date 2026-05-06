@@ -222,7 +222,10 @@ impl<'a> FaultlineApp<'a> {
         Ok(LocalizedRun { run, report })
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Boundary helper threads orchestration state through a single seam; splitting the signature would fragment the orchestrator without changing behavior."
+    )]
     fn ensure_boundary(
         &self,
         run: &RunHandle,

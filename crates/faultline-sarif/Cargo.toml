@@ -15,3 +15,6 @@ faultline-codes = { path = "../faultline-codes" }
 faultline-fixtures = { path = "../faultline-fixtures" }
 faultline-junit = { path = "../faultline-junit" }
 proptest = { workspace = true }
+
+[lints]
+workspace = true

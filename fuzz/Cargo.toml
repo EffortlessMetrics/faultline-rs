@@ -52,3 +52,6 @@ doc = false
 name = "fuzz_junit_export"
 path = "fuzz_targets/fuzz_junit_export.rs"
 doc = false
+
+[lints]
+workspace = true

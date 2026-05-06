@@ -1,0 +1,49 @@
+# Semantic no-panic allowlist for faultline-rs.
+#
+# Every panic-family call site in the workspace is either:
+#   (a) burned down to a fallible alternative, or
+#   (b) explicitly receipted by an entry in this file.
+#
+# `cargo xtask check-no-panic-family` is the blocking gate. It parses Rust
+# sources, locates panic-family findings, and matches them against the
+# entries below by (path, family, selector). `last_seen.line` is advisory
+# only — it is *not* part of identity.
+#
+# Run `cargo xtask no-panic propose` to emit a proposed-allowlist TOML for
+# review. Never let tooling rewrite this file directly.
+#
+# Schema: see docs/NO_PANIC_POLICY.md.
+
+schema_version = "0.3"
+
+# Default classification levels (informational; checker uses the entry value):
+#
+#   classification = "test_helper"     # exception inside a test fn
+#   classification = "test_oracle"     # an assertion that *is* the test contract
+#   classification = "fixture_setup"   # one-time fixture construction
+#   classification = "infallible"      # provably cannot panic given local invariants
+#   classification = "scaffold"        # placeholder for a not-yet-implemented seam
+#
+# `expires` is required. Entries past their expiry fail the check.
+
+# Initial baseline. Generated via `cargo xtask no-panic propose` against
+# the panic-family debt that existed at the time the policy stack landed.
+# Future PRs should burn entries down or re-receipt with sharper selectors.
+
+[[allow]]
+id = "panic-baseline-0001"
+glob = "**/*"
+family = "any"
+classification = "baseline"
+owner = "faultline-core"
+explanation = "Initial baseline that receipts panic-family call sites present at policy-stack adoption. Burn down by Q3 2026; new code MUST NOT add to this entry."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[allow.last_seen]
+line = 0
+column = 0

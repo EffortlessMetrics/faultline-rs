@@ -11,3 +11,6 @@ faultline-types = { path = "../faultline-types" }
 faultline-codes = { path = "../faultline-codes" }
 proptest = { workspace = true }
 tempfile = "3"
+
+[lints]
+workspace = true

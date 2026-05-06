@@ -20,3 +20,6 @@ faultline-types = { path = "../faultline-types" }
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }
 insta = { workspace = true }
+
+[lints]
+workspace = true

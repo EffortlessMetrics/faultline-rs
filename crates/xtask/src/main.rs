@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 use xtask::ci;
+use xtask::policy;
 use xtask::scaffold;
 use xtask::schema;
 use xtask::smoke;
@@ -76,6 +77,25 @@ enum Command {
         #[arg(long)]
         output: Option<PathBuf>,
     },
+    /// Verify clippy/rustc lint policy across the workspace
+    CheckLintPolicy,
+    /// Verify panic-family findings against policy/no-panic-allowlist.toml
+    CheckNoPanicFamily,
+    /// Verify non-Rust files against policy/non-rust-allowlist.toml
+    CheckFilePolicy,
+    /// Run every policy gate and write a roll-up report
+    PolicyReport,
+    /// Panic-family allowlist tooling
+    NoPanic {
+        #[command(subcommand)]
+        action: NoPanicAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum NoPanicAction {
+    /// Emit a proposed allowlist TOML for review (does not mutate policy/)
+    Propose,
 }
 
 #[derive(Subcommand)]
@@ -277,6 +297,33 @@ fn main() -> Result<()> {
             }
         }
 
+        Command::CheckLintPolicy => {
+            let root = policy::workspace_root()?;
+            policy::check_lint_policy(&root)?;
+        }
+
+        Command::CheckNoPanicFamily => {
+            let root = policy::workspace_root()?;
+            policy::check_no_panic_family(&root)?;
+        }
+
+        Command::CheckFilePolicy => {
+            let root = policy::workspace_root()?;
+            policy::check_file_policy(&root)?;
+        }
+
+        Command::PolicyReport => {
+            let root = policy::workspace_root()?;
+            policy::check_all(&root)?;
+        }
+
+        Command::NoPanic { action } => match action {
+            NoPanicAction::Propose => {
+                let root = policy::workspace_root()?;
+                policy::no_panic_propose(&root)?;
+            }
+        },
+
         Command::ExportJunit { run_dir, output } => {
             let report = load_report(&run_dir)?;
             #[cfg(feature = "export-adapters")]
@@ -326,6 +373,11 @@ mod tests {
             "export-markdown",
             "export-sarif",
             "export-junit",
+            "check-lint-policy",
+            "check-no-panic-family",
+            "check-file-policy",
+            "policy-report",
+            "no-panic",
         ];
 
         for name in &expected_subcommands {

@@ -15,3 +15,6 @@ faultline-fixtures = { path = "../faultline-fixtures" }
 faultline-localization = { path = "../faultline-localization" }
 proptest = { workspace = true }
 tempfile = "3"
+
+[lints]
+workspace = true
