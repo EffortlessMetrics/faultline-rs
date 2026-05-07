@@ -1,5 +1,10 @@
 # faultline
 
+[![CI Fast](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/EffortlessMetrics/faultline-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/faultline-rs)
+[![MSRV](https://img.shields.io/badge/MSRV-1.93-blue.svg)](Cargo.toml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 **faultline** is a local-first regression archaeologist for Git repositories.
 
 Given a known-good boundary, a known-bad boundary, and a predicate you already trust,
@@ -131,6 +136,10 @@ Run `cargo run -p faultline-cli -- --help` for the full flag reference.
 
 The predicate should be monotonic enough across the selected history range.
 If it flakes, times out, or depends on mutable external state, `faultline` will reduce confidence and may return a suspect window instead of an exact first-bad commit.
+
+## CI and Coverage
+
+Codecov is execution-surface telemetry only; see [Coverage](docs/ci/coverage.md) for what the badge does and does not claim.
 
 ## Packaging
 
