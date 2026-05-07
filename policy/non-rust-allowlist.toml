@@ -144,16 +144,7 @@ owner = "release/ci"
 surface = "ci"
 classification = "production"
 reason = "GitHub Actions coverage workflow for cargo-llvm-cov and Codecov uploads."
-covered_by = ["cargo xtask check-file-policy", "docs/ci/coverage.md"]
-
-[[allow]]
-glob = "docs/ci/**"
-kind = "ci_docs"
-owner = "release/ci"
-surface = "docs"
-classification = "production"
-reason = "Coverage documentation for CI claim boundaries."
-covered_by = ["git diff --check"]
+covered_by = ["cargo xtask check-file-policy"]
 
 # ---------------------------------------------------------------------------
 # Schemas / generated artifacts
