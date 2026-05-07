@@ -583,20 +583,6 @@ callee = "*"
 [[allow]]
 id = "panic-baseline-0041"
 path = "crates/xtask/src/scaffold.rs"
-family = "todo"
-classification = "baseline"
-owner = "unassigned"
-explanation = "1 pre-policy todo call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0042"
-path = "crates/xtask/src/scaffold.rs"
 family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
@@ -609,7 +595,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0043"
+id = "panic-baseline-0042"
 path = "crates/xtask/src/scenarios.rs"
 family = "unwrap"
 classification = "baseline"
@@ -623,7 +609,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0044"
+id = "panic-baseline-0043"
 path = "crates/xtask/src/schema.rs"
 family = "expect"
 classification = "baseline"
@@ -637,7 +623,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0045"
+id = "panic-baseline-0044"
 path = "crates/xtask/src/schema.rs"
 family = "panic_macro"
 classification = "baseline"
@@ -651,7 +637,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0046"
+id = "panic-baseline-0045"
 path = "crates/xtask/src/smoke.rs"
 family = "expect"
 classification = "baseline"
@@ -665,7 +651,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0047"
+id = "panic-baseline-0046"
 path = "crates/xtask/src/smoke.rs"
 family = "unwrap"
 classification = "baseline"
@@ -679,7 +665,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0048"
+id = "panic-baseline-0047"
 path = "crates/xtask/tests/doc_structure.rs"
 family = "panic_macro"
 classification = "baseline"
@@ -693,7 +679,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0049"
+id = "panic-baseline-0048"
 path = "crates/xtask/tests/doc_structure.rs"
 family = "unwrap"
 classification = "baseline"
@@ -707,7 +693,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0050"
+id = "panic-baseline-0049"
 path = "crates/xtask/tests/scaffold.rs"
 family = "unreachable"
 classification = "baseline"
@@ -721,7 +707,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0051"
+id = "panic-baseline-0050"
 path = "crates/xtask/tests/scaffold.rs"
 family = "unwrap"
 classification = "baseline"
@@ -735,7 +721,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0052"
+id = "panic-baseline-0051"
 path = "crates/xtask/tests/schema_drift.rs"
 family = "expect"
 classification = "baseline"
@@ -749,7 +735,7 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0053"
+id = "panic-baseline-0052"
 path = "crates/xtask/tests/schema_drift.rs"
 family = "unwrap"
 classification = "baseline"

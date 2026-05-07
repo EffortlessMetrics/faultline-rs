@@ -233,6 +233,7 @@ dependencies = [
 name = "faultline-fixtures"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "faultline-codes",
  "faultline-types",
  "proptest",

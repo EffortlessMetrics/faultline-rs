@@ -43,11 +43,11 @@ level = "deny"
 
 [[active]]
 name = "clippy::todo"
-level = "warn"
+level = "deny"
 
 [[active]]
 name = "clippy::unimplemented"
-level = "warn"
+level = "deny"
 
 [[active]]
 name = "clippy::panic"

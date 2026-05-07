@@ -56,8 +56,8 @@ unexpected_cfgs = "warn"
 [workspace.lints.clippy]
 # Panic-family / abrupt-exit (staged at warn; semantic checker is the gate)
 dbg_macro = "deny"
-todo = "warn"
-unimplemented = "warn"
+todo = "deny"
+unimplemented = "deny"
 panic = "warn"
 unreachable = "warn"
 unwrap_used = "warn"
