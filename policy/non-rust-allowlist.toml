@@ -147,12 +147,12 @@ reason = "GitHub Actions coverage workflow for cargo-llvm-cov and Codecov upload
 covered_by = ["cargo xtask check-file-policy", "docs/ci/coverage.md"]
 
 [[allow]]
-glob = "docs/ci/coverage.md"
+glob = "docs/ci/**"
 kind = "ci_docs"
 owner = "release/ci"
 surface = "docs"
 classification = "production"
-reason = "Documents Codecov claim boundaries and verification expectations."
+reason = "Coverage documentation for CI claim boundaries."
 covered_by = ["git diff --check"]
 
 # ---------------------------------------------------------------------------
