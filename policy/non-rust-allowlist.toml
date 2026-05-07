@@ -147,7 +147,7 @@ reason = "GitHub Actions coverage workflow for cargo-llvm-cov and Codecov upload
 covered_by = ["cargo xtask check-file-policy", "docs/ci/coverage.md"]
 
 [[allow]]
-path = "docs/ci/coverage.md"
+glob = "docs/ci/coverage.md"
 kind = "ci_docs"
 owner = "release/ci"
 surface = "docs"
