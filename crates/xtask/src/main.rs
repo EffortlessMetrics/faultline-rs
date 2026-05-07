@@ -96,6 +96,8 @@ enum Command {
 enum NoPanicAction {
     /// Emit a proposed allowlist TOML for review (does not mutate policy/)
     Propose,
+    /// Emit a per-(file, family) baseline TOML for review
+    Baseline,
 }
 
 #[derive(Subcommand)]
@@ -321,6 +323,10 @@ fn main() -> Result<()> {
             NoPanicAction::Propose => {
                 let root = policy::workspace_root()?;
                 policy::no_panic_propose(&root)?;
+            }
+            NoPanicAction::Baseline => {
+                let root = policy::workspace_root()?;
+                policy::no_panic_baseline(&root)?;
             }
         },
 

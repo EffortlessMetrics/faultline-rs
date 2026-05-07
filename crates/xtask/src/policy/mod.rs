@@ -66,5 +66,7 @@ pub fn check_all(root: &Path) -> Result<()> {
 
 pub use file_policy::check as check_file_policy;
 pub use lint_policy::check as check_lint_policy;
-pub use no_panic::{check as check_no_panic_family, propose as no_panic_propose};
+pub use no_panic::{
+    baseline as no_panic_baseline, check as check_no_panic_family, propose as no_panic_propose,
+};
 pub use report::write_roll_up as policy_report;
