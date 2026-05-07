@@ -1,0 +1,20 @@
+# Clippy lint debt: when a lint we want to deny is currently noisy, we list
+# it here with an owner, reason, and expiry. `cargo xtask check-lint-policy`
+# warns on stale (expired) entries and on entries whose target lint is no
+# longer warning anywhere.
+#
+# This is *not* a place to add `#[allow(...)]` attributes silently. Source-
+# level suppressions still require `#[expect(..., reason = "...")]`. This
+# file exists so that we can stage lint promotion work without ad-hoc
+# attribute spam.
+
+schema_version = "1.0"
+
+# No active debt entries yet. New entries should look like:
+#
+# [[debt]]
+# id = "lint-0001"
+# lint = "clippy::cast_possible_truncation"
+# owner = "<crate-owner>"
+# reason = "Pending audit of historical numeric casts in renderer."
+# expires = "2026-09-01"

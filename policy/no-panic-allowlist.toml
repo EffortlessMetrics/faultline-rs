@@ -1,0 +1,750 @@
+# Semantic no-panic allowlist for faultline-rs.
+#
+# Every panic-family call site in the workspace is either:
+#   (a) burned down to a fallible alternative, or
+#   (b) explicitly receipted by an entry in this file.
+#
+# `cargo xtask check-no-panic-family` is the blocking gate. It parses Rust
+# sources, locates panic-family findings, and matches them against the
+# entries below by (path, family, selector). `last_seen.line` is advisory
+# only — it is *not* part of identity.
+#
+# Schema: see docs/NO_PANIC_POLICY.md.
+#
+# Initial baseline below was generated via `cargo xtask no-panic baseline`
+# against the panic-family debt that existed at policy-stack adoption. Each
+# entry receipts ALL panic-family findings of a single family in a single
+# file. New files and new families in existing files are NOT covered: those
+# fail the gate, by design. Burn down by replacing entries with sharper
+# selectors or removing them when the underlying surface is fallible.
+
+schema_version = "0.3"
+
+[[allow]]
+id = "panic-baseline-0001"
+path = "crates/faultline-app/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "12 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0002"
+path = "crates/faultline-app/src/lib.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "5 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0003"
+path = "crates/faultline-app/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0004"
+path = "crates/faultline-cli/src/main.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0005"
+path = "crates/faultline-cli/src/main.rs"
+family = "unreachable"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0006"
+path = "crates/faultline-cli/src/main.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "8 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0007"
+path = "crates/faultline-cli/tests/smoke.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "9 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0008"
+path = "crates/faultline-fixtures/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "21 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0009"
+path = "crates/faultline-git/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "16 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0010"
+path = "crates/faultline-git/src/lib.rs"
+family = "get_unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "7 pre-policy get_unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0011"
+path = "crates/faultline-git/src/lib.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "3 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0012"
+path = "crates/faultline-git/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "55 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0013"
+path = "crates/faultline-junit/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "16 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0014"
+path = "crates/faultline-junit/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0015"
+path = "crates/faultline-localization/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0016"
+path = "crates/faultline-localization/src/lib.rs"
+family = "get_unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy get_unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0017"
+path = "crates/faultline-localization/src/lib.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "16 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0018"
+path = "crates/faultline-localization/src/lib.rs"
+family = "unreachable"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0019"
+path = "crates/faultline-localization/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "133 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0020"
+path = "crates/faultline-probe-exec/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "6 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0021"
+path = "crates/faultline-render/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "15 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0022"
+path = "crates/faultline-render/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "29 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0023"
+path = "crates/faultline-render/tests/bdd_scenarios.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "7 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0024"
+path = "crates/faultline-render/tests/bdd_scenarios.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "12 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0025"
+path = "crates/faultline-sarif/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "3 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0026"
+path = "crates/faultline-sarif/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "16 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0027"
+path = "crates/faultline-sarif/tests/export_surfaces.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0028"
+path = "crates/faultline-sarif/tests/export_surfaces.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0029"
+path = "crates/faultline-store/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0030"
+path = "crates/faultline-store/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "151 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0031"
+path = "crates/faultline-surface/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "4 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0032"
+path = "crates/faultline-surface/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "6 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0033"
+path = "crates/faultline-types/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "13 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0034"
+path = "crates/faultline-types/src/lib.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0035"
+path = "crates/faultline-types/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "5 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0036"
+path = "crates/xtask/src/docs_check.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "18 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0037"
+path = "crates/xtask/src/main.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0038"
+path = "crates/xtask/src/main.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "4 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0039"
+path = "crates/xtask/src/policy/lint_policy.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0040"
+path = "crates/xtask/src/policy/no_panic.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "7 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0041"
+path = "crates/xtask/src/scaffold.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0042"
+path = "crates/xtask/src/scenarios.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0043"
+path = "crates/xtask/src/schema.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "6 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0044"
+path = "crates/xtask/src/schema.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0045"
+path = "crates/xtask/src/smoke.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0046"
+path = "crates/xtask/src/smoke.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "4 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0047"
+path = "crates/xtask/tests/doc_structure.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0048"
+path = "crates/xtask/tests/doc_structure.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0049"
+path = "crates/xtask/tests/scaffold.rs"
+family = "unreachable"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0050"
+path = "crates/xtask/tests/scaffold.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "26 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0051"
+path = "crates/xtask/tests/schema_drift.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0052"
+path = "crates/xtask/tests/schema_drift.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "6 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+

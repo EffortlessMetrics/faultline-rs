@@ -42,17 +42,31 @@ fn run_contract(contract: &str, cmd: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// ci-fast: fmt + clippy + test (with nextest fallback)
+/// ci-fast: fmt + clippy + policy gates + test (with nextest fallback)
 pub fn ci_fast() -> Result<()> {
     println!("=== ci-fast ===\n");
 
     run_contract("code formatting", "cargo", &["fmt", "--check"])?;
 
-    run_contract(
-        "lint warnings",
-        "cargo",
-        &["clippy", "--workspace", "--", "-D", "warnings"],
-    )?;
+    // Note: we do not pass `-D warnings` globally. Deny-level lints in
+    // `[workspace.lints]` already block at compile time. Warn-level lints
+    // are intentionally staged while panic-family debt is being baselined;
+    // the blocking gate is the policy stack below.
+    run_contract("lint warnings", "cargo", &["clippy", "--workspace"])?;
+
+    let root = crate::policy::workspace_root()?;
+    if let Err(e) = crate::policy::check_lint_policy(&root) {
+        bail!("{}", contract_broken_message(&format!("lint policy: {e}")));
+    }
+    if let Err(e) = crate::policy::check_no_panic_family(&root) {
+        bail!(
+            "{}",
+            contract_broken_message(&format!("no-panic policy: {e}"))
+        );
+    }
+    if let Err(e) = crate::policy::check_file_policy(&root) {
+        bail!("{}", contract_broken_message(&format!("file policy: {e}")));
+    }
 
     // Detect cargo-nextest and use it if available, fall back to cargo test
     if has_tool("cargo-nextest") {

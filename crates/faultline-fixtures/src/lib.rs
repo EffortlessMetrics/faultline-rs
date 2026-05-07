@@ -1,4 +1,5 @@
 pub mod arb;
+pub mod fallible;
 
 use faultline_types::{CommitId, RevisionSequence};
 use std::path::Path;

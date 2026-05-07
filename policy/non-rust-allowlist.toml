@@ -1,0 +1,224 @@
+# Non-Rust file policy for faultline-rs.
+#
+# Rust + xtask is the default implementation path. Non-Rust files must be
+# represented here with an owner, a reason, and a `covered_by` list naming
+# the checks/scripts that exercise them. `cargo xtask check-file-policy`
+# fails on:
+#   - any tracked non-Rust file not matched by an allow entry,
+#   - allow entries whose `expires` has passed,
+#   - allow entries that match no tracked file (stale receipts).
+#
+# Schema: see docs/FILE_POLICY.md.
+
+schema_version = "1.0"
+
+# ---------------------------------------------------------------------------
+# Build / cargo metadata
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "Cargo.toml"
+kind = "build_metadata"
+owner = "build/cargo"
+surface = "build"
+classification = "production"
+reason = "Cargo workspace manifest."
+covered_by = ["cargo build --workspace", "cargo xtask check-lint-policy"]
+
+[[allow]]
+glob = "crates/*/Cargo.toml"
+kind = "build_metadata"
+owner = "build/cargo"
+surface = "build"
+classification = "production"
+reason = "Per-crate Cargo manifests."
+covered_by = ["cargo build --workspace", "cargo xtask check-lint-policy"]
+
+[[allow]]
+glob = "fuzz/Cargo.toml"
+kind = "build_metadata"
+owner = "build/cargo"
+surface = "fuzz"
+classification = "tooling"
+reason = "Fuzz workspace manifest."
+covered_by = ["cargo xtask fuzz"]
+
+[[allow]]
+glob = "Cargo.lock"
+kind = "build_metadata"
+owner = "build/cargo"
+surface = "build"
+classification = "production"
+reason = "Locked dependency graph for reproducible builds."
+covered_by = ["cargo build --workspace"]
+
+[[allow]]
+glob = ".cargo/config.toml"
+kind = "build_metadata"
+owner = "build/cargo"
+surface = "build"
+classification = "production"
+reason = "Workspace cargo aliases (e.g., the `xtask` alias)."
+covered_by = ["cargo xtask ci-fast"]
+
+[[allow]]
+glob = "deny.toml"
+kind = "supply_chain"
+owner = "release/ci"
+surface = "supply_chain"
+classification = "production"
+reason = "cargo-deny policy for license/advisory/duplicates."
+covered_by = ["cargo xtask release-check"]
+
+[[allow]]
+glob = "mutants.toml"
+kind = "test_config"
+owner = "testing"
+surface = "mutants"
+classification = "tooling"
+reason = "cargo-mutants configuration."
+covered_by = ["cargo xtask mutants"]
+
+[[allow]]
+glob = "Justfile"
+kind = "task_runner"
+owner = "build/cargo"
+surface = "build"
+classification = "tooling"
+reason = "Just aliases that mirror xtask commands."
+covered_by = ["cargo xtask ci-fast"]
+
+[[allow]]
+glob = ".mise.toml"
+kind = "toolchain"
+owner = "build/cargo"
+surface = "build"
+classification = "tooling"
+reason = "mise/asdf-style toolchain pin for local dev."
+covered_by = []
+
+[[allow]]
+glob = ".gitignore"
+kind = "vcs_metadata"
+owner = "repo-policy"
+surface = "vcs"
+classification = "config"
+reason = "Git ignore rules."
+covered_by = []
+
+[[allow]]
+glob = "LICENSE"
+kind = "legal"
+owner = "repo-policy"
+surface = "repo"
+classification = "production"
+reason = "Apache-2.0 license text."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# CI workflows
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".github/workflows/*.yml"
+kind = "ci_declarative"
+owner = "release/ci"
+surface = "ci"
+classification = "production"
+reason = "GitHub Actions workflows are platform-required YAML."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Schemas / generated artifacts
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "schemas/analysis-report.schema.json"
+kind = "generated_metadata"
+owner = "faultline-types"
+surface = "schema"
+classification = "generated"
+reason = "JSON Schema generated from AnalysisReport via xtask."
+covered_by = ["cargo xtask generate-schema"]
+generated_by = "cargo xtask generate-schema"
+
+[[allow]]
+glob = "crates/*/src/snapshots/**/*.snap"
+kind = "test_fixture"
+owner = "testing"
+surface = "snapshots"
+classification = "test"
+reason = "insta golden snapshots; reviewed via `cargo insta review`."
+covered_by = ["cargo xtask golden"]
+
+[[allow]]
+glob = "crates/*/proptest-regressions/**"
+kind = "test_fixture"
+owner = "testing"
+surface = "proptest"
+classification = "test"
+reason = "proptest regression seeds checked in for repro."
+covered_by = ["cargo test --workspace"]
+
+# ---------------------------------------------------------------------------
+# Docs
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "docs/book/book.toml"
+kind = "docs_config"
+owner = "docs"
+surface = "docs"
+classification = "production"
+reason = "mdBook configuration."
+covered_by = ["cargo xtask docs-check"]
+
+[[allow]]
+glob = "docs/book/book/**"
+kind = "generated_docs"
+owner = "docs"
+surface = "docs"
+classification = "generated"
+reason = "Generated mdBook output checked in for GitHub Pages publication."
+covered_by = ["cargo xtask docs-check"]
+generated_by = "mdbook build docs/book"
+
+[[allow]]
+glob = "docs/**/*.html"
+kind = "generated_docs"
+owner = "docs"
+surface = "docs"
+classification = "generated"
+reason = "HTML rendered from Markdown sources for GitHub Pages."
+covered_by = ["cargo xtask docs-check"]
+generated_by = "cargo xtask docs-check"
+
+# ---------------------------------------------------------------------------
+# Specs / planning artifacts (Kiro)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = ".kiro/**"
+kind = "spec_metadata"
+owner = "product/specs"
+surface = "specs"
+classification = "config"
+reason = "Kiro spec configuration referenced by docs/specs."
+covered_by = []
+
+# ---------------------------------------------------------------------------
+# Policy stack (this directory)
+# ---------------------------------------------------------------------------
+
+[[allow]]
+glob = "policy/*.toml"
+kind = "policy"
+owner = "repo-policy"
+surface = "policy"
+classification = "production"
+reason = "Effortless Metrics Rust policy stack: lint, no-panic, file allowlists."
+covered_by = [
+  "cargo xtask check-lint-policy",
+  "cargo xtask check-no-panic-family",
+  "cargo xtask check-file-policy",
+]

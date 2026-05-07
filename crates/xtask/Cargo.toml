@@ -13,7 +13,11 @@ faultline-render = { path = "../faultline-render", optional = true }
 faultline-sarif = { path = "../faultline-sarif", optional = true }
 faultline-junit = { path = "../faultline-junit", optional = true }
 schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+toml.workspace = true
+glob.workspace = true
+walkdir.workspace = true
 regex = "1"
 tempfile = "3"
 
@@ -23,3 +27,6 @@ export-adapters = ["faultline-render", "faultline-sarif", "faultline-junit"]
 
 [dev-dependencies]
 proptest.workspace = true
+
+[lints]
+workspace = true

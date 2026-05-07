@@ -54,10 +54,36 @@ just ci
 
 This executes in sequence, stopping on first failure:
 1. `cargo fmt --check`
-2. `cargo clippy --workspace -- -D warnings`
-3. `cargo test --workspace` (uses `cargo-nextest` if installed, falls back to `cargo test`)
+2. `cargo clippy --workspace` (deny-level lints in `[workspace.lints]` block at compile time; warn-level lints stay warn while panic-family debt is being baselined)
+3. `cargo xtask check-lint-policy` — workspace lint posture vs. `policy/clippy-lints.toml`
+4. `cargo xtask check-no-panic-family` — panic-family findings vs. `policy/no-panic-allowlist.toml`
+5. `cargo xtask check-file-policy` — non-Rust files vs. `policy/non-rust-allowlist.toml`
+6. `cargo test --workspace` (uses `cargo-nextest` if installed, falls back to `cargo test`)
 
 Target time: under 5 minutes.
+
+The three policy gates live under [docs/CLIPPY_POLICY.md](docs/CLIPPY_POLICY.md), [docs/NO_PANIC_POLICY.md](docs/NO_PANIC_POLICY.md), and [docs/FILE_POLICY.md](docs/FILE_POLICY.md). The source-of-truth files are in [policy/](policy/).
+
+### Fallible test helpers
+
+When writing a new test, prefer the fallible-helper macros from
+`faultline-fixtures::fallible` over `unwrap()`/`expect()`/`panic!()`:
+
+```rust
+use faultline_fixtures::{ensure, ensure_eq, require_some, require_ok};
+
+#[test]
+fn parses_valid_input() -> Result<(), anyhow::Error> {
+    let parsed = require_ok!("42".parse::<i32>(), "expected to parse 42");
+    ensure_eq!(parsed, 42);
+    ensure!(parsed > 0, "value must be positive (got {parsed})");
+    Ok(())
+}
+```
+
+Each helper short-circuits via `?` on failure with a caller-supplied
+message. A test using these does not contribute to the no-panic
+allowlist.
 
 ### ci-full (pull requests)
 

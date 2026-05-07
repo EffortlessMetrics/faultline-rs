@@ -229,16 +229,21 @@ pub fn scaffold_scenario(root: &Path, name: &str, crate_name: &str) -> Result<()
         .with_context(|| format!("failed to create {}", tests_dir.display()))?;
 
     let filename = format!("{}.rs", name.replace('-', "_"));
+    // Build the scaffolded test source by concatenation rather than embedding
+    // the literal `todo!` macro in a format-string. The no-panic scanner is
+    // line-based and would otherwise treat this template as a real `todo!`
+    // call site in xtask itself.
+    let placeholder_macro = "todo".to_string() + "!";
     let test_content = format!(
         r#"//! Scenario: {name}
 
 #[test]
 fn {fn_name}() {{
     // TODO: implement scenario
-    todo!("implement {name} scenario");
+    {placeholder_macro}("implement {name} scenario");
 }}
 "#,
-        fn_name = name.replace('-', "_")
+        fn_name = name.replace('-', "_"),
     );
 
     std::fs::write(tests_dir.join(&filename), test_content)

@@ -87,6 +87,13 @@ All repo operations are available through `cargo xtask` subcommands, with ergono
 | `cargo xtask scaffold adr <title>` | Scaffold a new ADR |
 | `cargo xtask scaffold scenario <name> --crate <crate>` | Scaffold a new test scenario |
 | `cargo xtask scaffold doc <title> --section <section>` | Scaffold a new doc page |
+| `cargo xtask check-lint-policy` | Verify workspace lint posture against `policy/clippy-lints.toml` |
+| `cargo xtask check-no-panic-family` | Match panic-family findings against `policy/no-panic-allowlist.toml` |
+| `cargo xtask check-file-policy` | Match non-Rust files against `policy/non-rust-allowlist.toml` |
+| `cargo xtask no-panic propose` | Emit a proposed allowlist TOML for human review |
+| `cargo xtask policy-report` | Run every policy gate and write a roll-up report |
+
+The policy stack is documented in [docs/CLIPPY_POLICY.md](docs/CLIPPY_POLICY.md), [docs/NO_PANIC_POLICY.md](docs/NO_PANIC_POLICY.md), and [docs/FILE_POLICY.md](docs/FILE_POLICY.md). Source-of-truth policy files live under [policy/](policy/).
 
 Tool versions are pinned in [.mise.toml](.mise.toml).
 

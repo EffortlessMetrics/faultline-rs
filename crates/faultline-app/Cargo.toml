@@ -14,3 +14,6 @@ faultline-ports = { path = "../faultline-ports" }
 
 [dev-dependencies]
 proptest = { workspace = true }
+
+[lints]
+workspace = true

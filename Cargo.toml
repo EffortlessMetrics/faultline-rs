@@ -23,6 +23,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["faultline contributors"]
+rust-version = "1.93"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -35,3 +36,74 @@ schemars = "0.8"
 insta = { version = "1.40", features = ["json"] }
 quick-xml = "0.39"
 anyhow = "1.0"
+toml = "0.8"
+glob = "0.3"
+walkdir = "2"
+
+# Effortless Metrics Rust policy stack: lint table.
+#
+# Source of truth for which lints/levels we enforce. The matching policy
+# receipts live in policy/clippy-lints.toml; see docs/CLIPPY_POLICY.md.
+#
+# Panic-family lints are intentionally staged at "warn" while
+# policy/no-panic-allowlist.toml is being baselined. The blocking gate
+# during this period is `cargo xtask check-no-panic-family`.
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+unexpected_cfgs = "warn"
+
+[workspace.lints.clippy]
+# Panic-family / abrupt-exit (staged at warn; semantic checker is the gate)
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+panic = "warn"
+unreachable = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+get_unwrap = "warn"
+unwrap_in_result = "warn"
+indexing_slicing = "warn"
+string_slice = "warn"
+
+# Silent failure
+let_underscore_future = "deny"
+let_underscore_lock = "deny"
+let_underscore_must_use = "warn"
+map_err_ignore = "warn"
+lines_filter_map_ok = "warn"
+
+# Async / concurrency
+await_holding_lock = "deny"
+await_holding_refcell_ref = "deny"
+rc_mutex = "deny"
+mut_mutex_lock = "deny"
+readonly_write_lock = "deny"
+
+# Unsafe / memory
+mem_forget = "deny"
+undocumented_unsafe_blocks = "warn"
+
+# Numeric correctness
+float_cmp = "warn"
+cast_possible_wrap = "warn"
+cast_possible_truncation = "warn"
+cast_precision_loss = "warn"
+cast_sign_loss = "warn"
+lossy_float_literal = "warn"
+
+# File / process / path footguns
+suspicious_open_options = "deny"
+path_buf_push_overwrite = "deny"
+join_absolute_paths = "deny"
+exit = "warn"
+
+# Format-string footguns
+format_in_format_args = "warn"
+to_string_in_format_args = "warn"
+uninlined_format_args = "warn"
+
+# Suppression governance
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
