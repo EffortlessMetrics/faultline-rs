@@ -9,13 +9,19 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024; // 64 KiB
 
-/// Truncate output to `limit` bytes and append `"[truncated]"` if it exceeds the limit.
+/// Truncate output to at most `limit` bytes and append `"[truncated]"` if it exceeds the limit.
+/// The truncation point is moved back to the nearest UTF-8 char boundary so that a multi-byte
+/// codepoint straddling `limit` is never split (which would panic on string slicing).
 /// The probe adapter only truncates in-memory — full log persistence is handled by the store/app layer.
 fn truncate_output(output: &str, limit: usize) -> String {
     if output.len() <= limit {
         return output.to_string();
     }
-    let mut truncated = output[..limit].to_string();
+    let mut end = limit;
+    while end > 0 && !output.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = output[..end].to_string();
     truncated.push_str("[truncated]");
     truncated
 }
@@ -384,6 +390,36 @@ mod tests {
     fn truncate_output_empty_string() {
         let result = truncate_output("", DEFAULT_TRUNCATION_LIMIT);
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn truncate_output_respects_utf8_char_boundary() {
+        // Crab emoji 🦀 is a 4-byte UTF-8 codepoint. With a 64-byte limit and 62
+        // ASCII bytes preceding the emoji, the limit falls inside the emoji's
+        // byte sequence. The truncated output must back off to a char boundary
+        // rather than panic when slicing &str at a non-boundary byte index.
+        let input = format!("{}🦀", "a".repeat(62));
+        assert_eq!(input.len(), 66);
+        let result = truncate_output(&input, 64);
+        // Sliced output must not contain a partial emoji and must end with marker.
+        assert!(result.ends_with("[truncated]"));
+        let prefix = &result[..result.len() - "[truncated]".len()];
+        // The prefix is the 62 'a's; the 4-byte emoji that would straddle the
+        // limit is dropped entirely rather than split.
+        assert_eq!(prefix, "a".repeat(62));
+    }
+
+    #[test]
+    fn truncate_output_at_multi_byte_boundary() {
+        // Limit aligned exactly to the end of a multi-byte char boundary keeps
+        // the full preceding character intact.
+        let input = format!("{}🦀tail", "a".repeat(62));
+        // 62 + 4 + 4 = 70 bytes
+        assert_eq!(input.len(), 70);
+        let result = truncate_output(&input, 66);
+        assert!(result.ends_with("[truncated]"));
+        let prefix = &result[..result.len() - "[truncated]".len()];
+        assert_eq!(prefix, format!("{}🦀", "a".repeat(62)));
     }
 
     // Task 9.6: Probe executor hardening unit tests
