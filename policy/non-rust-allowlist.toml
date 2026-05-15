@@ -161,6 +161,37 @@ covered_by = ["cargo xtask generate-schema"]
 generated_by = "cargo xtask generate-schema"
 
 [[allow]]
+glob = "schemas/badges/*.schema.json"
+kind = "verification_contract"
+owner = "verification/ripr"
+surface = "verification"
+classification = "production"
+reason = "Portable RIPR Shields endpoint schema used by `cargo xtask badges --check`."
+covered_by = ["cargo xtask badges --check"]
+
+[[allow]]
+glob = "schemas/ripr/*.schema.json"
+kind = "verification_contract"
+owner = "verification/ripr"
+surface = "verification"
+classification = "production"
+reason = "Portable RIPR PR evidence and review guidance schemas used by xtask wrappers."
+covered_by = [
+  "cargo xtask ripr-pr --check",
+  "cargo xtask ripr-review-comments --check",
+]
+
+[[allow]]
+glob = "badges/*.json"
+kind = "generated_badge_endpoint"
+owner = "verification/ripr"
+surface = "verification"
+classification = "generated"
+reason = "Generated public Shields endpoint JSON for repo-scoped RIPR badge state."
+covered_by = ["cargo xtask badges --check"]
+generated_by = "cargo xtask badges"
+
+[[allow]]
 glob = "crates/*/src/snapshots/**/*.snap"
 kind = "test_fixture"
 owner = "testing"

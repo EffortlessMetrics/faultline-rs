@@ -2,6 +2,7 @@
 
 [![CI Fast](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml)
 [![Codecov](https://codecov.io/gh/EffortlessMetrics/faultline-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/EffortlessMetrics/faultline-rs)
+[![RIPR](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/faultline-rs/main/badges/ripr.json)](docs/VERIFICATION.md)
 [![MSRV](https://img.shields.io/badge/MSRV-1.93-blue.svg)](Cargo.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 

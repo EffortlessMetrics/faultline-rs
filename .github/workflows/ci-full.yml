@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -27,3 +29,37 @@ jobs:
       - run: cargo install cargo-insta
 
       - run: cargo xtask ci-full
+
+      - run: cargo install ripr --locked
+
+      - name: RIPR verification evidence
+        run: |
+          cargo xtask badges --check
+          cargo xtask ripr-pr --base origin/main --head HEAD
+          cargo xtask ripr-pr --base origin/main --head HEAD --check
+          cargo xtask ripr-review-comments --base origin/main --head HEAD
+          cargo xtask ripr-review-comments --base origin/main --head HEAD --check
+          cargo xtask ripr-pr-summary
+          cargo xtask ripr-pr-summary --check
+          cargo xtask ripr-annotations
+          cargo xtask ripr-annotations --check
+          cargo xtask impacted-evidence
+
+      - name: Append RIPR PR evidence summary
+        if: always()
+        run: |
+          if [ -f target/ripr/pr/summary.md ]; then
+            cat target/ripr/pr/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "RIPR PR evidence summary was not generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ripr-verification-evidence
+          path: |
+            target/ripr/pr
+            target/ripr/review
+            target/xtask/impacted-evidence
+          if-no-files-found: warn
