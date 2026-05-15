@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use xtask::ci;
 use xtask::policy;
+use xtask::ripr_verification;
 use xtask::scaffold;
 use xtask::schema;
 use xtask::smoke;
@@ -85,6 +86,59 @@ enum Command {
     CheckFilePolicy,
     /// Run every policy gate and write a roll-up report
     PolicyReport,
+    /// Regenerate repo-scoped RIPR public badge endpoints
+    Badges {
+        /// Check committed badges against generated output
+        #[arg(long)]
+        check: bool,
+    },
+    /// Generate diff-scoped RIPR PR evidence under target/ripr/pr/
+    RiprPr {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(long, default_value = "origin/main")]
+        base: String,
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        #[arg(long)]
+        check: bool,
+    },
+    /// Generate diff-scoped RIPR review guidance under target/ripr/review/
+    RiprReviewComments {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(long, default_value = "origin/main")]
+        base: String,
+        #[arg(long, default_value = "HEAD")]
+        head: String,
+        #[arg(long)]
+        check: bool,
+    },
+    /// Generate the stable PR evidence summary from target/ripr artifacts
+    RiprPrSummary {
+        #[arg(long)]
+        check: bool,
+    },
+    /// Emit non-blocking GitHub warning annotations from review comments[]
+    RiprAnnotations {
+        #[arg(long, default_value = "target/ripr/review/comments.json")]
+        comments: String,
+        #[arg(long, default_value = "target/ripr/review/annotations.txt")]
+        out: String,
+        #[arg(long)]
+        check: bool,
+    },
+    /// Route mutation cost from PR evidence and labels without running mutation
+    ImpactedEvidence {
+        #[arg(long, default_value = "target/ripr/pr/repo-exposure.json")]
+        pr_evidence: String,
+        #[arg(long)]
+        label: Vec<String>,
+        #[arg(long)]
+        labels: Option<String>,
+        #[arg(long)]
+        check: bool,
+    },
     /// Panic-family allowlist tooling
     NoPanic {
         #[command(subcommand)]
@@ -319,6 +373,51 @@ fn main() -> Result<()> {
             policy::check_all(&root)?;
         }
 
+        Command::Badges { check } => {
+            ripr_verification::badges(check).map_err(anyhow::Error::msg)?
+        }
+
+        Command::RiprPr {
+            root,
+            base,
+            head,
+            check,
+        } => ripr_verification::ripr_pr(&ripr_revision_args(root, base, head, check))
+            .map_err(anyhow::Error::msg)?,
+
+        Command::RiprReviewComments {
+            root,
+            base,
+            head,
+            check,
+        } => ripr_verification::ripr_review_comments(&ripr_revision_args(root, base, head, check))
+            .map_err(anyhow::Error::msg)?,
+
+        Command::RiprPrSummary { check } => {
+            let args = check_args(check);
+            ripr_verification::ripr_pr_summary(&args).map_err(anyhow::Error::msg)?
+        }
+
+        Command::RiprAnnotations {
+            comments,
+            out,
+            check,
+        } => ripr_verification::ripr_annotations(&ripr_annotation_args(comments, out, check))
+            .map_err(anyhow::Error::msg)?,
+
+        Command::ImpactedEvidence {
+            pr_evidence,
+            label,
+            labels,
+            check,
+        } => ripr_verification::impacted_evidence(&impacted_evidence_args(
+            pr_evidence,
+            label,
+            labels,
+            check,
+        ))
+        .map_err(anyhow::Error::msg)?,
+
         Command::NoPanic { action } => match action {
             NoPanicAction::Propose => {
                 let root = policy::workspace_root()?;
@@ -347,6 +446,58 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn ripr_revision_args(root: String, base: String, head: String, check: bool) -> Vec<String> {
+    let mut args = vec![
+        "--root".to_string(),
+        root,
+        "--base".to_string(),
+        base,
+        "--head".to_string(),
+        head,
+    ];
+    if check {
+        args.push("--check".to_string());
+    }
+    args
+}
+
+fn check_args(check: bool) -> Vec<String> {
+    if check {
+        vec!["--check".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+fn ripr_annotation_args(comments: String, out: String, check: bool) -> Vec<String> {
+    let mut args = vec!["--comments".to_string(), comments, "--out".to_string(), out];
+    if check {
+        args.push("--check".to_string());
+    }
+    args
+}
+
+fn impacted_evidence_args(
+    pr_evidence: String,
+    label: Vec<String>,
+    labels: Option<String>,
+    check: bool,
+) -> Vec<String> {
+    let mut args = vec!["--pr-evidence".to_string(), pr_evidence];
+    for value in label {
+        args.push("--label".to_string());
+        args.push(value);
+    }
+    if let Some(value) = labels {
+        args.push("--labels".to_string());
+        args.push(value);
+    }
+    if check {
+        args.push("--check".to_string());
+    }
+    args
 }
 
 #[cfg(test)]
@@ -383,6 +534,12 @@ mod tests {
             "check-no-panic-family",
             "check-file-policy",
             "policy-report",
+            "badges",
+            "ripr-pr",
+            "ripr-review-comments",
+            "ripr-pr-summary",
+            "ripr-annotations",
+            "impacted-evidence",
             "no-panic",
         ];
 
