@@ -1029,4 +1029,459 @@ mod tests {
             }
         }
     }
+
+    // --- Subcommand entry-point coverage tests ---
+    //
+    // These exercise run_reproduce / run_diff_runs / run_export_markdown /
+    // print_run_comparison / load_report_from_dir / load_report_from_file
+    // plus the SuspectWindow + Inconclusive branches of format_outcome.
+    //
+    // Tests use `Result<(), anyhow::Error>` returns plus the
+    // `faultline_fixtures` fallible helpers so they don't add panic-family
+    // debt to the no-panic allowlist.
+
+    use faultline_fixtures::{ensure, ensure_eq, require_ok};
+    use faultline_types::{
+        AnalysisRequest, ChangeStatus, CommitId, HistoryMode, PathChange, ProbeObservation,
+        ProbeSpec, RevisionSequence, RevisionSpec, SearchPolicy, SubsystemBucket, SurfaceSummary,
+        SuspectEntry,
+    };
+
+    /// Build a minimal AnalysisReport with a FirstBad outcome and two
+    /// reproduction capsules (one for each boundary commit).
+    fn build_minimal_report(run_id: &str) -> AnalysisReport {
+        let last_good = CommitId("aaaaaa".to_string());
+        let first_bad = CommitId("bbbbbb".to_string());
+        AnalysisReport {
+            schema_version: "0.2.0".to_string(),
+            run_id: run_id.to_string(),
+            created_at_epoch_seconds: 1_700_000_000,
+            request: AnalysisRequest {
+                repo_root: PathBuf::from("/tmp/repo"),
+                good: RevisionSpec("aaaaaa".to_string()),
+                bad: RevisionSpec("bbbbbb".to_string()),
+                history_mode: HistoryMode::AncestryPath,
+                probe: ProbeSpec::Exec {
+                    kind: ProbeKind::Test,
+                    program: "cargo".to_string(),
+                    args: vec!["test".to_string()],
+                    env: vec![],
+                    timeout_seconds: 60,
+                },
+                policy: SearchPolicy::default(),
+            },
+            sequence: RevisionSequence {
+                revisions: vec![last_good.clone(), first_bad.clone()],
+            },
+            observations: vec![ProbeObservation {
+                commit: last_good.clone(),
+                class: faultline_codes::ObservationClass::Pass,
+                kind: ProbeKind::Test,
+                exit_code: Some(0),
+                timed_out: false,
+                duration_ms: 5,
+                stdout: String::new(),
+                stderr: String::new(),
+                sequence_index: 0,
+                signal_number: None,
+                probe_command: String::new(),
+                working_dir: String::new(),
+                flake_signal: None,
+            }],
+            outcome: LocalizationOutcome::FirstBad {
+                last_good: last_good.clone(),
+                first_bad: first_bad.clone(),
+                confidence: Confidence::high(),
+            },
+            changed_paths: vec![PathChange {
+                status: ChangeStatus::Modified,
+                path: "src/lib.rs".to_string(),
+            }],
+            surface: SurfaceSummary {
+                total_changes: 1,
+                buckets: vec![SubsystemBucket {
+                    name: "src".to_string(),
+                    change_count: 1,
+                    paths: vec!["src/lib.rs".to_string()],
+                    surface_kinds: vec!["source".to_string()],
+                }],
+                execution_surfaces: vec![],
+            },
+            suspect_surface: vec![],
+            reproduction_capsules: vec![
+                faultline_types::ReproductionCapsule {
+                    commit: last_good,
+                    predicate: ProbeSpec::Exec {
+                        kind: ProbeKind::Test,
+                        program: "cargo".to_string(),
+                        args: vec!["test".to_string()],
+                        env: vec![],
+                        timeout_seconds: 60,
+                    },
+                    env: vec![],
+                    working_dir: "/tmp/repo".to_string(),
+                    timeout_seconds: 60,
+                },
+                faultline_types::ReproductionCapsule {
+                    commit: first_bad,
+                    predicate: ProbeSpec::Shell {
+                        kind: ProbeKind::Test,
+                        shell: ShellKind::PosixSh,
+                        script: "make test".to_string(),
+                        env: vec![("KEY".to_string(), "value".to_string())],
+                        timeout_seconds: 60,
+                    },
+                    env: vec![("OUTER".to_string(), "outer-value".to_string())],
+                    working_dir: "/tmp/repo".to_string(),
+                    timeout_seconds: 60,
+                },
+            ],
+        }
+    }
+
+    /// Write a report to `<dir>/report.json` and return the dir path.
+    fn write_report_to_tempdir(
+        tmp: &tempfile::TempDir,
+        report: &AnalysisReport,
+    ) -> Result<(), anyhow::Error> {
+        let raw = require_ok!(serde_json::to_string(report));
+        let path = tmp.path().join("report.json");
+        require_ok!(std::fs::write(&path, raw));
+        Ok(())
+    }
+
+    #[test]
+    fn format_outcome_first_bad_contains_labels() -> Result<(), anyhow::Error> {
+        let outcome = LocalizationOutcome::FirstBad {
+            last_good: CommitId("aaaaaa".to_string()),
+            first_bad: CommitId("bbbbbb".to_string()),
+            confidence: Confidence::high(),
+        };
+        let s = format_outcome(&outcome);
+        ensure!(s.contains("FirstBad"), "expected FirstBad in {s}");
+        ensure!(s.contains("last_good="), "expected last_good in {s}");
+        Ok(())
+    }
+
+    #[test]
+    fn format_outcome_suspect_window_contains_reasons() -> Result<(), anyhow::Error> {
+        let outcome = LocalizationOutcome::SuspectWindow {
+            lower_bound_exclusive: CommitId("aaaa".to_string()),
+            upper_bound_inclusive: CommitId("bbbb".to_string()),
+            confidence: Confidence::medium(),
+            reasons: vec![
+                AmbiguityReason::NonMonotonicEvidence,
+                AmbiguityReason::SkippedRevision,
+            ],
+        };
+        let s = format_outcome(&outcome);
+        ensure!(s.contains("SuspectWindow"), "expected SuspectWindow in {s}");
+        ensure!(s.contains("lower="), "expected lower= in {s}");
+        ensure!(s.contains("upper="), "expected upper= in {s}");
+        ensure!(s.contains("reasons=["), "expected reasons=[ in {s}");
+        ensure!(s.contains("medium"), "expected medium label in {s}");
+        Ok(())
+    }
+
+    #[test]
+    fn format_outcome_inconclusive_contains_reasons() -> Result<(), anyhow::Error> {
+        let outcome = LocalizationOutcome::Inconclusive {
+            reasons: vec![
+                AmbiguityReason::MissingPassBoundary,
+                AmbiguityReason::MaxProbesExhausted,
+            ],
+        };
+        let s = format_outcome(&outcome);
+        ensure!(s.contains("Inconclusive"), "expected Inconclusive in {s}");
+        ensure!(s.contains("reasons=["), "expected reasons=[ in {s}");
+        Ok(())
+    }
+
+    #[test]
+    fn load_report_from_dir_missing_file_returns_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let result = load_report_from_dir(tmp.path());
+        ensure!(
+            result.is_err(),
+            "expected error when report.json missing, got Ok"
+        );
+        let err = result.err();
+        ensure!(err.is_some(), "expected Some(error)");
+        Ok(())
+    }
+
+    #[test]
+    fn load_report_from_dir_invalid_json_returns_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        require_ok!(std::fs::write(
+            tmp.path().join("report.json"),
+            "this is not json"
+        ));
+        let result = load_report_from_dir(tmp.path());
+        ensure!(
+            result.is_err(),
+            "expected error when report.json is invalid"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn load_report_from_dir_succeeds_with_valid_report() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-load-dir");
+        write_report_to_tempdir(&tmp, &report)?;
+        let loaded = require_ok!(load_report_from_dir(tmp.path()));
+        ensure_eq!(loaded.run_id, "run-load-dir".to_string());
+        Ok(())
+    }
+
+    #[test]
+    fn load_report_from_file_missing_path_returns_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let missing = tmp.path().join("does-not-exist.json");
+        let result = load_report_from_file(&missing);
+        ensure!(result.is_err(), "expected error for missing file");
+        Ok(())
+    }
+
+    #[test]
+    fn load_report_from_file_succeeds_with_valid_report() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-load-file");
+        let path = tmp.path().join("custom-name.json");
+        let raw = require_ok!(serde_json::to_string(&report));
+        require_ok!(std::fs::write(&path, raw));
+        let loaded = require_ok!(load_report_from_file(&path));
+        ensure_eq!(loaded.run_id, "run-load-file".to_string());
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_no_capsules_returns_execution_error_code() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let mut report = build_minimal_report("run-empty");
+        report.reproduction_capsules.clear();
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_reproduce(tmp.path().to_path_buf(), None, false));
+        ensure_eq!(
+            code,
+            exit_code_for_operator_code(OperatorCode::ExecutionError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_unknown_commit_returns_execution_error_code() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-unknown");
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_reproduce(
+            tmp.path().to_path_buf(),
+            Some("does-not-exist".to_string()),
+            false,
+        ));
+        ensure_eq!(
+            code,
+            exit_code_for_operator_code(OperatorCode::ExecutionError)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_boundary_capsules_default_succeeds() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-boundary");
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_reproduce(tmp.path().to_path_buf(), None, false));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_specific_commit_filter_succeeds() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-filter");
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_reproduce(
+            tmp.path().to_path_buf(),
+            Some("aaaaaa".to_string()),
+            false,
+        ));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_shell_mode_prints_script() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-shell");
+        write_report_to_tempdir(&tmp, &report)?;
+        // shell=true path: exercises capsule.to_shell_script() formatting branch.
+        let code = require_ok!(run_reproduce(tmp.path().to_path_buf(), None, true));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_inconclusive_returns_all_capsules() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let mut report = build_minimal_report("run-inconclusive");
+        // No boundary pair -> takes the "emit all capsules" branch.
+        report.outcome = LocalizationOutcome::Inconclusive {
+            reasons: vec![AmbiguityReason::MissingPassBoundary],
+        };
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_reproduce(tmp.path().to_path_buf(), None, false));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_reproduce_missing_report_propagates_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let result = run_reproduce(tmp.path().to_path_buf(), None, false);
+        ensure!(result.is_err(), "expected error when report.json missing");
+        Ok(())
+    }
+
+    #[test]
+    fn run_diff_runs_plain_mode_succeeds() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let left = build_minimal_report("left-1");
+        let right = build_minimal_report("right-1");
+        let left_path = tmp.path().join("left.json");
+        let right_path = tmp.path().join("right.json");
+        let left_raw = require_ok!(serde_json::to_string(&left));
+        let right_raw = require_ok!(serde_json::to_string(&right));
+        require_ok!(std::fs::write(&left_path, left_raw));
+        require_ok!(std::fs::write(&right_path, right_raw));
+        let code = require_ok!(run_diff_runs(left_path, right_path, false));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_diff_runs_json_mode_succeeds() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let left = build_minimal_report("left-json");
+        let mut right = build_minimal_report("right-json");
+        // Change outcome to exercise outcome_changed=true.
+        right.outcome = LocalizationOutcome::Inconclusive {
+            reasons: vec![AmbiguityReason::MaxProbesExhausted],
+        };
+        let left_path = tmp.path().join("left.json");
+        let right_path = tmp.path().join("right.json");
+        let left_raw = require_ok!(serde_json::to_string(&left));
+        let right_raw = require_ok!(serde_json::to_string(&right));
+        require_ok!(std::fs::write(&left_path, left_raw));
+        require_ok!(std::fs::write(&right_path, right_raw));
+        let code = require_ok!(run_diff_runs(left_path, right_path, true));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_diff_runs_missing_left_returns_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let right = build_minimal_report("right-only");
+        let right_path = tmp.path().join("right.json");
+        let right_raw = require_ok!(serde_json::to_string(&right));
+        require_ok!(std::fs::write(&right_path, right_raw));
+        let missing_left = tmp.path().join("missing-left.json");
+        let result = run_diff_runs(missing_left, right_path, false);
+        ensure!(result.is_err(), "expected error when left missing");
+        Ok(())
+    }
+
+    #[test]
+    fn print_run_comparison_with_paths_and_reasons() -> Result<(), anyhow::Error> {
+        // Build a fully-populated RunComparison so every println! branch runs.
+        let cmp = RunComparison {
+            left_run_id: "left-1".to_string(),
+            right_run_id: "right-1".to_string(),
+            outcome_changed: true,
+            confidence_delta: -10,
+            window_width_delta: 4,
+            probes_reused: 2,
+            suspect_paths_added: vec!["src/a.rs".to_string(), "src/b.rs".to_string()],
+            suspect_paths_removed: vec!["src/c.rs".to_string()],
+            ambiguity_reasons_added: vec![AmbiguityReason::NonMonotonicEvidence],
+            ambiguity_reasons_removed: vec![AmbiguityReason::MissingPassBoundary],
+        };
+        // No return value; just exercise the function for coverage.
+        print_run_comparison(&cmp);
+        Ok(())
+    }
+
+    #[test]
+    fn print_run_comparison_unchanged_outcome() -> Result<(), anyhow::Error> {
+        // Exercise the unchanged branch (outcome_changed=false) and the
+        // empty-paths / empty-reasons fast paths.
+        let cmp = RunComparison {
+            left_run_id: "l".to_string(),
+            right_run_id: "r".to_string(),
+            outcome_changed: false,
+            confidence_delta: 0,
+            window_width_delta: 0,
+            probes_reused: 0,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        };
+        print_run_comparison(&cmp);
+        Ok(())
+    }
+
+    #[test]
+    fn run_diff_runs_with_suspect_path_diff_runs_clean() -> Result<(), anyhow::Error> {
+        // Verifies the suspect_paths_added/removed branches of
+        // print_run_comparison get exercised end-to-end via run_diff_runs.
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let mut left = build_minimal_report("left-paths");
+        left.suspect_surface = vec![SuspectEntry {
+            path: "src/only-left.rs".to_string(),
+            priority_score: 50,
+            surface_kind: "source".to_string(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: None,
+        }];
+        let mut right = build_minimal_report("right-paths");
+        right.suspect_surface = vec![SuspectEntry {
+            path: "src/only-right.rs".to_string(),
+            priority_score: 50,
+            surface_kind: "source".to_string(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: None,
+        }];
+        let left_path = tmp.path().join("left.json");
+        let right_path = tmp.path().join("right.json");
+        let left_raw = require_ok!(serde_json::to_string(&left));
+        let right_raw = require_ok!(serde_json::to_string(&right));
+        require_ok!(std::fs::write(&left_path, left_raw));
+        require_ok!(std::fs::write(&right_path, right_raw));
+        let code = require_ok!(run_diff_runs(left_path, right_path, false));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_export_markdown_emits_markdown() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let report = build_minimal_report("run-md");
+        write_report_to_tempdir(&tmp, &report)?;
+        let code = require_ok!(run_export_markdown(tmp.path().to_path_buf()));
+        ensure_eq!(code, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn run_export_markdown_missing_report_returns_error() -> Result<(), anyhow::Error> {
+        let tmp = require_ok!(tempfile::TempDir::new());
+        let result = run_export_markdown(tmp.path().to_path_buf());
+        ensure!(result.is_err(), "expected error when report.json missing");
+        Ok(())
+    }
 }
