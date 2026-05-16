@@ -11,6 +11,8 @@ faultline-ports = { path = "../faultline-ports" }
 faultline-types = { path = "../faultline-types" }
 
 [dev-dependencies]
+anyhow = { workspace = true }
+faultline-fixtures = { path = "../faultline-fixtures" }
 proptest = { workspace = true }
 tempfile = "3"
 

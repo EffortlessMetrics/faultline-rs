@@ -436,6 +436,222 @@ mod tests {
         assert!(!obs.timed_out, "should not be marked as timed out");
     }
 
+    // -----------------------------------------------------------------------
+    // Coverage uplift: deterministic classify(125) test, format_probe_command
+    // shape coverage, env-var passthrough, and Unix timeout handling.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn classify_exit_code_125_is_skip() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure_eq;
+        let class = classify(Some(125), false, None);
+        ensure_eq!(class, ObservationClass::Skip);
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_exec_no_args() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure_eq;
+        let probe = ProbeSpec::Exec {
+            kind: ProbeKind::Custom,
+            program: "ls".to_string(),
+            args: vec![],
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        ensure_eq!(rendered.as_str(), "ls");
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_exec_with_args() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure_eq;
+        let probe = ProbeSpec::Exec {
+            kind: ProbeKind::Test,
+            program: "cargo".to_string(),
+            args: vec!["test".to_string(), "--lib".to_string()],
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        ensure_eq!(rendered.as_str(), "cargo test --lib");
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_shell_default_returns_sh_or_cmd()
+    -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure;
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::Default,
+            script: "echo hi".to_string(),
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        if cfg!(windows) {
+            ensure!(
+                rendered.starts_with("cmd /C"),
+                "expected cmd /C prefix on windows, got: {rendered}"
+            );
+        } else {
+            ensure!(
+                rendered.starts_with("sh -c"),
+                "expected sh -c prefix on unix, got: {rendered}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_shell_posix_sh() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure;
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::PosixSh,
+            script: "echo hi".to_string(),
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        ensure!(
+            rendered.starts_with("sh -c"),
+            "expected sh -c prefix, got: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_shell_cmd() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure;
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::Cmd,
+            script: "echo hi".to_string(),
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        ensure!(
+            rendered.starts_with("cmd /C"),
+            "expected cmd /C prefix, got: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn format_probe_command_shell_powershell() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::ensure;
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::PowerShell,
+            script: "Write-Output hi".to_string(),
+            env: vec![],
+            timeout_seconds: 30,
+        };
+        let rendered = format_probe_command(&probe);
+        ensure!(
+            rendered.starts_with("powershell -Command"),
+            "expected powershell -Command prefix, got: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exec_probe_runs_with_env_var() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::{ensure, ensure_eq, require_ok};
+        let tmp_dir = require_ok!(tempfile::tempdir());
+        let checkout = CheckedOutRevision {
+            commit: CommitId("env-exec".to_string()),
+            path: tmp_dir.path().to_path_buf(),
+        };
+
+        // Run /usr/bin/env with FAULTLINE_TEST_VAR set; expect it in stdout.
+        let probe = ProbeSpec::Exec {
+            kind: ProbeKind::Custom,
+            program: "/usr/bin/env".to_string(),
+            args: vec![],
+            env: vec![(
+                "FAULTLINE_TEST_VAR".to_string(),
+                "hello-from-exec".to_string(),
+            )],
+            timeout_seconds: 10,
+        };
+
+        let adapter = ExecProbeAdapter;
+        let obs = require_ok!(adapter.run(&checkout, &probe));
+        ensure_eq!(obs.class, ObservationClass::Pass);
+        ensure!(
+            obs.stdout.contains("FAULTLINE_TEST_VAR=hello-from-exec"),
+            "expected stdout to contain env var passthrough, got: {:?}",
+            obs.stdout
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exec_probe_shell_with_env_var() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::{ensure, ensure_eq, require_ok};
+        let tmp_dir = require_ok!(tempfile::tempdir());
+        let checkout = CheckedOutRevision {
+            commit: CommitId("env-shell".to_string()),
+            path: tmp_dir.path().to_path_buf(),
+        };
+
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::PosixSh,
+            script: "printf '%s' \"$FAULTLINE_TEST_VAR\"".to_string(),
+            env: vec![(
+                "FAULTLINE_TEST_VAR".to_string(),
+                "hello-from-shell".to_string(),
+            )],
+            timeout_seconds: 10,
+        };
+
+        let adapter = ExecProbeAdapter;
+        let obs = require_ok!(adapter.run(&checkout, &probe));
+        ensure_eq!(obs.class, ObservationClass::Pass);
+        ensure!(
+            obs.stdout.contains("hello-from-shell"),
+            "expected stdout to contain env var value, got: {:?}",
+            obs.stdout
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exec_probe_times_out() -> std::result::Result<(), anyhow::Error> {
+        use faultline_fixtures::{ensure, ensure_eq, require_ok};
+        let tmp_dir = require_ok!(tempfile::tempdir());
+        let checkout = CheckedOutRevision {
+            commit: CommitId("timeout-probe".to_string()),
+            path: tmp_dir.path().to_path_buf(),
+        };
+
+        let probe = ProbeSpec::Shell {
+            kind: ProbeKind::Custom,
+            shell: ShellKind::PosixSh,
+            script: "sleep 5".to_string(),
+            env: vec![],
+            timeout_seconds: 1,
+        };
+
+        let adapter = ExecProbeAdapter;
+        let obs = require_ok!(adapter.run(&checkout, &probe));
+        ensure!(
+            obs.timed_out,
+            "expected timed_out=true for a probe exceeding its budget"
+        );
+        ensure_eq!(obs.class, ObservationClass::Indeterminate);
+        Ok(())
+    }
+
     #[test]
     fn probe_output_exceeding_limit_is_truncated() {
         // Verify the adapter applies truncation to real probe output.

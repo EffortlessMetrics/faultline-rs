@@ -12,6 +12,19 @@ Scenarios are organized by crate tier following the verification matrix.
 
 _No dedicated tests. Enum types are exercised transitively through `faultline-types` and `faultline-localization` tests._
 
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| `probe_kind_parses_build` | `ProbeKind::from_str("build")` returns `Build` | Hand-built input | faultline-codes | — | Parser correctness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parses_test` | `ProbeKind::from_str("test")` returns `Test` | Hand-built input | faultline-codes | — | Parser correctness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parses_lint` | `ProbeKind::from_str("lint")` returns `Lint` | Hand-built input | faultline-codes | — | Parser correctness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parses_perf_aliases` | All three aliases map to `PerfThreshold` | Aliases `perf`, `perf-threshold`, `perfgate` | faultline-codes | — | Alias coverage | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parses_custom` | `ProbeKind::from_str("custom")` returns `Custom` | Hand-built input | faultline-codes | — | Parser correctness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parser_is_case_insensitive` | Parser accepts mixed-case and surrounding whitespace | Inputs `BUILD`, `Test`, `  Lint  ` | faultline-codes | — | Parser robustness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_parser_rejects_unknown_kind` | Parser returns descriptive error for unknown kind | Hand-built input | faultline-codes | — | Error path correctness | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `probe_kind_display_round_trip` | `parse(display(v))` returns `v` for every variant | Exhaustive variants | faultline-codes | — | Display/FromStr round-trip | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+| `ambiguity_reason_display_for_all_variants` | Every `AmbiguityReason` variant has stable human-readable text | Exhaustive variants | faultline-codes | — | Display coverage | — | domain | — | — | faultline-codes | P2 | faultline-codes | no |
+
+
 ### faultline-types
 
 | Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
@@ -183,6 +196,16 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `truncate_output_empty_string` | Empty string is unchanged | Empty string | faultline-probe-exec | — | Edge case | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
 | `signal_termination_sets_signal_number` | Signal-killed process sets signal_number field | Shell probe with self-SIGTERM | faultline-probe-exec | — | Signal detection | Req 5.1 | adapter | Req 5.1 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 | `probe_output_exceeding_limit_is_truncated` | Real probe output exceeding limit is truncated | Shell probe with large output | faultline-probe-exec | — | Integration truncation | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
+| `classify_exit_code_125_is_skip` | Exit code 125 deterministically maps to Skip | Hand-built input | faultline-probe-exec | — | Classifier branch coverage | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
+| `format_probe_command_exec_no_args` | `Exec` probe with no args renders as the program alone | Hand-built ProbeSpec | faultline-probe-exec | — | Command rendering | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `format_probe_command_exec_with_args` | `Exec` probe joins program and args with spaces | Hand-built ProbeSpec | faultline-probe-exec | — | Command rendering | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `format_probe_command_shell_default_returns_sh_or_cmd` | Default shell renders as platform-appropriate prefix | Hand-built ProbeSpec | faultline-probe-exec | — | Platform default | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `format_probe_command_shell_posix_sh` | PosixSh shell renders with `sh -c` prefix | Hand-built ProbeSpec | faultline-probe-exec | — | Shell rendering | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `format_probe_command_shell_cmd` | Cmd shell renders with `cmd /C` prefix | Hand-built ProbeSpec | faultline-probe-exec | — | Shell rendering | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `format_probe_command_shell_powershell` | PowerShell renders with `powershell -Command` prefix | Hand-built ProbeSpec | faultline-probe-exec | — | Shell rendering | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
+| `exec_probe_runs_with_env_var` | `Exec` probe propagates env vars to the child process | `/usr/bin/env` with FAULTLINE_TEST_VAR | faultline-probe-exec | — | Env passthrough | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
+| `exec_probe_shell_with_env_var` | `Shell` probe propagates env vars to the child process | sh script reading FAULTLINE_TEST_VAR | faultline-probe-exec | — | Env passthrough | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
+| `exec_probe_times_out` | Probe exceeding its timeout is killed and marked indeterminate | Shell `sleep 5` with 1s budget | faultline-probe-exec | — | Timeout enforcement | — | adapter | — | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 
 ### faultline-store
 
