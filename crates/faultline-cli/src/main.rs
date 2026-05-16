@@ -11,6 +11,7 @@ use faultline_types::{
 };
 use std::io;
 use std::path::PathBuf;
+use std::time::{Duration, SystemTime};
 
 #[derive(Debug, Parser)]
 #[command(name = "faultline")]
@@ -125,6 +126,20 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+    },
+    /// Remove cached run data and scratch worktrees
+    Clean {
+        #[arg(long, default_value = ".")]
+        repo: PathBuf,
+        /// Remove only runs older than N days
+        #[arg(long)]
+        older_than_days: Option<u64>,
+        /// Remove everything (runs + scratch worktrees)
+        #[arg(long, default_value_t = false)]
+        all: bool,
+        /// Dry run — show what would be removed without deleting
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
 }
 
@@ -258,6 +273,12 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
             } => run_reproduce(run_dir, commit, shell),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
             Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::Clean {
+                repo,
+                older_than_days,
+                all,
+                dry_run,
+            } => run_clean(repo, older_than_days, all, dry_run),
         };
     }
 
@@ -534,6 +555,154 @@ fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Erro
     Ok(0)
 }
 
+/// Compute the total size of a directory tree in bytes.
+fn dir_size(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let ft = match entry.file_type() {
+                Ok(ft) => ft,
+                Err(_) => continue,
+            };
+            if ft.is_file() {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            } else if ft.is_dir() {
+                total += dir_size(&entry.path());
+            }
+        }
+    }
+    total
+}
+
+/// Format a byte count as a human-readable string (e.g. "1.2 MB").
+fn format_bytes(bytes: u64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    let b = bytes as f64;
+    if b >= GB {
+        format!("{:.1} GB", b / GB)
+    } else if b >= MB {
+        format!("{:.1} MB", b / MB)
+    } else if b >= KB {
+        format!("{:.1} KB", b / KB)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// Run the `clean` subcommand.
+fn run_clean(
+    repo: PathBuf,
+    older_than_days: Option<u64>,
+    all: bool,
+    dry_run: bool,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let faultline_dir = repo.join(".faultline");
+    let runs_dir = faultline_dir.join("runs");
+    let scratch_dir = faultline_dir.join("scratch");
+
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_secs();
+
+    let mut removed_count = 0u64;
+    let mut freed_bytes = 0u64;
+
+    // Process run directories
+    if runs_dir.is_dir() {
+        let entries: Vec<_> = std::fs::read_dir(&runs_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+            .collect();
+
+        for entry in entries {
+            let run_path = entry.path();
+            let report_path = run_path.join("report.json");
+
+            // If --older-than-days is set, filter by created_at_epoch_seconds
+            if let Some(days) = older_than_days {
+                let cutoff = now.saturating_sub(days * 86400);
+                let created_at = if report_path.exists() {
+                    let raw = std::fs::read_to_string(&report_path)?;
+                    let report: AnalysisReport = serde_json::from_str(&raw)?;
+                    report.created_at_epoch_seconds
+                } else {
+                    // No report.json — use filesystem metadata as fallback
+                    entry
+                        .metadata()
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|t| t.duration_since(SystemTime::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(now)
+                };
+                if created_at > cutoff {
+                    continue; // too recent — skip
+                }
+            }
+
+            let size = dir_size(&run_path);
+            if dry_run {
+                println!("Would remove run: {}", run_path.display());
+            } else {
+                std::fs::remove_dir_all(&run_path)?;
+            }
+            removed_count += 1;
+            freed_bytes += size;
+        }
+    }
+
+    // With --all, also handle scratch worktrees
+    let mut scratch_size = 0u64;
+    let mut scratch_removed = false;
+    if all && scratch_dir.is_dir() {
+        scratch_size = dir_size(&scratch_dir);
+        if dry_run {
+            println!("Would remove scratch: {}", scratch_dir.display());
+        } else {
+            std::fs::remove_dir_all(&scratch_dir)?;
+        }
+        scratch_removed = true;
+    }
+
+    // Print summary
+    if dry_run {
+        let total = freed_bytes + scratch_size;
+        if scratch_removed {
+            println!(
+                "Would remove {} runs + scratch worktrees ({})",
+                removed_count,
+                format_bytes(total)
+            );
+        } else {
+            println!(
+                "Would remove {} runs ({})",
+                removed_count,
+                format_bytes(total)
+            );
+        }
+    } else {
+        let total = freed_bytes + scratch_size;
+        if scratch_removed {
+            println!(
+                "Removed {} runs + scratch worktrees ({} freed)",
+                removed_count,
+                format_bytes(total)
+            );
+        } else {
+            println!(
+                "Removed {} runs ({} freed)",
+                removed_count,
+                format_bytes(total)
+            );
+        }
+    }
+
+    Ok(0)
+}
+
 fn print_run_comparison(cmp: &RunComparison) {
     println!("left-run     {}", cmp.left_run_id);
     println!("right-run    {}", cmp.right_run_id);
@@ -694,6 +863,10 @@ mod tests {
         assert!(
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("clean"),
+            "--help output missing 'clean' subcommand.\nFull help:\n{help}"
         );
     }
 
