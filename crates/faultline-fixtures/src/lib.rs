@@ -442,4 +442,178 @@ mod tests {
         assert_eq!(repo.commits.len(), 1);
         assert!(repo.dir.path().join("src/lib/mod.rs").exists());
     }
+
+    // -----------------------------------------------------------------------
+    // Coverage tests for `.merge()` builder method and apply_file_ops error
+    // paths. These exist to exercise lines that the existing tests miss:
+    //   - GitRepoBuilder::merge enqueueing (lines 106-112)
+    //   - BuilderAction::Merge dispatch in build() (lines 129-132)
+    //   - run_git non-zero exit formatting (lines 156-162)
+    //   - apply_file_ops error returns for Write/Delete/Rename
+    // -----------------------------------------------------------------------
+
+    use crate::{ensure, ensure_eq, require_ok};
+
+    #[test]
+    fn builder_merge_with_nonexistent_branch_returns_error() -> Result<(), anyhow::Error> {
+        // Queues a Merge action against a branch that does not exist.
+        // This exercises:
+        //   - GitRepoBuilder::merge() enqueue path
+        //   - BuilderAction::Merge dispatch inside build()
+        //   - run_git error formatting for a non-zero exit
+        let builder = require_ok!(GitRepoBuilder::new())
+            .commit(
+                "base",
+                vec![FileOp::Write {
+                    path: "a.txt".into(),
+                    content: "1".into(),
+                }],
+            )
+            .merge("merge of nothing", "definitely-not-a-branch");
+
+        let result = builder.build();
+        ensure!(
+            result.is_err(),
+            "expected merge against nonexistent branch to fail, got Ok"
+        );
+        let err_msg = result.err().unwrap_or_default();
+        // The error must come from run_git's failure formatter — confirm by
+        // looking for the "git" prefix the formatter uses.
+        ensure!(
+            err_msg.contains("git") && err_msg.contains("failed"),
+            "error should be from run_git formatter, got: {err_msg}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn delete_existing_file_succeeds() -> Result<(), anyhow::Error> {
+        let repo = require_ok!(
+            require_ok!(GitRepoBuilder::new())
+                .commit(
+                    "create",
+                    vec![FileOp::Write {
+                        path: "doomed.txt".into(),
+                        content: "rip".into(),
+                    }],
+                )
+                .commit(
+                    "delete",
+                    vec![FileOp::Delete {
+                        path: "doomed.txt".into(),
+                    }],
+                )
+                .build()
+        );
+        ensure_eq!(repo.commits.len(), 2);
+        ensure!(
+            !repo.dir.path().join("doomed.txt").exists(),
+            "file should be gone after delete"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn delete_missing_file_is_noop() -> Result<(), anyhow::Error> {
+        // FileOp::Delete on a non-existent path should be a no-op (guarded
+        // by `if full.exists()`), not an error.
+        let repo = require_ok!(
+            require_ok!(GitRepoBuilder::new())
+                .commit(
+                    "delete-nothing",
+                    vec![FileOp::Delete {
+                        path: "never_existed.txt".into(),
+                    }],
+                )
+                .build()
+        );
+        ensure_eq!(repo.commits.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn apply_file_ops_write_under_file_parent_returns_error() -> Result<(), anyhow::Error> {
+        // Place an "obstacle.txt" plain file, then attempt to write
+        // "obstacle.txt/inner.txt" — create_dir_all must fail because the
+        // parent is a regular file, not a directory.
+        let result = require_ok!(GitRepoBuilder::new())
+            .commit(
+                "obstacle",
+                vec![FileOp::Write {
+                    path: "obstacle.txt".into(),
+                    content: "I block dirs".into(),
+                }],
+            )
+            .commit(
+                "blocked-write",
+                vec![FileOp::Write {
+                    path: "obstacle.txt/inner.txt".into(),
+                    content: "cannot exist".into(),
+                }],
+            )
+            .build();
+        ensure!(
+            result.is_err(),
+            "expected write under file-as-parent to fail"
+        );
+        let err_msg = result.err().unwrap_or_default();
+        ensure!(
+            err_msg.contains("mkdir") || err_msg.contains("write"),
+            "error should mention the failing fs op, got: {err_msg}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apply_file_ops_delete_directory_returns_error() -> Result<(), anyhow::Error> {
+        // remove_file fails when the target is a directory. Create a nested
+        // path so that "some_dir" exists as a directory, then try to delete
+        // "some_dir" via FileOp::Delete.
+        let result = require_ok!(GitRepoBuilder::new())
+            .commit(
+                "create-dir",
+                vec![FileOp::Write {
+                    path: "some_dir/inner.txt".into(),
+                    content: "x".into(),
+                }],
+            )
+            .commit(
+                "delete-dir",
+                vec![FileOp::Delete {
+                    path: "some_dir".into(),
+                }],
+            )
+            .build();
+        ensure!(
+            result.is_err(),
+            "expected delete-of-directory to fail (remove_file on dir)"
+        );
+        let err_msg = result.err().unwrap_or_default();
+        ensure!(
+            err_msg.contains("delete"),
+            "error should come from FileOp::Delete formatter, got: {err_msg}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn apply_file_ops_rename_missing_source_returns_error() -> Result<(), anyhow::Error> {
+        // rename of a non-existent source must fail.
+        let result = require_ok!(GitRepoBuilder::new())
+            .commit(
+                "rename-missing",
+                vec![FileOp::Rename {
+                    from: "nope.txt".into(),
+                    to: "still-nope.txt".into(),
+                }],
+            )
+            .build();
+        ensure!(result.is_err(), "expected rename of missing source to fail");
+        let err_msg = result.err().unwrap_or_default();
+        ensure!(
+            err_msg.contains("rename"),
+            "error should come from FileOp::Rename formatter, got: {err_msg}"
+        );
+        Ok(())
+    }
 }
