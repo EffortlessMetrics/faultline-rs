@@ -9,5 +9,8 @@ authors.workspace = true
 serde.workspace = true
 schemars.workspace = true
 
+[dev-dependencies]
+anyhow = { workspace = true }
+
 [lints]
 workspace = true

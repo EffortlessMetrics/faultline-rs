@@ -225,6 +225,7 @@ dependencies = [
 name = "faultline-codes"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "schemars",
  "serde",
 ]
@@ -285,7 +286,9 @@ dependencies = [
 name = "faultline-probe-exec"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "faultline-codes",
+ "faultline-fixtures",
  "faultline-ports",
  "faultline-types",
  "proptest",
