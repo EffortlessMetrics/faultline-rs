@@ -88,6 +88,10 @@ struct Cli {
     /// Also write a Markdown dossier alongside HTML/JSON
     #[arg(long, default_value_t = false)]
     markdown: bool,
+
+    /// Use compact dossier format (ideal for PR comments)
+    #[arg(long, default_value_t = false)]
+    compact: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -125,6 +129,10 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+
+        /// Use compact dossier format (ideal for PR comments)
+        #[arg(long, default_value_t = false)]
+        compact: bool,
     },
 }
 
@@ -257,7 +265,7 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
                 shell,
             } => run_reproduce(run_dir, commit, shell),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
-            Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::ExportMarkdown { run_dir, compact } => run_export_markdown(run_dir, compact),
         };
     }
 
@@ -370,6 +378,9 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let rendered_html = if cli.no_render {
         renderer.render_json_only(&localized.report)?;
         false
+    } else if cli.markdown && cli.compact {
+        renderer.render_with_markdown_compact(&localized.report)?;
+        true
     } else if cli.markdown {
         renderer.render_with_markdown(&localized.report)?;
         true
@@ -527,9 +538,13 @@ fn run_diff_runs(
 }
 
 /// Run the `export-markdown` subcommand.
-fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Error>> {
+fn run_export_markdown(run_dir: PathBuf, compact: bool) -> Result<i32, Box<dyn std::error::Error>> {
     let report = load_report_from_dir(&run_dir)?;
-    let md = faultline_render::render_markdown(&report);
+    let md = if compact {
+        faultline_render::render_markdown_compact(&report)
+    } else {
+        faultline_render::render_markdown(&report)
+    };
     print!("{}", md);
     Ok(0)
 }
@@ -666,6 +681,7 @@ mod tests {
             "--retries",
             "--stability-threshold",
             "--markdown",
+            "--compact",
         ];
 
         for flag in &expected_flags {
@@ -1002,6 +1018,7 @@ mod tests {
                 "--retries",
                 "--stability-threshold",
                 "--markdown",
+                "--compact",
             ];
 
             // All pre-existing flags
