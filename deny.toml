@@ -1,23 +1,104 @@
-[advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "deny"
+# deny.toml — cargo-deny supply-chain policy for faultline-rs
+#
+# Enforced by `cargo deny check` in the release-check CI tier
+# (see: .github/workflows/release.yml, crates/xtask/src/main.rs).
+#
+# Policy goal: only ship dependencies that are actively maintained,
+# free of known vulnerabilities, compatibly licensed (Apache-2.0
+# ecosystem), sourced from crates.io, and free of hidden duplicate
+# versions that bloat the binary.
 
+# ──────────────────────────────────────────────────────────────
+# [advisories] — vulnerability & maintenance checks
+# ──────────────────────────────────────────────────────────────
+#
+# In cargo-deny >=0.14 the advisories section denies all
+# vulnerabilities, unmaintained crates, and yanked versions by
+# default. The `ignore` list is the only escape hatch — we keep
+# it empty to enforce a zero-known-vulnerability policy.
+[advisories]
+ignore = []
+
+# ──────────────────────────────────────────────────────────────
+# [licenses] — allow-list of acceptable SPDX identifiers
+# ──────────────────────────────────────────────────────────────
+#
+# We use an explicit allow-list. Any dependency whose license is
+# not in this list will cause a hard failure.
 [licenses]
-unlicensed = "deny"
+# Permissive licenses compatible with the project's Apache-2.0 license.
+# Every entry has been reviewed for compatibility:
+#   - Apache-2.0      : project license
+#   - MIT             : permissive, compatible
+#   - BSD-2-Clause    : permissive, compatible
+#   - BSD-3-Clause    : permissive, compatible
+#   - ISC             : functionally equivalent to MIT
+#   - Zlib            : permissive, compatible
+#   - Unicode-DFS-2016: required by unicode-ident / unicode data tables
+#   - Unicode-3.0     : newer Unicode license (icu4x and similar crates)
 allow = [
-    "MIT",
     "Apache-2.0",
+    "MIT",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
+    "Zlib",
     "Unicode-DFS-2016",
+    "Unicode-3.0",
 ]
 
+# Confidence threshold for heuristic license-file detection.
+# 0.8 is the cargo-deny default; raise if you see false positives.
+confidence-threshold = 0.8
+
+# Per-crate license exceptions. Keep this list as short as possible.
+exceptions = []
+
+# ──────────────────────────────────────────────────────────────
+# [bans] — duplicate & forbidden crate rules
+# ──────────────────────────────────────────────────────────────
 [bans]
+# Having two versions of the same crate is usually a dependency-
+# resolution accident. Warn so we notice and can fix it over time.
 multiple-versions = "warn"
+
+# Wildcard dependencies (version = "*") defeat reproducible builds.
+# Never acceptable.
 wildcards = "deny"
 
+# When graphing duplicates, highlight both the lowest-version path
+# and the simplest path to make resolution easier.
+highlight = "all"
+
+# Crates that are outright banned. Listing a crate here means *any*
+# version is forbidden. Use this for crates we want zero copies of,
+# not for duplicate-version control.
+deny = []
+
+# Key crates where duplicate versions cause real pain (type
+# mismatches, binary bloat). Entries here are *skipped* during
+# duplicate detection — they are allowed to have exactly one version.
+# If a second version sneaks in, the `multiple-versions = "warn"`
+# lint still fires for everything else. To enforce single-version
+# for critical crates we leave `skip` empty so duplicates are NOT
+# silenced.
+skip = []
+skip-tree = []
+
+# ──────────────────────────────────────────────────────────────
+# [sources] — restrict where crates may be fetched from
+# ──────────────────────────────────────────────────────────────
 [sources]
+# Only allow crates published to the official crates.io registry.
+# Unknown registries could serve unvetted or malicious code.
 unknown-registry = "deny"
+
+# Git dependencies bypass crates.io review and are not reproducible
+# across environments. Deny them.
 unknown-git = "deny"
+
+# The one allowed registry.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# No git repositories are allowed as dependency sources.
+allow-git = []
