@@ -125,6 +125,27 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Export SARIF v2.1.0 from a completed run
+    ExportSarif {
+        /// Path to the run directory containing report.json
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+    /// Export JUnit XML from a completed run
+    ExportJunit {
+        /// Path to the run directory containing report.json
+        #[arg(long)]
+        run_dir: PathBuf,
+        /// Write output to a file instead of stdout
+        #[arg(long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -257,7 +278,9 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
                 shell,
             } => run_reproduce(run_dir, commit, shell),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
-            Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::ExportMarkdown { run_dir, output } => run_export_markdown(run_dir, output),
+            Commands::ExportSarif { run_dir, output } => run_export_sarif(run_dir, output),
+            Commands::ExportJunit { run_dir, output } => run_export_junit(run_dir, output),
         };
     }
 
@@ -527,11 +550,51 @@ fn run_diff_runs(
 }
 
 /// Run the `export-markdown` subcommand.
-fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Error>> {
+fn run_export_markdown(
+    run_dir: PathBuf,
+    output: Option<PathBuf>,
+) -> Result<i32, Box<dyn std::error::Error>> {
     let report = load_report_from_dir(&run_dir)?;
     let md = faultline_render::render_markdown(&report);
-    print!("{}", md);
+    write_output(&md, output.as_deref())?;
     Ok(0)
+}
+
+/// Run the `export-sarif` subcommand.
+fn run_export_sarif(
+    run_dir: PathBuf,
+    output: Option<PathBuf>,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let report = load_report_from_dir(&run_dir)?;
+    let sarif = faultline_sarif::to_sarif(&report)?;
+    write_output(&sarif, output.as_deref())?;
+    Ok(0)
+}
+
+/// Run the `export-junit` subcommand.
+fn run_export_junit(
+    run_dir: PathBuf,
+    output: Option<PathBuf>,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let report = load_report_from_dir(&run_dir)?;
+    let junit = faultline_junit::to_junit_xml(&report);
+    write_output(&junit, output.as_deref())?;
+    Ok(0)
+}
+
+/// Write content to a file or stdout.
+fn write_output(
+    content: &str,
+    output: Option<&std::path::Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match output {
+        Some(path) => {
+            std::fs::write(path, content)?;
+            eprintln!("wrote {}", path.display());
+        }
+        None => print!("{content}"),
+    }
+    Ok(())
 }
 
 fn print_run_comparison(cmp: &RunComparison) {
@@ -694,6 +757,14 @@ mod tests {
         assert!(
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("export-sarif"),
+            "--help output missing 'export-sarif' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("export-junit"),
+            "--help output missing 'export-junit' subcommand.\nFull help:\n{help}"
         );
     }
 

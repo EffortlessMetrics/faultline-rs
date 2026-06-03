@@ -11,8 +11,10 @@ serde_json.workspace = true
 faultline-app = { path = "../faultline-app" }
 faultline-codes = { path = "../faultline-codes" }
 faultline-git = { path = "../faultline-git" }
+faultline-junit = { path = "../faultline-junit" }
 faultline-probe-exec = { path = "../faultline-probe-exec" }
 faultline-render = { path = "../faultline-render" }
+faultline-sarif = { path = "../faultline-sarif" }
 faultline-store = { path = "../faultline-store" }
 faultline-types = { path = "../faultline-types" }
 
