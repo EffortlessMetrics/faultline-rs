@@ -1,0 +1,68 @@
+name: "Example: Faultline regression hunt"
+
+on:
+  workflow_dispatch:
+    inputs:
+      good:
+        description: "Known-good commit SHA"
+        required: true
+        type: string
+      bad:
+        description: "Known-bad commit SHA"
+        required: true
+        type: string
+      cmd:
+        description: "Predicate command"
+        required: false
+        default: "cargo test --workspace"
+        type: string
+      kind:
+        description: "Probe kind"
+        required: false
+        default: "test"
+        type: choice
+        options:
+          - test
+          - build
+          - lint
+          - custom
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  localize:
+    name: Faultline localization
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run faultline
+        id: fl
+        uses: ./.github/actions/faultline
+        with:
+          good: ${{ github.event.inputs.good }}
+          bad: ${{ github.event.inputs.bad }}
+          cmd: ${{ github.event.inputs.cmd }}
+          kind: ${{ github.event.inputs.kind }}
+
+      - name: Print summary
+        shell: bash
+        run: |
+          echo "## Faultline Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Outcome | \`${{ steps.fl.outputs.outcome }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Exit code | \`${{ steps.fl.outputs.exit-code }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Report dir | \`${{ steps.fl.outputs.report-dir }}\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show dossier
+        if: hashFiles('faultline-report/dossier.md') != ''
+        shell: bash
+        run: |
+          echo ""
+          echo "--- dossier.md ---"
+          cat faultline-report/dossier.md
