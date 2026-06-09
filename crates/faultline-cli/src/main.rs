@@ -1,16 +1,37 @@
 use clap::{Parser, Subcommand};
 use faultline_app::FaultlineApp;
-use faultline_codes::{OperatorCode, ProbeKind};
+use faultline_codes::{ObservationClass, OperatorCode, ProbeKind};
 use faultline_git::GitAdapter;
 use faultline_probe_exec::ExecProbeAdapter;
 use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
-    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
+    AnalysisReport, AnalysisRequest, CommitId, FaultlineError, FlakePolicy, HistoryMode,
+    LocalizationOutcome, ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
 };
 use std::io;
 use std::path::PathBuf;
+
+struct StderrProgress;
+
+impl faultline_ports::ProgressPort for StderrProgress {
+    fn on_probe_start(&self, commit: &CommitId, idx: usize, total: usize) {
+        eprint!(
+            "[{}/~{}] probing {}...",
+            idx + 1,
+            total,
+            &commit.0[..8.min(commit.0.len())]
+        );
+    }
+
+    fn on_probe_complete(&self, _: &CommitId, class: ObservationClass, duration_ms: u64) {
+        eprintln!(" {:?} ({}ms)", class, duration_ms);
+    }
+
+    fn on_session_complete(&self, total: usize) {
+        eprintln!("completed {} probes", total);
+    }
+}
 
 #[derive(Debug, Parser)]
 #[command(name = "faultline")]
@@ -354,7 +375,8 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let git = GitAdapter::new(&cli.repo)?;
     let store = FileRunStore::new(cli.repo.join(".faultline").join("runs"))?;
     let probe = ExecProbeAdapter;
-    let app = FaultlineApp::new(&git, &git, &probe, &store);
+    let progress = StderrProgress;
+    let app = FaultlineApp::new(&git, &git, &probe, &store, &progress);
     let localized = match app.localize(request) {
         Ok(result) => result,
         Err(err) => {
