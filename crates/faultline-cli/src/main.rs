@@ -88,6 +88,14 @@ struct Cli {
     /// Also write a Markdown dossier alongside HTML/JSON
     #[arg(long, default_value_t = false)]
     markdown: bool,
+
+    /// Suppress all output except the exit code
+    #[arg(long, short = 'q', default_value_t = false)]
+    quiet: bool,
+
+    /// Show detailed progress during localization
+    #[arg(long, short = 'v', default_value_t = false)]
+    verbose: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -235,6 +243,16 @@ fn validate_shell(shell: &Option<String>) -> Result<(), io::Error> {
     }
 }
 
+fn validate_verbosity(quiet: bool, verbose: bool) -> Result<(), io::Error> {
+    if quiet && verbose {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "--quiet and --verbose are mutually exclusive",
+        ));
+    }
+    Ok(())
+}
+
 fn validate_stability_threshold(value: f64) -> std::result::Result<(), FaultlineError> {
     if !(0.0..=1.0).contains(&value) {
         return Err(FaultlineError::InvalidInput(format!(
@@ -280,6 +298,7 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     validate_env_vars(&cli.envs)?;
     validate_shell(&cli.shell)?;
     validate_stability_threshold(cli.stability_threshold)?;
+    validate_verbosity(cli.quiet, cli.verbose)?;
 
     let probe_kind = cli.kind.parse::<ProbeKind>().map_err(|_| {
         io::Error::new(
@@ -366,6 +385,32 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
         }
     };
 
+    // --verbose: print probe-by-probe timeline to stderr
+    if cli.verbose {
+        let total = localized.report.observations.len();
+        for (i, obs) in localized.report.observations.iter().enumerate() {
+            let short_sha = if obs.commit.0.len() >= 7 {
+                &obs.commit.0[..7]
+            } else {
+                &obs.commit.0
+            };
+            let class_label = match obs.class {
+                faultline_codes::ObservationClass::Pass => "PASS",
+                faultline_codes::ObservationClass::Fail => "FAIL",
+                faultline_codes::ObservationClass::Skip => "SKIP",
+                faultline_codes::ObservationClass::Indeterminate => "INDETERMINATE",
+            };
+            eprintln!(
+                "[{}/{}] probing {}... {} ({}ms)",
+                i + 1,
+                total,
+                short_sha,
+                class_label,
+                obs.duration_ms
+            );
+        }
+    }
+
     let renderer = ReportRenderer::new(&cli.output_dir);
     let rendered_html = if cli.no_render {
         renderer.render_json_only(&localized.report)?;
@@ -378,23 +423,27 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
         true
     };
 
-    let analysis_path = renderer.output_dir().join("analysis.json");
-    let html_path = renderer.output_dir().join("index.html");
-    let md_path = renderer.output_dir().join("dossier.md");
-
-    println!("run-id       {}", localized.report.run_id);
-    println!("observations {}", localized.report.observations.len());
-    println!("output-dir   {}", renderer.output_dir().display());
-    println!("artifacts    {}", analysis_path.display());
-    if rendered_html {
-        println!("             {}", html_path.display());
-    }
-    if cli.markdown {
-        println!("             {}", md_path.display());
-    }
-    println!("history      {}", history_mode_label);
-    println!("outcome      {}", format_outcome(&localized.report.outcome));
     let code = exit_code_for_operator_code(outcome_to_operator_code(&localized.report.outcome));
+
+    // --quiet: suppress all summary output, only write artifacts
+    if !cli.quiet {
+        let analysis_path = renderer.output_dir().join("analysis.json");
+        let html_path = renderer.output_dir().join("index.html");
+        let md_path = renderer.output_dir().join("dossier.md");
+
+        println!("run-id       {}", localized.report.run_id);
+        println!("observations {}", localized.report.observations.len());
+        println!("output-dir   {}", renderer.output_dir().display());
+        println!("artifacts    {}", analysis_path.display());
+        if rendered_html {
+            println!("             {}", html_path.display());
+        }
+        if cli.markdown {
+            println!("             {}", md_path.display());
+        }
+        println!("history      {}", history_mode_label);
+        println!("outcome      {}", format_outcome(&localized.report.outcome));
+    }
     Ok(code)
 }
 
@@ -666,6 +715,8 @@ mod tests {
             "--retries",
             "--stability-threshold",
             "--markdown",
+            "--quiet",
+            "--verbose",
         ];
 
         for flag in &expected_flags {
@@ -848,6 +899,60 @@ mod tests {
         assert!(validate_env_vars(&[]).is_ok());
     }
 
+    // --- --quiet / --verbose mutual exclusion tests ---
+
+    #[test]
+    fn rejects_quiet_and_verbose() {
+        let err = validate_verbosity(true, true).expect_err("should reject --quiet + --verbose");
+        assert!(
+            err.to_string()
+                .contains("--quiet and --verbose are mutually exclusive"),
+            "unexpected error: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn accepts_quiet_alone() {
+        assert!(validate_verbosity(true, false).is_ok());
+    }
+
+    #[test]
+    fn accepts_verbose_alone() {
+        assert!(validate_verbosity(false, true).is_ok());
+    }
+
+    #[test]
+    fn accepts_neither_quiet_nor_verbose() {
+        assert!(validate_verbosity(false, false).is_ok());
+    }
+
+    #[test]
+    fn quiet_flag_has_short_q() {
+        let cmd = Cli::command();
+        let quiet_arg = cmd
+            .get_arguments()
+            .find(|a| a.get_id() == "quiet")
+            .expect("quiet arg must exist");
+        let shorts: Vec<char> = quiet_arg
+            .get_short_and_visible_aliases()
+            .unwrap_or_default();
+        assert!(shorts.contains(&'q'), "quiet must have -q short alias");
+    }
+
+    #[test]
+    fn verbose_flag_has_short_v() {
+        let cmd = Cli::command();
+        let verbose_arg = cmd
+            .get_arguments()
+            .find(|a| a.get_id() == "verbose")
+            .expect("verbose arg must exist");
+        let shorts: Vec<char> = verbose_arg
+            .get_short_and_visible_aliases()
+            .unwrap_or_default();
+        assert!(shorts.contains(&'v'), "verbose must have -v short alias");
+    }
+
     // --- --shell validation tests ---
 
     #[test]
@@ -1002,6 +1107,8 @@ mod tests {
                 "--retries",
                 "--stability-threshold",
                 "--markdown",
+                "--quiet",
+                "--verbose",
             ];
 
             // All pre-existing flags

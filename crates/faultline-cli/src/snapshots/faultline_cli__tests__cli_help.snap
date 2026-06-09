@@ -1,5 +1,6 @@
 ---
 source: crates/faultline-cli/src/main.rs
+assertion_line: 754
 expression: help
 ---
 Local-first regression localization for Git repos
@@ -76,6 +77,12 @@ Options:
 
       --markdown
           Also write a Markdown dossier alongside HTML/JSON
+
+  -q, --quiet
+          Suppress all output except the exit code
+
+  -v, --verbose
+          Show detailed progress during localization
 
   -h, --help
           Print help
