@@ -454,6 +454,49 @@ impl ReproductionCapsule {
     }
 }
 
+// --- Signal Assessment ---
+
+/// Qualitative assessment of how the signal changed between two runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalAssessment {
+    /// Confidence improved and/or window narrowed
+    Improved,
+    /// No meaningful change in signal
+    Steady,
+    /// Confidence dropped and/or window widened
+    Degraded,
+    /// Outcome type changed (e.g., Inconclusive -> FirstBad)
+    OutcomeChanged,
+}
+
+impl fmt::Display for SignalAssessment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SignalAssessment::Improved => write!(f, "IMPROVED"),
+            SignalAssessment::Steady => write!(f, "STEADY"),
+            SignalAssessment::Degraded => write!(f, "DEGRADED"),
+            SignalAssessment::OutcomeChanged => write!(f, "OUTCOME CHANGED"),
+        }
+    }
+}
+
+/// Compute a qualitative signal assessment from a run comparison.
+///
+/// Priority: outcome change trumps everything, then improvement/degradation,
+/// then steady.
+pub fn signal_assessment(cmp: &RunComparison) -> SignalAssessment {
+    if cmp.outcome_changed {
+        return SignalAssessment::OutcomeChanged;
+    }
+    if cmp.confidence_delta > 0 || cmp.window_width_delta < 0 {
+        return SignalAssessment::Improved;
+    }
+    if cmp.confidence_delta < 0 || cmp.window_width_delta > 0 {
+        return SignalAssessment::Degraded;
+    }
+    SignalAssessment::Steady
+}
+
 // --- Run Comparison ---
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -842,6 +885,10 @@ mod tests {
             ambiguity_reasons_added: vec![],
             ambiguity_reasons_removed: vec![],
         });
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&SignalAssessment::Improved);
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&SignalAssessment::Steady);
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&SignalAssessment::Degraded);
+        assert_serialize_deserialize_debug_clone_partialeq_eq(&SignalAssessment::OutcomeChanged);
     }
 
     // --- stable_hash ---
@@ -2011,5 +2058,126 @@ mod tests {
         let reserialized = serde_json::to_string_pretty(&report).unwrap();
         let roundtrip: AnalysisReport = serde_json::from_str(&reserialized).unwrap();
         assert_eq!(report, roundtrip, "round-trip must preserve the report");
+    }
+
+    // --- SignalAssessment Display ---
+
+    #[test]
+    fn signal_assessment_display() {
+        assert_eq!(format!("{}", SignalAssessment::Improved), "IMPROVED");
+        assert_eq!(format!("{}", SignalAssessment::Steady), "STEADY");
+        assert_eq!(format!("{}", SignalAssessment::Degraded), "DEGRADED");
+        assert_eq!(
+            format!("{}", SignalAssessment::OutcomeChanged),
+            "OUTCOME CHANGED"
+        );
+    }
+
+    // --- SignalAssessment unit tests ---
+
+    #[test]
+    fn signal_assessment_steady_when_no_change() {
+        let cmp = RunComparison {
+            left_run_id: "a".into(),
+            right_run_id: "b".into(),
+            outcome_changed: false,
+            confidence_delta: 0,
+            window_width_delta: 0,
+            probes_reused: 0,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        };
+        assert_eq!(signal_assessment(&cmp), SignalAssessment::Steady);
+    }
+
+    // --- SignalAssessment property tests ---
+
+    fn arb_run_comparison() -> impl Strategy<Value = RunComparison> {
+        (
+            any::<bool>(),  // outcome_changed
+            any::<i16>(),   // confidence_delta
+            any::<i64>(),   // window_width_delta
+            any::<usize>(), // probes_reused
+        )
+            .prop_map(
+                |(outcome_changed, confidence_delta, window_width_delta, probes_reused)| {
+                    RunComparison {
+                        left_run_id: "left".into(),
+                        right_run_id: "right".into(),
+                        outcome_changed,
+                        confidence_delta,
+                        window_width_delta,
+                        probes_reused,
+                        suspect_paths_added: vec![],
+                        suspect_paths_removed: vec![],
+                        ambiguity_reasons_added: vec![],
+                        ambiguity_reasons_removed: vec![],
+                    }
+                },
+            )
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+        #[test]
+        fn prop_signal_assessment_improved_when_confidence_up(
+            confidence_delta in 1i16..=i16::MAX,
+            window_width_delta in any::<i64>(),
+        ) {
+            let cmp = RunComparison {
+                left_run_id: "l".into(),
+                right_run_id: "r".into(),
+                outcome_changed: false,
+                confidence_delta,
+                window_width_delta,
+                probes_reused: 0,
+                suspect_paths_added: vec![],
+                suspect_paths_removed: vec![],
+                ambiguity_reasons_added: vec![],
+                ambiguity_reasons_removed: vec![],
+            };
+            prop_assert_eq!(
+                signal_assessment(&cmp),
+                SignalAssessment::Improved,
+                "positive confidence_delta with !outcome_changed must be Improved"
+            );
+        }
+
+        #[test]
+        fn prop_signal_assessment_degraded_when_window_wider(
+            window_width_delta in 1i64..=i64::MAX,
+        ) {
+            let cmp = RunComparison {
+                left_run_id: "l".into(),
+                right_run_id: "r".into(),
+                outcome_changed: false,
+                confidence_delta: 0,
+                window_width_delta,
+                probes_reused: 0,
+                suspect_paths_added: vec![],
+                suspect_paths_removed: vec![],
+                ambiguity_reasons_added: vec![],
+                ambiguity_reasons_removed: vec![],
+            };
+            prop_assert_eq!(
+                signal_assessment(&cmp),
+                SignalAssessment::Degraded,
+                "positive window_width_delta with !outcome_changed and zero confidence must be Degraded"
+            );
+        }
+
+        #[test]
+        fn prop_signal_assessment_outcome_changed_trumps(
+            cmp in arb_run_comparison().prop_map(|mut c| { c.outcome_changed = true; c })
+        ) {
+            prop_assert_eq!(
+                signal_assessment(&cmp),
+                SignalAssessment::OutcomeChanged,
+                "outcome_changed must always yield OutcomeChanged regardless of deltas"
+            );
+        }
     }
 }
