@@ -117,8 +117,17 @@ enum Commands {
         right: PathBuf,
 
         /// Emit JSON output instead of human-readable summary
-        #[arg(long, default_value_t = false)]
+        #[arg(long, default_value_t = false, conflicts_with = "markdown_diff")]
         json: bool,
+
+        /// Emit Markdown output suitable for PR comments
+        #[arg(
+            long = "markdown",
+            id = "markdown_diff",
+            default_value_t = false,
+            conflicts_with = "json"
+        )]
+        markdown: bool,
     },
     /// Export a Markdown dossier from a completed run
     ExportMarkdown {
@@ -256,7 +265,12 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
                 commit,
                 shell,
             } => run_reproduce(run_dir, commit, shell),
-            Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
+            Commands::DiffRuns {
+                left,
+                right,
+                json,
+                markdown,
+            } => run_diff_runs(left, right, json, markdown),
             Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
         };
     }
@@ -511,6 +525,7 @@ fn run_diff_runs(
     left_path: PathBuf,
     right_path: PathBuf,
     json: bool,
+    markdown: bool,
 ) -> Result<i32, Box<dyn std::error::Error>> {
     let left = load_report_from_file(&left_path)?;
     let right = load_report_from_file(&right_path)?;
@@ -519,6 +534,9 @@ fn run_diff_runs(
     if json {
         let output = serde_json::to_string_pretty(&cmp)?;
         println!("{}", output);
+    } else if markdown {
+        let output = faultline_render::render_run_comparison_markdown(&cmp);
+        print!("{}", output);
     } else {
         print_run_comparison(&cmp);
     }

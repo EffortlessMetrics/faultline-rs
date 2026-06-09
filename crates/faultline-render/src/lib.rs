@@ -1,4 +1,4 @@
-use faultline_types::{AnalysisReport, LocalizationOutcome, Result};
+use faultline_types::{AnalysisReport, LocalizationOutcome, Result, RunComparison};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -457,6 +457,89 @@ pub fn render_markdown(report: &AnalysisReport) -> String {
     md.push_str(&format!("- Run ID: `{}`\n", report.run_id));
     md.push_str("- `analysis.json`\n");
     md.push_str("- `index.html`\n");
+
+    md
+}
+
+/// Render a Markdown summary of a `RunComparison`, suitable for pasting into a PR comment.
+///
+/// Sections:
+/// 1. Title: "## Run Comparison"
+/// 2. One-line signal assessment
+/// 3. Table: metric | left | right | delta
+/// 4. Lists of added/removed suspect paths
+/// 5. Lists of added/removed ambiguity reasons
+pub fn render_run_comparison_markdown(cmp: &RunComparison) -> String {
+    let mut md = String::new();
+
+    md.push_str("## Run Comparison\n\n");
+
+    // Signal assessment
+    let signal = if cmp.outcome_changed {
+        "Outcome **changed** between runs."
+    } else if cmp.confidence_delta != 0 || cmp.window_width_delta != 0 {
+        "Outcome unchanged; metrics shifted."
+    } else {
+        "Outcome unchanged; no significant delta."
+    };
+    md.push_str(&format!("{signal}\n\n"));
+
+    // Metrics table
+    md.push_str("| Metric | Left | Right | Delta |\n");
+    md.push_str("|--------|------|-------|-------|\n");
+    md.push_str(&format!(
+        "| Outcome changed | — | — | {} |\n",
+        if cmp.outcome_changed { "yes" } else { "no" }
+    ));
+    md.push_str(&format!(
+        "| Confidence | — | — | {:+} |\n",
+        cmp.confidence_delta
+    ));
+    md.push_str(&format!(
+        "| Window width | — | — | {:+} |\n",
+        cmp.window_width_delta
+    ));
+    md.push_str(&format!(
+        "| Probes reused | — | — | {} |\n",
+        cmp.probes_reused
+    ));
+    md.push('\n');
+
+    // Suspect paths added
+    if !cmp.suspect_paths_added.is_empty() {
+        md.push_str("### Suspect paths added\n\n");
+        for path in &cmp.suspect_paths_added {
+            md.push_str(&format!("- `{path}`\n"));
+        }
+        md.push('\n');
+    }
+
+    // Suspect paths removed
+    if !cmp.suspect_paths_removed.is_empty() {
+        md.push_str("### Suspect paths removed\n\n");
+        for path in &cmp.suspect_paths_removed {
+            md.push_str(&format!("- `{path}`\n"));
+        }
+        md.push('\n');
+    }
+
+    // Ambiguity reasons added
+    if !cmp.ambiguity_reasons_added.is_empty() {
+        md.push_str("### Ambiguity reasons added\n\n");
+        for reason in &cmp.ambiguity_reasons_added {
+            md.push_str(&format!("- {reason}\n"));
+        }
+        md.push('\n');
+    }
+
+    // Ambiguity reasons removed
+    if !cmp.ambiguity_reasons_removed.is_empty() {
+        md.push_str("### Ambiguity reasons removed\n\n");
+        for reason in &cmp.ambiguity_reasons_removed {
+            md.push_str(&format!("- {reason}\n"));
+        }
+        md.push('\n');
+    }
 
     md
 }
@@ -2225,5 +2308,127 @@ mod tests {
                 prop_assert!(md.contains("```sh"), "markdown must contain shell code block for reproduction");
             }
         }
+    }
+
+    // --- render_run_comparison_markdown tests ---
+
+    #[test]
+    fn run_comparison_markdown_contains_title_and_table() {
+        let cmp = RunComparison {
+            left_run_id: "run-left".into(),
+            right_run_id: "run-right".into(),
+            outcome_changed: false,
+            confidence_delta: 0,
+            window_width_delta: 0,
+            probes_reused: 3,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        };
+        let md = render_run_comparison_markdown(&cmp);
+        assert!(md.contains("## Run Comparison"), "must have title");
+        assert!(md.contains("| Metric |"), "must have metrics table header");
+        assert!(
+            md.contains("no significant delta"),
+            "zero-delta should say no significant delta"
+        );
+    }
+
+    #[test]
+    fn run_comparison_markdown_outcome_changed_signal() {
+        let cmp = RunComparison {
+            left_run_id: "a".into(),
+            right_run_id: "b".into(),
+            outcome_changed: true,
+            confidence_delta: 10,
+            window_width_delta: -2,
+            probes_reused: 0,
+            suspect_paths_added: vec!["src/main.rs".into()],
+            suspect_paths_removed: vec!["src/old.rs".into()],
+            ambiguity_reasons_added: vec![faultline_codes::AmbiguityReason::NonMonotonicEvidence],
+            ambiguity_reasons_removed: vec![faultline_codes::AmbiguityReason::NeedsMoreProbes],
+        };
+        let md = render_run_comparison_markdown(&cmp);
+        assert!(
+            md.contains("**changed**"),
+            "outcome changed should be highlighted"
+        );
+        assert!(
+            md.contains("| yes |"),
+            "outcome changed column should say yes"
+        );
+        assert!(md.contains("+10"), "confidence delta should show +10");
+        assert!(md.contains("-2"), "window delta should show -2");
+        assert!(
+            md.contains("`src/main.rs`"),
+            "added suspect path must appear"
+        );
+        assert!(
+            md.contains("`src/old.rs`"),
+            "removed suspect path must appear"
+        );
+        assert!(
+            md.contains("### Suspect paths added"),
+            "must have added paths section"
+        );
+        assert!(
+            md.contains("### Suspect paths removed"),
+            "must have removed paths section"
+        );
+        assert!(
+            md.contains("### Ambiguity reasons added"),
+            "must have added reasons section"
+        );
+        assert!(
+            md.contains("### Ambiguity reasons removed"),
+            "must have removed reasons section"
+        );
+    }
+
+    #[test]
+    fn run_comparison_markdown_metrics_shifted_signal() {
+        let cmp = RunComparison {
+            left_run_id: "x".into(),
+            right_run_id: "y".into(),
+            outcome_changed: false,
+            confidence_delta: 5,
+            window_width_delta: 0,
+            probes_reused: 1,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        };
+        let md = render_run_comparison_markdown(&cmp);
+        assert!(
+            md.contains("metrics shifted"),
+            "non-zero delta with unchanged outcome should say metrics shifted"
+        );
+    }
+
+    #[test]
+    fn run_comparison_markdown_omits_empty_sections() {
+        let cmp = RunComparison {
+            left_run_id: "a".into(),
+            right_run_id: "b".into(),
+            outcome_changed: false,
+            confidence_delta: 0,
+            window_width_delta: 0,
+            probes_reused: 0,
+            suspect_paths_added: vec![],
+            suspect_paths_removed: vec![],
+            ambiguity_reasons_added: vec![],
+            ambiguity_reasons_removed: vec![],
+        };
+        let md = render_run_comparison_markdown(&cmp);
+        assert!(
+            !md.contains("### Suspect paths"),
+            "empty paths should not produce section headers"
+        );
+        assert!(
+            !md.contains("### Ambiguity reasons"),
+            "empty reasons should not produce section headers"
+        );
     }
 }
