@@ -7,6 +7,7 @@ authors.workspace = true
 
 [dependencies]
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 faultline-app = { path = "../faultline-app" }
 faultline-codes = { path = "../faultline-codes" }

@@ -6,9 +6,10 @@ use faultline_probe_exec::ExecProbeAdapter;
 use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
-    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
+    AnalysisReport, AnalysisRequest, Confidence, FaultlineError, FlakePolicy, HistoryMode,
+    LocalizationOutcome, ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
 };
+use serde::Serialize;
 use std::io;
 use std::path::PathBuf;
 
@@ -88,6 +89,10 @@ struct Cli {
     /// Also write a Markdown dossier alongside HTML/JSON
     #[arg(long, default_value_t = false)]
     markdown: bool,
+
+    /// Emit structured JSON output instead of human-readable summary
+    #[arg(long, default_value_t = false)]
+    json: bool,
 }
 
 #[derive(Debug, Subcommand)]
@@ -126,6 +131,105 @@ enum Commands {
         #[arg(long)]
         run_dir: PathBuf,
     },
+}
+
+/// Structured JSON output for the localize command when `--json` is set.
+#[derive(Debug, Serialize)]
+struct CliOutput {
+    run_id: String,
+    outcome: String,
+    confidence: Option<CliConfidence>,
+    first_bad: Option<String>,
+    last_good: Option<String>,
+    lower_bound: Option<String>,
+    upper_bound: Option<String>,
+    reasons: Option<Vec<String>>,
+    observations: usize,
+    output_dir: String,
+    artifacts: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CliConfidence {
+    score: u8,
+    label: String,
+}
+
+impl CliConfidence {
+    fn from_confidence(c: &Confidence) -> Self {
+        Self {
+            score: c.score,
+            label: c.label.clone(),
+        }
+    }
+}
+
+impl CliOutput {
+    fn from_localization(
+        report: &AnalysisReport,
+        output_dir: &str,
+        artifacts: Vec<String>,
+    ) -> Self {
+        let (outcome, confidence, first_bad, last_good, lower_bound, upper_bound, reasons) =
+            match &report.outcome {
+                LocalizationOutcome::FirstBad {
+                    last_good,
+                    first_bad,
+                    confidence,
+                } => (
+                    "FirstBad".to_string(),
+                    Some(CliConfidence::from_confidence(confidence)),
+                    Some(first_bad.to_string()),
+                    Some(last_good.to_string()),
+                    None,
+                    None,
+                    None,
+                ),
+                LocalizationOutcome::SuspectWindow {
+                    lower_bound_exclusive,
+                    upper_bound_inclusive,
+                    confidence,
+                    reasons,
+                } => {
+                    let reason_strs: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+                    (
+                        "SuspectWindow".to_string(),
+                        Some(CliConfidence::from_confidence(confidence)),
+                        None,
+                        None,
+                        Some(lower_bound_exclusive.to_string()),
+                        Some(upper_bound_inclusive.to_string()),
+                        Some(reason_strs),
+                    )
+                }
+                LocalizationOutcome::Inconclusive { reasons } => {
+                    let reason_strs: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
+                    (
+                        "Inconclusive".to_string(),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(reason_strs),
+                    )
+                }
+            };
+
+        Self {
+            run_id: report.run_id.clone(),
+            outcome,
+            confidence,
+            first_bad,
+            last_good,
+            lower_bound,
+            upper_bound,
+            reasons,
+            observations: report.observations.len(),
+            output_dir: output_dir.to_string(),
+            artifacts,
+        }
+    }
 }
 
 fn main() {
@@ -382,18 +486,34 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let html_path = renderer.output_dir().join("index.html");
     let md_path = renderer.output_dir().join("dossier.md");
 
-    println!("run-id       {}", localized.report.run_id);
-    println!("observations {}", localized.report.observations.len());
-    println!("output-dir   {}", renderer.output_dir().display());
-    println!("artifacts    {}", analysis_path.display());
-    if rendered_html {
-        println!("             {}", html_path.display());
+    if cli.json {
+        let mut artifacts = vec![analysis_path.display().to_string()];
+        if rendered_html {
+            artifacts.push(html_path.display().to_string());
+        }
+        if cli.markdown {
+            artifacts.push(md_path.display().to_string());
+        }
+        let output = CliOutput::from_localization(
+            &localized.report,
+            &renderer.output_dir().display().to_string(),
+            artifacts,
+        );
+        println!("{}", serde_json::to_string_pretty(&output)?);
+    } else {
+        println!("run-id       {}", localized.report.run_id);
+        println!("observations {}", localized.report.observations.len());
+        println!("output-dir   {}", renderer.output_dir().display());
+        println!("artifacts    {}", analysis_path.display());
+        if rendered_html {
+            println!("             {}", html_path.display());
+        }
+        if cli.markdown {
+            println!("             {}", md_path.display());
+        }
+        println!("history      {}", history_mode_label);
+        println!("outcome      {}", format_outcome(&localized.report.outcome));
     }
-    if cli.markdown {
-        println!("             {}", md_path.display());
-    }
-    println!("history      {}", history_mode_label);
-    println!("outcome      {}", format_outcome(&localized.report.outcome));
     let code = exit_code_for_operator_code(outcome_to_operator_code(&localized.report.outcome));
     Ok(code)
 }
@@ -666,6 +786,7 @@ mod tests {
             "--retries",
             "--stability-threshold",
             "--markdown",
+            "--json",
         ];
 
         for flag in &expected_flags {
@@ -873,6 +994,96 @@ mod tests {
         );
     }
 
+    // --- CliOutput JSON tests ---
+
+    #[test]
+    fn cli_output_first_bad_serializes_to_json() {
+        let output = CliOutput {
+            run_id: "run-123".to_string(),
+            outcome: "FirstBad".to_string(),
+            confidence: Some(CliConfidence {
+                score: 95,
+                label: "high".to_string(),
+            }),
+            first_bad: Some("abc123".to_string()),
+            last_good: Some("def456".to_string()),
+            lower_bound: None,
+            upper_bound: None,
+            reasons: None,
+            observations: 5,
+            output_dir: "faultline-report".to_string(),
+            artifacts: vec!["analysis.json".to_string(), "index.html".to_string()],
+        };
+        let json = serde_json::to_string_pretty(&output).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["run_id"], "run-123");
+        assert_eq!(parsed["outcome"], "FirstBad");
+        assert_eq!(parsed["confidence"]["score"], 95);
+        assert_eq!(parsed["confidence"]["label"], "high");
+        assert_eq!(parsed["first_bad"], "abc123");
+        assert_eq!(parsed["last_good"], "def456");
+        assert!(parsed["lower_bound"].is_null());
+        assert!(parsed["upper_bound"].is_null());
+        assert!(parsed["reasons"].is_null());
+        assert_eq!(parsed["observations"], 5);
+        assert_eq!(parsed["output_dir"], "faultline-report");
+        assert_eq!(parsed["artifacts"][0], "analysis.json");
+        assert_eq!(parsed["artifacts"][1], "index.html");
+    }
+
+    #[test]
+    fn cli_output_suspect_window_serializes_to_json() {
+        let output = CliOutput {
+            run_id: "run-456".to_string(),
+            outcome: "SuspectWindow".to_string(),
+            confidence: Some(CliConfidence {
+                score: 65,
+                label: "medium".to_string(),
+            }),
+            first_bad: None,
+            last_good: None,
+            lower_bound: Some("aaa111".to_string()),
+            upper_bound: Some("bbb222".to_string()),
+            reasons: Some(vec!["non-monotonic evidence".to_string()]),
+            observations: 8,
+            output_dir: "out".to_string(),
+            artifacts: vec!["analysis.json".to_string()],
+        };
+        let json = serde_json::to_string_pretty(&output).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["outcome"], "SuspectWindow");
+        assert_eq!(parsed["lower_bound"], "aaa111");
+        assert_eq!(parsed["upper_bound"], "bbb222");
+        assert_eq!(parsed["reasons"][0], "non-monotonic evidence");
+        assert!(parsed["first_bad"].is_null());
+        assert!(parsed["last_good"].is_null());
+    }
+
+    #[test]
+    fn cli_output_inconclusive_serializes_to_json() {
+        let output = CliOutput {
+            run_id: "run-789".to_string(),
+            outcome: "Inconclusive".to_string(),
+            confidence: None,
+            first_bad: None,
+            last_good: None,
+            lower_bound: None,
+            upper_bound: None,
+            reasons: Some(vec!["missing pass boundary".to_string()]),
+            observations: 2,
+            output_dir: "out".to_string(),
+            artifacts: vec!["analysis.json".to_string()],
+        };
+        let json = serde_json::to_string_pretty(&output).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(parsed["outcome"], "Inconclusive");
+        assert!(parsed["confidence"].is_null());
+        assert_eq!(parsed["reasons"][0], "missing pass boundary");
+    }
+
     // --- Proptest strategies for P32 ---
 
     fn arb_commit_id() -> impl Strategy<Value = faultline_types::CommitId> {
@@ -1002,6 +1213,7 @@ mod tests {
                 "--retries",
                 "--stability-threshold",
                 "--markdown",
+                "--json",
             ];
 
             // All pre-existing flags
