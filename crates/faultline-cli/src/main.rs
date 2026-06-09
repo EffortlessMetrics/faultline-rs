@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use faultline_app::FaultlineApp;
 use faultline_codes::{OperatorCode, ProbeKind};
 use faultline_git::GitAdapter;
@@ -125,6 +125,11 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+    },
+    /// Generate shell completions for bash, zsh, fish, or powershell
+    Completions {
+        /// Shell to generate completions for
+        shell: clap_complete::Shell,
     },
 }
 
@@ -258,6 +263,11 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
             } => run_reproduce(run_dir, commit, shell),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
             Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::Completions { shell } => {
+                let mut cmd = Cli::command();
+                clap_complete::generate(shell, &mut cmd, "faultline", &mut std::io::stdout());
+                return Ok(0);
+            }
         };
     }
 
@@ -610,7 +620,6 @@ fn format_outcome(outcome: &LocalizationOutcome) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
     use faultline_codes::AmbiguityReason;
     use faultline_types::Confidence;
     use proptest::prelude::*;
@@ -694,6 +703,10 @@ mod tests {
         assert!(
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
+        );
+        assert!(
+            help.contains("completions"),
+            "--help output missing 'completions' subcommand.\nFull help:\n{help}"
         );
     }
 
