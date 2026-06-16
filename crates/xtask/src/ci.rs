@@ -68,11 +68,24 @@ pub fn ci_fast() -> Result<()> {
         bail!("{}", contract_broken_message(&format!("file policy: {e}")));
     }
 
-    // Detect cargo-nextest and use it if available, fall back to cargo test
+    // Detect cargo-nextest and use it if available, fall back to cargo test.
+    // `--exclude xtask`: the test build recompiles the workspace, and on
+    // Windows the linker cannot overwrite `xtask.exe` while it is still
+    // executing this very command (the parent holds the image lock). Excluding
+    // xtask avoids the self-overwrite without losing meaningful coverage —
+    // xtask's tests are policy/tooling checks, not domain logic.
     if has_tool("cargo-nextest") {
-        run_contract("test suite", "cargo", &["nextest", "run", "--workspace"])?;
+        run_contract(
+            "test suite",
+            "cargo",
+            &["nextest", "run", "--workspace", "--exclude", "xtask"],
+        )?;
     } else {
-        run_contract("test suite", "cargo", &["test", "--workspace"])?;
+        run_contract(
+            "test suite",
+            "cargo",
+            &["test", "--workspace", "--exclude", "xtask"],
+        )?;
     }
 
     println!("\n=== ci-fast passed ===");

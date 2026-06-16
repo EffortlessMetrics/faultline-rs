@@ -30,7 +30,9 @@ jobs:
 
       - run: cargo xtask ci-full
 
-      - run: cargo install ripr --locked
+      # Pin ripr so output-contract drift only happens on intentional bumps.
+      # When bumping, sync schemas/ripr/*.schema.json to the new output shape.
+      - run: cargo install ripr --locked --version 0.10.0
 
       - name: RIPR verification evidence
         run: |

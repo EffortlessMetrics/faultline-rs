@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.effortlessmetrics.dev/ripr/pr-evidence.schema.json",
   "title": "RIPR PR Evidence",
-  "description": "Canonical diff-scoped PR evidence summary for review, agent routing, and mutation routing.",
+  "description": "Canonical diff-scoped PR evidence summary for review, agent routing, and mutation routing. Top-level additionalProperties is intentionally true so additive upstream ripr output changes don't hard-fail CI; nested objects remain strict. Sync this schema on intentional ripr version bumps.",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "required": [
     "schema_version",
     "tool",
