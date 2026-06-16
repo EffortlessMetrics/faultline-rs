@@ -37,6 +37,14 @@ pub const KNOWN_SECRETS: &[&str] = &[
     // scanners; the redaction regex only needs `password=` + non-whitespace)
     "password=hunter2",
     "password=FIXTURE_VALUE_NOT_REAL",
+    // GitHub fine-grained PAT (github_pat_ + 40+ token body; underscore body is obviously synthetic)
+    "github_pat__________________________________________________",
+    // Google API key (AIza + 35 URL-safe chars; underscore body is obviously synthetic)
+    "AIza___________________________________",
+    // Slack bot token (xoxb- + 10+ chars; FIXTURE body is obviously synthetic)
+    "xoxb-NOT-A-REAL-SLACK-TOKEN-FIXTURE",
+    // PEM private key block (FIXTURE_ body is obviously not a real key)
+    "-----BEGIN FIXTURE PRIVATE KEY-----\nFIXTURE_KEY_CONTENT_NOT_REAL\n-----END FIXTURE PRIVATE KEY-----",
 ];
 
 // ---------------------------------------------------------------------------
@@ -63,6 +71,17 @@ pub const FALSE_POSITIVES: &[&str] = &[
     // Looks like a prefix but isn't quite right
     "ghx_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",
     "BKIA1234567890ABCDEF",
+    // github_pat_ prefix but too short (fewer than 40 chars after prefix)
+    "github_pat_short",
+    // AIza alone with no 35-char suffix
+    "AIza",
+    "AIza_short",
+    // xox- prefix but not a recognized Slack type letter, or too short
+    "xoxz-notaslacktoken",
+    "xoxb-short",
+    // Looks like a PEM header but no matching END (not a full block)
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "-----BEGIN PRIVATE KEY-----\nnotakey\n-----END CERTIFICATE-----",
 ];
 
 // ---------------------------------------------------------------------------

@@ -86,7 +86,7 @@ impl ReportRenderer {
         )?;
         fs::write(
             self.output_dir.join("dossier.md"),
-            render_markdown(&redacted, policy),
+            render_markdown(report, policy),
         )?;
         Ok(())
     }
@@ -378,8 +378,13 @@ impl ReportRenderer {
 }
 
 /// Render a Markdown dossier from an analysis report.
-/// Never fails — returns placeholder text for missing/empty fields.
-pub fn render_markdown(report: &AnalysisReport, _policy: &RedactionPolicy) -> String {
+/// Applies `redact_report()` under `policy` before rendering, so the emitted
+/// markdown never contains env values or known secret patterns. Never fails —
+/// returns placeholder text for missing/empty fields.
+pub fn render_markdown(report: &AnalysisReport, policy: &RedactionPolicy) -> String {
+    let report = redact_report(report, policy);
+    let report = &report;
+
     let mut md = String::new();
 
     // Outcome summary
@@ -610,6 +615,41 @@ mod tests {
             .join("faultline-render-tests")
             .join(name)
             .join(format!("{}", std::process::id()))
+    }
+
+    // #44 (regression): render_markdown honors its RedactionPolicy. An
+    // unredacted report with a secret in a rendered field must come out
+    // scrubbed under default_safe and preserved under none().
+    #[test]
+    fn render_markdown_honors_policy_scrubbing_owner_hint_secret() {
+        let mut report = sample_report();
+        report.suspect_surface = vec![SuspectEntry {
+            path: "src/main.rs".into(),
+            priority_score: 100,
+            surface_kind: "source".into(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: Some("password=hunter2".into()),
+        }];
+
+        // default_safe scrubs the password= secret from the rendered markdown.
+        let md_safe = render_markdown(&report, &RedactionPolicy::default_safe());
+        assert!(
+            !md_safe.contains("hunter2"),
+            "default_safe markdown must not leak the raw secret; got:\n{md_safe}"
+        );
+        assert!(
+            md_safe.contains("password=[REDACTED]"),
+            "default_safe markdown must scrub the password= value; got:\n{md_safe}"
+        );
+
+        // none() preserves the raw secret — proves the policy is honored,
+        // not hardcoded.
+        let md_unsafe = render_markdown(&report, &RedactionPolicy::none());
+        assert!(
+            md_unsafe.contains("password=hunter2"),
+            "none() markdown must preserve the raw secret; got:\n{md_unsafe}"
+        );
     }
 
     // Req 6.1: writes analysis.json to output directory

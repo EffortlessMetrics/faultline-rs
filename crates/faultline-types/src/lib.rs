@@ -789,17 +789,27 @@ pub fn stable_hash(data: &[u8]) -> String {
 /// Each pattern uses a capture group for the prefix that will be preserved.
 static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     vec![
-        // GitHub tokens: ghp_, gho_, ghu_, ghs_, ghr_ followed by alphanumeric
+        // GitHub classic tokens: ghp_, gho_, ghu_, ghs_, ghr_ followed by 36+ alphanumeric
         Regex::new(r"(gh[pousr]_)[A-Za-z0-9]{36,}").expect("valid regex: GitHub token pattern"),
+        // GitHub fine-grained PATs: github_pat_ followed by 40+ Base62 token body
+        Regex::new(r"(github_pat_)[A-Za-z0-9_]{40,}")
+            .expect("valid regex: GitHub fine-grained PAT pattern"),
         // AWS access keys: AKIA followed by 16 uppercase alphanumeric
         Regex::new(r"(AKIA)[A-Z0-9]{16}").expect("valid regex: AWS key pattern"),
+        // Google API keys: AIza followed by 35 URL-safe chars
+        Regex::new(r"(AIza)[A-Za-z0-9_\-]{35}").expect("valid regex: Google API key pattern"),
         // Stripe keys: sk-live_ or sk-test_ followed by alphanumeric
         Regex::new(r"(sk-(?:live|test)_)[A-Za-z0-9]{24,}")
             .expect("valid regex: Stripe key pattern"),
+        // Slack tokens: xox[baprs]- followed by 10+ chars (bot/user/app/refresh)
+        Regex::new(r"(xox[baprs]-)[A-Za-z0-9-]{10,}").expect("valid regex: Slack token pattern"),
         // Bearer tokens: "Bearer " followed by non-whitespace
         Regex::new(r"(Bearer )\S+").expect("valid regex: Bearer token pattern"),
         // password= followed by non-whitespace value
         Regex::new(r"(password=)\S+").expect("valid regex: password pattern"),
+        // PEM private key blocks: capture the header, redact the whole block
+        Regex::new(r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")
+            .expect("valid regex: PEM private key pattern"),
     ]
 });
 
@@ -888,6 +898,7 @@ fn redact_probe_spec_env(probe: &mut ProbeSpec) {
 /// NOT scrubbed (too noisy / not a realistic leak vector):
 /// - ProbeObservation.working_dir
 /// - AnalysisRequest.repo_root
+/// - SuspectEntry.priority_score / surface_kind / change_status (structural)
 fn scrub_command_and_output_surfaces(report: &mut AnalysisReport) {
     // Scrub the request's probe spec command surfaces
     scrub_probe_spec_surfaces(&mut report.request.probe);
@@ -902,6 +913,18 @@ fn scrub_command_and_output_surfaces(report: &mut AnalysisReport) {
     // Scrub reproduction capsule predicate command surfaces
     for capsule in &mut report.reproduction_capsules {
         scrub_probe_spec_surfaces(&mut capsule.predicate);
+    }
+
+    // Scrub suspect-surface free-text fields that render into artifacts.
+    // `path` and `owner_hint` are operator/tool-derived strings that could
+    // carry secret-like content; scrub them so they never reach shareable
+    // output. `priority_score`, `surface_kind`, `change_status`, and
+    // `is_execution_surface` are structural and not scrub targets.
+    for entry in &mut report.suspect_surface {
+        entry.path = scrub_secrets(&entry.path);
+        if let Some(hint) = entry.owner_hint.take() {
+            entry.owner_hint = Some(scrub_secrets(&hint));
+        }
     }
 }
 
@@ -2540,6 +2563,82 @@ mod tests {
     }
 
     #[test]
+    fn scrub_secrets_github_fine_grained_pat() {
+        // Fine-grained PATs need 40+ chars after prefix.
+        // Underscore body is obviously synthetic to dodge secret scanners.
+        let input = "token: github_pat__________________________________________________";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "token: github_pat_[REDACTED]");
+    }
+
+    #[test]
+    fn scrub_secrets_github_pat_too_short_no_match() {
+        // Fine-grained PATs need 40+ chars after prefix — this is too short
+        let input = "github_pat_shorttoken";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "github_pat_shorttoken");
+    }
+
+    #[test]
+    fn scrub_secrets_google_api_key() {
+        // Google API keys are AIza + exactly 35 URL-safe chars.
+        // Uses an all-underscore body: matches the regex but is obviously
+        // synthetic, so it doesn't trip secret scanners.
+        let input = "key: AIza___________________________________";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "key: AIza[REDACTED]");
+    }
+
+    #[test]
+    fn scrub_secrets_google_api_key_too_short_no_match() {
+        // Google API keys need exactly 35 chars after AIza — this is too short
+        let input = "AIza shortkey";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "AIza shortkey");
+    }
+
+    #[test]
+    fn scrub_secrets_slack_token() {
+        // Slack tokens need 10+ chars after the type prefix.
+        // FIXTURE body is obviously synthetic to dodge secret scanners.
+        let input = "slack: xoxb-NOT-A-REAL-SLACK-TOKEN-FIXTURE";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "slack: xoxb-[REDACTED]");
+    }
+
+    #[test]
+    fn scrub_secrets_slack_token_too_short_no_match() {
+        // Slack tokens need 10+ chars after the type prefix — this is too short
+        let input = "xoxb-short";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "xoxb-short");
+    }
+
+    #[test]
+    fn scrub_secrets_pem_private_key_block() {
+        // Uses FIXTURE PRIVATE KEY (uppercase, matches the regex's [A-Z ]*)
+        // with an obviously-synthetic body to dodge secret scanners.
+        let input = "key:\n-----BEGIN FIXTURE PRIVATE KEY-----\nFIXTURE_BODY_NOT_A_REAL_KEY\n-----END FIXTURE PRIVATE KEY-----\n";
+        let result = scrub_secrets(input);
+        assert!(
+            result.contains("-----BEGIN FIXTURE PRIVATE KEY-----[REDACTED]"),
+            "PEM header must be preserved and body redacted; got: {result}"
+        );
+        assert!(
+            !result.contains("FIXTURE_BODY_NOT_A_REAL_KEY"),
+            "PEM body must not survive redaction; got: {result}"
+        );
+    }
+
+    #[test]
+    fn scrub_secrets_pem_header_without_end_no_match() {
+        // A bare header with no matching END block should not redact
+        let input = "-----BEGIN FIXTURE PRIVATE KEY-----";
+        let result = scrub_secrets(input);
+        assert_eq!(result, "-----BEGIN FIXTURE PRIVATE KEY-----");
+    }
+
+    #[test]
     fn scrub_secrets_no_match_passthrough() {
         let input = "nothing secret here";
         let result = scrub_secrets(input);
@@ -3244,6 +3343,10 @@ mod tests {
             "Bearer some-opaque-token-value",
             "password=hunter2",
             "password=FIXTURE_VALUE_NOT_REAL",
+            "github_pat__________________________________________________",
+            "AIza___________________________________",
+            "xoxb-NOT-A-REAL-SLACK-TOKEN-FIXTURE",
+            "-----BEGIN FIXTURE PRIVATE KEY-----\nFIXTURE_KEY_CONTENT_NOT_REAL\n-----END FIXTURE PRIVATE KEY-----",
         ];
 
         proptest! {
