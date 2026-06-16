@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.effortlessmetrics.dev/ripr/review-comments.schema.json",
   "title": "RIPR Review Comments",
-  "description": "Diff-scoped RIPR review guidance. Only comments[] can feed non-blocking changed-line annotations.",
+  "description": "Diff-scoped RIPR review guidance. Only comments[] can feed non-blocking changed-line annotations. Top-level additionalProperties is intentionally true so additive upstream ripr output changes (e.g. analysis_scope) don't hard-fail CI; nested objects remain strict. Sync this schema on intentional ripr version bumps.",
   "type": "object",
-  "additionalProperties": false,
+  "additionalProperties": true,
   "required": [
     "schema_version",
     "tool",
