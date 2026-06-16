@@ -117,7 +117,7 @@ This catalog defines the 10 named patterns that govern the faultline repository'
 
 **Example:** `cargo xtask mutants` invokes `cargo-mutants` targeting `faultline-localization`'s core narrowing and outcome logic. Surviving mutants are reviewed to determine if they represent equivalent mutations or missing test coverage.
 
-**Anti-example:** Running mutation testing on adapter crates like `faultline-git` where the test suite depends on external state (real Git repos) — mutation testing is most valuable on pure domain logic.
+**Anti-example:** Adding mutation testing to a crate without first ensuring it has adequate property and unit test coverage — mutation testing is most valuable when the test suite is already comprehensive enough to catch meaningful mutants.
 
 **Related ADRs:** [ADR-0001: Hexagonal Architecture](../adr/0001-hexagonal-architecture.md)
 **Related Scenarios:** `prop_monotonic_window_narrowing`, `prop_probe_count_respects_max_probes`

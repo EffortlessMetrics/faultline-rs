@@ -289,7 +289,7 @@ pub fn arb_analysis_report() -> impl Strategy<Value = AnalysisReport> {
                 surface,
             )| {
                 AnalysisReport {
-                    schema_version: "0.1.0".into(),
+                    schema_version: "0.3.0".into(),
                     run_id,
                     created_at_epoch_seconds,
                     request,
@@ -300,6 +300,7 @@ pub fn arb_analysis_report() -> impl Strategy<Value = AnalysisReport> {
                     surface,
                     suspect_surface: vec![],
                     reproduction_capsules: vec![],
+                    provenance: None,
                 }
             },
         )

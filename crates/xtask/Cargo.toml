@@ -9,6 +9,7 @@ authors.workspace = true
 clap.workspace = true
 anyhow.workspace = true
 faultline-types = { path = "../faultline-types" }
+faultline-loader = { path = "../faultline-loader" }
 faultline-render = { path = "../faultline-render", optional = true }
 faultline-sarif = { path = "../faultline-sarif", optional = true }
 faultline-junit = { path = "../faultline-junit", optional = true }

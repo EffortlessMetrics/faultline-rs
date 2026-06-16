@@ -10,6 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 schemars.workspace = true
+regex.workspace = true
 faultline-codes = { path = "../faultline-codes" }
 
 [dev-dependencies]

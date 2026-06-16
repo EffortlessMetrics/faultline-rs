@@ -748,3 +748,129 @@ kind = "baseline_glob"
 container = "*"
 callee = "*"
 
+[[allow]]
+id = "panic-baseline-0053"
+path = "crates/faultline-cli/tests/inspect_bundle_e2e.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "31 expect call site(s) in inspect-bundle e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0054"
+path = "crates/faultline-cli/tests/inspect_bundle_e2e.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 panic_macro call site(s) in inspect-bundle e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0055"
+path = "crates/faultline-cli/tests/inspect_bundle_e2e.rs"
+family = "get_unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "4 get_unwrap call site(s) in inspect-bundle e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0056"
+path = "crates/faultline-cli/tests/inspect_bundle_e2e.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "1 unwrap call site(s) in inspect-bundle e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0057"
+path = "crates/faultline-cli/tests/loading_e2e.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "29 expect call site(s) in artifact-loading e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0058"
+path = "crates/faultline-fixtures/src/secrets.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 unwrap call site(s) in secrets-sentinel fixture tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0059"
+path = "crates/faultline-loader/src/lib.rs"
+family = "expect"
+classification = "baseline"
+owner = "unassigned"
+explanation = "7 expect call site(s) in faultline-loader (1 in report_to_json production path, 6 in property tests) added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0060"
+path = "crates/faultline-loader/src/lib.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "5 unwrap call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0061"
+path = "crates/faultline-loader/src/lib.rs"
+family = "unreachable"
+classification = "baseline"
+owner = "unassigned"
+explanation = "2 unreachable call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+

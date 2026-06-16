@@ -120,8 +120,6 @@ macro_rules! require_some {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ensure, ensure_eq, require_ok, require_some};
-
     #[test]
     fn ensure_passes_on_true() -> Result<(), ::anyhow::Error> {
         ensure!(2 + 2 == 4);

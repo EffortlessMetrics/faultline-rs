@@ -7,12 +7,19 @@ authors.workspace = true
 
 [dependencies]
 clap.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
 faultline-app = { path = "../faultline-app" }
 faultline-codes = { path = "../faultline-codes" }
 faultline-git = { path = "../faultline-git" }
+faultline-junit = { path = "../faultline-junit" }
+faultline-loader = { path = "../faultline-loader" }
 faultline-probe-exec = { path = "../faultline-probe-exec" }
 faultline-render = { path = "../faultline-render" }
+faultline-sarif = { path = "../faultline-sarif" }
 faultline-store = { path = "../faultline-store" }
 faultline-types = { path = "../faultline-types" }
 
@@ -20,6 +27,8 @@ faultline-types = { path = "../faultline-types" }
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }
 insta = { workspace = true }
+tempfile = "3"
+serde_json.workspace = true
 
 [lints]
 workspace = true

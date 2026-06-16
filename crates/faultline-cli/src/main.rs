@@ -6,8 +6,8 @@ use faultline_probe_exec::ExecProbeAdapter;
 use faultline_render::ReportRenderer;
 use faultline_store::FileRunStore;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome,
-    ProbeSpec, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
+    AnalysisRequest, FaultlineError, FlakePolicy, HistoryMode, LocalizationOutcome, ProbeSpec,
+    RedactionPolicy, RevisionSpec, RunComparison, SearchPolicy, ShellKind,
 };
 use std::io;
 use std::path::PathBuf;
@@ -88,6 +88,32 @@ struct Cli {
     /// Also write a Markdown dossier alongside HTML/JSON
     #[arg(long, default_value_t = false)]
     markdown: bool,
+
+    /// Include raw environment variable values in shareable artifacts
+    /// (UNSAFE: may leak secrets)
+    #[arg(long, default_value_t = false)]
+    unsafe_include_env: bool,
+
+    /// Include raw stdout/stderr output without secret scrubbing
+    /// (UNSAFE: may leak tokens)
+    #[arg(long, default_value_t = false)]
+    unsafe_include_output: bool,
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+enum BundleFormat {
+    Dir,
+    #[value(name = "tar-gz")]
+    TarGz,
+}
+
+impl std::fmt::Display for BundleFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BundleFormat::Dir => write!(f, "dir"),
+            BundleFormat::TarGz => write!(f, "tar-gz"),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -125,6 +151,38 @@ enum Commands {
         /// Path to the run directory containing report.json
         #[arg(long)]
         run_dir: PathBuf,
+    },
+    /// Explain the layout of a completed run directory
+    InspectRun {
+        /// Path to the run directory
+        #[arg(long)]
+        run_dir: PathBuf,
+
+        /// Emit JSON output instead of human-readable text
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Package shareable artifacts from a run into a directory or archive
+    Bundle {
+        /// Path to a run directory, report.json, or analysis.json
+        #[arg(long)]
+        source: PathBuf,
+
+        /// Output destination (directory or .tar.gz path)
+        #[arg(long)]
+        output: PathBuf,
+
+        /// Include SARIF output in the bundle
+        #[arg(long, default_value_t = false)]
+        include_sarif: bool,
+
+        /// Include JUnit XML output in the bundle
+        #[arg(long, default_value_t = false)]
+        include_junit: bool,
+
+        /// Output format
+        #[arg(long, default_value_t = BundleFormat::Dir, value_enum)]
+        format: BundleFormat,
     },
 }
 
@@ -248,6 +306,12 @@ fn validate_stability_threshold(value: f64) -> std::result::Result<(), Faultline
 fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
+    // Construct redaction policy from CLI flags
+    let policy = RedactionPolicy {
+        redact_env: !cli.unsafe_include_env,
+        scrub_secrets: !cli.unsafe_include_output,
+    };
+
     // Dispatch subcommands
     if let Some(command) = cli.command {
         return match command {
@@ -255,9 +319,24 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
                 run_dir,
                 commit,
                 shell,
-            } => run_reproduce(run_dir, commit, shell),
+            } => run_reproduce(run_dir, commit, shell, &policy),
             Commands::DiffRuns { left, right, json } => run_diff_runs(left, right, json),
-            Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir),
+            Commands::ExportMarkdown { run_dir } => run_export_markdown(run_dir, &policy),
+            Commands::InspectRun { run_dir, json } => run_inspect_run(run_dir, json),
+            Commands::Bundle {
+                source,
+                output,
+                include_sarif,
+                include_junit,
+                format,
+            } => run_bundle(
+                source,
+                output,
+                include_sarif,
+                include_junit,
+                format,
+                &policy,
+            ),
         };
     }
 
@@ -368,13 +447,13 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
 
     let renderer = ReportRenderer::new(&cli.output_dir);
     let rendered_html = if cli.no_render {
-        renderer.render_json_only(&localized.report)?;
+        renderer.render_json_only_with_policy(&localized.report, &policy)?;
         false
     } else if cli.markdown {
-        renderer.render_with_markdown(&localized.report)?;
+        renderer.render_with_markdown_and_policy(&localized.report, &policy)?;
         true
     } else {
-        renderer.render(&localized.report)?;
+        renderer.render_with_policy(&localized.report, &policy)?;
         true
     };
 
@@ -398,30 +477,18 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     Ok(code)
 }
 
-/// Load a report from a run directory.
-fn load_report_from_dir(
-    run_dir: &std::path::Path,
-) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
-    let report_path = run_dir.join("report.json");
-    if !report_path.exists() {
-        return Err(FaultlineError::Store(format!(
-            "report.json not found in {}",
-            run_dir.display()
-        ))
-        .into());
-    }
-    let raw = std::fs::read_to_string(&report_path)?;
-    let report: AnalysisReport = serde_json::from_str(&raw)?;
-    Ok(report)
-}
-
 /// Run the `reproduce` subcommand.
 fn run_reproduce(
     run_dir: PathBuf,
     commit: Option<String>,
     shell: bool,
+    policy: &RedactionPolicy,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-    let report = load_report_from_dir(&run_dir)?;
+    let located = faultline_loader::locate_and_load_report(&run_dir)?;
+    for diag in &located.diagnostics {
+        eprintln!("faultline: {}", diag);
+    }
+    let report = located.report;
 
     if report.reproduction_capsules.is_empty() {
         eprintln!("faultline: no reproduction capsules in report");
@@ -462,7 +529,7 @@ fn run_reproduce(
 
     for capsule in &capsules {
         if shell {
-            print!("{}", capsule.to_shell_script());
+            print!("{}", capsule.to_shell_script_with_policy(policy));
         } else {
             println!("commit    {}", capsule.commit);
             println!("timeout   {}s", capsule.timeout_seconds);
@@ -482,7 +549,12 @@ fn run_reproduce(
             }
             if !capsule.env.is_empty() {
                 for (key, value) in &capsule.env {
-                    println!("env       {}={}", key, value);
+                    let display_value = if policy.redact_env {
+                        "[REDACTED]".to_string()
+                    } else {
+                        value.clone()
+                    };
+                    println!("env       {}={}", key, display_value);
                 }
             }
             println!();
@@ -492,29 +564,23 @@ fn run_reproduce(
     Ok(0)
 }
 
-/// Load a report from a JSON file path.
-fn load_report_from_file(
-    path: &std::path::Path,
-) -> Result<AnalysisReport, Box<dyn std::error::Error>> {
-    if !path.exists() {
-        return Err(
-            FaultlineError::Store(format!("report file not found: {}", path.display())).into(),
-        );
-    }
-    let raw = std::fs::read_to_string(path)?;
-    let report: AnalysisReport = serde_json::from_str(&raw)?;
-    Ok(report)
-}
-
 /// Run the `diff-runs` subcommand.
 fn run_diff_runs(
     left_path: PathBuf,
     right_path: PathBuf,
     json: bool,
 ) -> Result<i32, Box<dyn std::error::Error>> {
-    let left = load_report_from_file(&left_path)?;
-    let right = load_report_from_file(&right_path)?;
-    let cmp = faultline_types::compare_runs(&left, &right);
+    let left_located = faultline_loader::locate_and_load_report(&left_path)?;
+    let right_located = faultline_loader::locate_and_load_report(&right_path)?;
+
+    for diag in &left_located.diagnostics {
+        eprintln!("faultline: {}", diag);
+    }
+    for diag in &right_located.diagnostics {
+        eprintln!("faultline: {}", diag);
+    }
+
+    let cmp = faultline_types::compare_runs(&left_located.report, &right_located.report);
 
     if json {
         let output = serde_json::to_string_pretty(&cmp)?;
@@ -527,10 +593,314 @@ fn run_diff_runs(
 }
 
 /// Run the `export-markdown` subcommand.
-fn run_export_markdown(run_dir: PathBuf) -> Result<i32, Box<dyn std::error::Error>> {
-    let report = load_report_from_dir(&run_dir)?;
-    let md = faultline_render::render_markdown(&report);
+fn run_export_markdown(
+    run_dir: PathBuf,
+    policy: &RedactionPolicy,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let located = faultline_loader::locate_and_load_report(&run_dir)?;
+    // Print diagnostics to stderr to avoid corrupting stdout output stream
+    for diag in &located.diagnostics {
+        eprintln!("faultline: {}", diag);
+    }
+    let md = faultline_render::render_markdown(&located.report, policy);
     print!("{}", md);
+    Ok(0)
+}
+
+/// Structured output for `inspect-run --json`.
+#[derive(serde::Serialize)]
+struct InspectRunOutput {
+    discovered_files: Vec<FileEntry>,
+    report_summary: Option<ReportSummary>,
+    report_parse_error: Option<String>,
+    observation_count: Option<usize>,
+    log_file_count: Option<usize>,
+}
+
+/// A file discovered in the run directory.
+#[derive(serde::Serialize)]
+struct FileEntry {
+    name: String,
+    description: String,
+}
+
+/// Summary extracted from a successfully parsed report.json.
+#[derive(serde::Serialize)]
+struct ReportSummary {
+    run_id: String,
+    schema_version: String,
+    outcome_type: String,
+    observation_count: usize,
+    created_at_epoch_seconds: u64,
+}
+
+/// Run the `bundle` subcommand.
+fn run_bundle(
+    source: PathBuf,
+    output: PathBuf,
+    include_sarif: bool,
+    include_junit: bool,
+    format: BundleFormat,
+    policy: &RedactionPolicy,
+) -> Result<i32, Box<dyn std::error::Error>> {
+    // Load report via faultline-loader (accepts run directory, report.json, or analysis.json)
+    let located = match faultline_loader::locate_and_load_report(&source) {
+        Ok(l) => l,
+        Err(_) => {
+            eprintln!(
+                "faultline: no loadable report found in source: {}",
+                source.display()
+            );
+            return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
+        }
+    };
+    for diag in &located.diagnostics {
+        eprintln!("faultline: {}", diag);
+    }
+    let report = located.report;
+
+    // Create temporary staging directory
+    let staging = tempfile::TempDir::new()
+        .map_err(|e| FaultlineError::Store(format!("failed to create staging directory: {e}")))?;
+    let staging_path = staging.path();
+
+    // Generate ALL core artifacts fresh from loaded report: analysis.json, index.html, dossier.md
+    let renderer = ReportRenderer::new(staging_path);
+    renderer.render_with_markdown_and_policy(&report, policy)?;
+
+    let mut artifact_count: usize = 3; // analysis.json, index.html, dossier.md
+
+    // If --include-sarif passed, generate SARIF fresh into staging
+    if include_sarif {
+        let sarif_content = faultline_sarif::to_sarif(&report, policy)?;
+        std::fs::write(staging_path.join("results.sarif.json"), sarif_content)?;
+        artifact_count += 1;
+    }
+
+    // If --include-junit passed, generate JUnit XML fresh into staging
+    if include_junit {
+        let junit_content = faultline_junit::to_junit_xml(&report, policy);
+        std::fs::write(staging_path.join("results.junit.xml"), junit_content)?;
+        artifact_count += 1;
+    }
+
+    // Output based on format
+    match format {
+        BundleFormat::Dir => {
+            // Copy staging to output directory
+            std::fs::create_dir_all(&output)?;
+            copy_dir_contents(staging_path, &output)?;
+        }
+        BundleFormat::TarGz => {
+            // Create gzip-compressed tar archive at output path
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = std::fs::File::create(&output).map_err(|e| {
+                FaultlineError::Store(format!(
+                    "failed to create archive at {}: {e}",
+                    output.display()
+                ))
+            })?;
+            let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            let mut archive = tar::Builder::new(encoder);
+
+            // Add all files from staging into the archive
+            for entry in std::fs::read_dir(staging_path)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    let file_name = path
+                        .file_name()
+                        .expect("file must have a name")
+                        .to_string_lossy()
+                        .to_string();
+                    archive.append_path_with_name(&path, &file_name)?;
+                }
+            }
+
+            archive.into_inner()?.finish()?;
+        }
+    }
+
+    println!("output    {}", output.display());
+    println!("artifacts {artifact_count}");
+
+    Ok(0)
+}
+
+/// Copy all files from src directory to dst directory.
+fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        if src_path.is_file() {
+            let file_name = src_path.file_name().expect("file must have a name");
+            let dst_path = dst.join(file_name);
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+/// Run the `inspect-run` subcommand.
+fn run_inspect_run(run_dir: PathBuf, json: bool) -> Result<i32, Box<dyn std::error::Error>> {
+    // Error with exit code 2 if run directory does not exist
+    if !run_dir.exists() {
+        return Err(FaultlineError::Store(format!(
+            "run directory does not exist: {}",
+            run_dir.display()
+        ))
+        .into());
+    }
+
+    if !run_dir.is_dir() {
+        return Err(FaultlineError::Store(format!(
+            "path is not a directory: {}",
+            run_dir.display()
+        ))
+        .into());
+    }
+
+    // Known files and their descriptions
+    let known_files: &[(&str, &str)] = &[
+        ("request.json", "Original analysis request parameters"),
+        ("observations.json", "Cached probe observations"),
+        ("report.json", "Full unredacted AnalysisReport"),
+        ("metadata.json", "Schema version and tool version"),
+        (".lock", "Process lock file"),
+        ("analysis.json", "Redacted AnalysisReport for sharing"),
+        ("index.html", "Human-readable HTML report"),
+        ("dossier.md", "Markdown dossier"),
+    ];
+
+    // Discover which files exist
+    let mut discovered_files: Vec<FileEntry> = Vec::new();
+    for (filename, description) in known_files {
+        let path = run_dir.join(filename);
+        if path.exists() {
+            discovered_files.push(FileEntry {
+                name: filename.to_string(),
+                description: description.to_string(),
+            });
+        }
+    }
+
+    // Check logs/ directory
+    let logs_dir = run_dir.join("logs");
+    let log_file_count = if logs_dir.is_dir() {
+        let count = std::fs::read_dir(&logs_dir)
+            .map(|entries| entries.filter_map(|e| e.ok()).count())
+            .unwrap_or(0);
+        discovered_files.push(FileEntry {
+            name: "logs/".to_string(),
+            description: format!("Full probe stdout/stderr logs ({count} files)"),
+        });
+        Some(count)
+    } else {
+        None
+    };
+
+    // Try to parse report.json for summary
+    let report_path = run_dir.join("report.json");
+    let mut report_summary: Option<ReportSummary> = None;
+    let mut report_parse_error: Option<String> = None;
+
+    if report_path.exists() {
+        match std::fs::read_to_string(&report_path) {
+            Ok(content) => {
+                match serde_json::from_str::<faultline_types::AnalysisReport>(&content) {
+                    Ok(report) => {
+                        let outcome_type = match &report.outcome {
+                            LocalizationOutcome::FirstBad { .. } => "FirstBad",
+                            LocalizationOutcome::SuspectWindow { .. } => "SuspectWindow",
+                            LocalizationOutcome::Inconclusive { .. } => "Inconclusive",
+                        };
+                        report_summary = Some(ReportSummary {
+                            run_id: report.run_id.clone(),
+                            schema_version: report.schema_version.clone(),
+                            outcome_type: outcome_type.to_string(),
+                            observation_count: report.observations.len(),
+                            created_at_epoch_seconds: report.created_at_epoch_seconds,
+                        });
+                    }
+                    Err(e) => {
+                        report_parse_error = Some(format!("failed to parse report.json: {e}"));
+                    }
+                }
+            }
+            Err(e) => {
+                report_parse_error = Some(format!("failed to parse report.json: {e}"));
+            }
+        }
+    }
+
+    // Try to parse observations.json for count
+    let observations_path = run_dir.join("observations.json");
+    let observation_count = if observations_path.exists() {
+        match std::fs::read_to_string(&observations_path) {
+            Ok(content) => match serde_json::from_str::<Vec<serde_json::Value>>(&content) {
+                Ok(observations) => Some(observations.len()),
+                Err(e) => {
+                    if !json {
+                        eprintln!("faultline: warning: failed to parse observations.json: {e}");
+                    }
+                    None
+                }
+            },
+            Err(e) => {
+                if !json {
+                    eprintln!("faultline: warning: failed to read observations.json: {e}");
+                }
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    if json {
+        // JSON mode: always emit well-formed JSON, exit 0
+        let output = InspectRunOutput {
+            discovered_files,
+            report_summary,
+            report_parse_error,
+            observation_count,
+            log_file_count,
+        };
+        let json_str = serde_json::to_string_pretty(&output)
+            .map_err(|e| FaultlineError::Store(format!("failed to serialize output: {e}")))?;
+        println!("{json_str}");
+    } else {
+        // Text mode
+        println!("run-dir  {}", run_dir.display());
+        println!();
+
+        // Walk known files
+        for entry in &discovered_files {
+            println!("  {}  — {}", entry.name, entry.description);
+        }
+
+        println!();
+
+        // Report summary or warning
+        if let Some(ref summary) = report_summary {
+            println!("report summary:");
+            println!("  run-id          {}", summary.run_id);
+            println!("  schema-version  {}", summary.schema_version);
+            println!("  outcome         {}", summary.outcome_type);
+            println!("  observations    {}", summary.observation_count);
+            println!("  created-at      {}", summary.created_at_epoch_seconds);
+        } else if let Some(ref err) = report_parse_error {
+            eprintln!("faultline: warning: {err}");
+        }
+
+        // Observation count
+        if let Some(count) = observation_count {
+            println!("  cached-observations  {count}");
+        }
+    }
+
     Ok(0)
 }
 
@@ -977,6 +1347,34 @@ mod tests {
                 all_codes
             );
         }
+    }
+
+    // --- BundleFormat parse tests (Requirement 5.5) ---
+
+    #[test]
+    fn bundle_format_dir_parses_from_clap() {
+        use clap::ValueEnum;
+        let parsed = BundleFormat::from_str("dir", true);
+        assert!(parsed.is_ok(), "BundleFormat should parse 'dir'");
+        assert_eq!(parsed.unwrap().to_string(), "dir");
+    }
+
+    #[test]
+    fn bundle_format_tar_gz_parses_from_clap() {
+        use clap::ValueEnum;
+        let parsed = BundleFormat::from_str("tar-gz", true);
+        assert!(parsed.is_ok(), "BundleFormat should parse 'tar-gz'");
+        assert_eq!(parsed.unwrap().to_string(), "tar-gz");
+    }
+
+    #[test]
+    fn bundle_format_rejects_invalid_value() {
+        use clap::ValueEnum;
+        let parsed = BundleFormat::from_str("zip", true);
+        assert!(
+            parsed.is_err(),
+            "BundleFormat should reject invalid value 'zip'"
+        );
     }
 
     // Feature: v01-hardening, Property 36: CLI Help Flag Completeness

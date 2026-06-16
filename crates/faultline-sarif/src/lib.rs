@@ -1,14 +1,22 @@
 //! SARIF v2.1.0 export adapter for faultline `AnalysisReport`.
 
-use faultline_types::{AnalysisReport, LocalizationOutcome};
+use faultline_types::{AnalysisReport, LocalizationOutcome, RedactionPolicy, redact_report};
 use serde::Serialize;
 
 /// Converts an `AnalysisReport` into a SARIF v2.1.0 JSON string.
-pub fn to_sarif(report: &AnalysisReport) -> Result<String, serde_json::Error> {
+///
+/// Applies `redact_report()` internally before SARIF generation,
+/// ensuring shareable artifacts never contain raw secrets or env values
+/// unless the policy explicitly allows it.
+pub fn to_sarif(
+    report: &AnalysisReport,
+    policy: &RedactionPolicy,
+) -> Result<String, serde_json::Error> {
+    let redacted = redact_report(report, policy);
     let sarif = SarifLog {
         schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json".into(),
         version: "2.1.0".into(),
-        runs: vec![build_run(report)],
+        runs: vec![build_run(&redacted)],
     };
     serde_json::to_string_pretty(&sarif)
 }
@@ -209,6 +217,7 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            provenance: None,
         }
     }
 
@@ -219,7 +228,7 @@ mod tests {
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let json = to_sarif(&report).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["version"], "2.1.0");
         assert!(
@@ -258,7 +267,7 @@ mod tests {
             confidence: Confidence::medium(),
             reasons: vec![AmbiguityReason::SkippedRevision],
         });
-        let json = to_sarif(&report).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["runs"][0]["results"][0]["level"], "warning");
         assert!(
@@ -274,7 +283,7 @@ mod tests {
         let report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingPassBoundary],
         });
-        let json = to_sarif(&report).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(v["runs"][0]["results"][0]["level"], "note");
         assert!(
@@ -291,7 +300,7 @@ mod tests {
             reasons: vec![AmbiguityReason::MissingFailBoundary],
         });
         report.changed_paths = vec![];
-        let json = to_sarif(&report).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert!(
             v["runs"][0]["results"][0]["locations"]
@@ -306,7 +315,7 @@ mod tests {
     mod prop_tests {
         use super::super::*;
         use faultline_fixtures::arb::arb_analysis_report;
-        use faultline_types::LocalizationOutcome;
+        use faultline_types::{LocalizationOutcome, RedactionPolicy};
         use proptest::prelude::*;
 
         proptest! {
@@ -314,7 +323,7 @@ mod tests {
 
             #[test]
             fn prop_sarif_export_structural_validity(report in arb_analysis_report()) {
-                let json_str = to_sarif(&report).expect("to_sarif must not fail");
+                let json_str = to_sarif(&report, &RedactionPolicy::none()).expect("to_sarif must not fail");
 
                 // (a) Valid JSON
                 let v: serde_json::Value = serde_json::from_str(&json_str)
@@ -355,6 +364,35 @@ mod tests {
                     expected_level,
                     "level must match outcome type"
                 );
+            }
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 4: Env Redaction Completeness in SARIF
+    // **Validates: Requirements 6.4, 18.3**
+    mod prop_redaction_sarif {
+        use super::super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+        use faultline_types::RedactionPolicy;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_env_redaction_completeness_in_sarif(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                let sarif_str = to_sarif(&report, &RedactionPolicy::default_safe())
+                    .expect("to_sarif must not fail on report");
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        !sarif_str.contains(sentinel),
+                        "SARIF output must not contain sentinel env value '{}' after redaction",
+                        sentinel
+                    );
+                }
             }
         }
     }

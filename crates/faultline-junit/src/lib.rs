@@ -1,12 +1,22 @@
 //! JUnit XML export adapter for faultline `AnalysisReport`.
 
-use faultline_types::{AnalysisReport, LocalizationOutcome};
+use faultline_types::{AnalysisReport, LocalizationOutcome, RedactionPolicy, redact_report};
 use quick_xml::Writer;
 use quick_xml::events::{BytesCData, BytesEnd, BytesStart, Event};
 use std::io::Cursor;
 
 /// Converts an `AnalysisReport` into a JUnit XML string.
-pub fn to_junit_xml(report: &AnalysisReport) -> String {
+///
+/// Applies `redact_report()` internally before JUnit generation,
+/// ensuring shareable artifacts never contain raw secrets or env values
+/// unless the policy explicitly allows it.
+pub fn to_junit_xml(report: &AnalysisReport, policy: &RedactionPolicy) -> String {
+    let redacted = redact_report(report, policy);
+    generate_junit_xml(&redacted)
+}
+
+/// Internal JUnit XML generation from an already-redacted report.
+fn generate_junit_xml(report: &AnalysisReport) -> String {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
 
     // <?xml version="1.0" encoding="UTF-8"?>
@@ -207,6 +217,7 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            provenance: None,
         }
     }
 
@@ -217,7 +228,7 @@ mod tests {
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report);
+        let xml = to_junit_xml(&report, &RedactionPolicy::none());
         assert!(xml.contains("<testsuites>"));
         assert!(xml.contains(r#"name="faultline""#));
         assert!(xml.contains(r#"tests="1""#));
@@ -237,7 +248,7 @@ mod tests {
             confidence: Confidence::medium(),
             reasons: vec![AmbiguityReason::SkippedRevision],
         });
-        let xml = to_junit_xml(&report);
+        let xml = to_junit_xml(&report, &RedactionPolicy::none());
         assert!(xml.contains("SuspectWindow:"));
         assert!(xml.contains("aaa"));
         assert!(xml.contains("bbb"));
@@ -248,7 +259,7 @@ mod tests {
         let report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingPassBoundary],
         });
-        let xml = to_junit_xml(&report);
+        let xml = to_junit_xml(&report, &RedactionPolicy::none());
         assert!(xml.contains("Inconclusive:"));
         assert!(xml.contains("missing pass boundary"));
     }
@@ -260,7 +271,7 @@ mod tests {
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report);
+        let xml = to_junit_xml(&report, &RedactionPolicy::none());
         assert!(xml.contains("Observations:"));
         assert!(xml.contains("abc123"));
         assert!(xml.contains("duration=150ms"));
@@ -272,7 +283,7 @@ mod tests {
             reasons: vec![AmbiguityReason::MissingFailBoundary],
         });
         report.observations = vec![];
-        let xml = to_junit_xml(&report);
+        let xml = to_junit_xml(&report, &RedactionPolicy::none());
         assert!(xml.contains("No observations recorded."));
     }
 
@@ -281,6 +292,7 @@ mod tests {
     mod prop_tests {
         use super::super::*;
         use faultline_fixtures::arb::arb_analysis_report;
+        use faultline_types::RedactionPolicy;
         use proptest::prelude::*;
 
         proptest! {
@@ -288,7 +300,7 @@ mod tests {
 
             #[test]
             fn prop_junit_xml_export_structural_validity(report in arb_analysis_report()) {
-                let xml = to_junit_xml(&report);
+                let xml = to_junit_xml(&report, &RedactionPolicy::none());
 
                 // (a) Well-formed XML (contains <?xml declaration)
                 prop_assert!(
@@ -329,6 +341,34 @@ mod tests {
                     msg_end > 0,
                     "failure message attribute must be non-empty"
                 );
+            }
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 5: Env Redaction Completeness in JUnit XML
+    // **Validates: Requirements 6.5, 18.4**
+    mod prop_redaction_junit {
+        use super::super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+        use faultline_types::RedactionPolicy;
+        use proptest::prelude::*;
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_env_redaction_completeness_in_junit_xml(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                let xml = to_junit_xml(&report, &RedactionPolicy::default_safe());
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        !xml.contains(sentinel),
+                        "JUnit XML output must not contain sentinel env value '{}' after redaction",
+                        sentinel
+                    );
+                }
             }
         }
     }

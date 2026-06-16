@@ -20,7 +20,7 @@ fn build_sample_report() -> AnalysisReport {
         .build();
 
     AnalysisReport {
-        schema_version: "0.2.0".into(),
+        schema_version: "0.3.0".into(),
         run_id: "bdd-e2e-run-001".into(),
         created_at_epoch_seconds: 1700000000,
         request: AnalysisRequest {
@@ -126,6 +126,7 @@ fn build_sample_report() -> AnalysisReport {
             working_dir: "/tmp/repo".into(),
             timeout_seconds: 300,
         }],
+        provenance: None,
     }
 }
 
@@ -155,7 +156,7 @@ fn scenario_report_generation_end_to_end() {
         serde_json::from_str(&json_content).expect("analysis.json must be valid JSON");
 
     assert_eq!(parsed["run_id"], "bdd-e2e-run-001");
-    assert_eq!(parsed["schema_version"], "0.2.0");
+    assert_eq!(parsed["schema_version"], "0.3.0");
     assert!(parsed["request"].is_object(), "request field must exist");
     assert!(parsed["sequence"].is_object(), "sequence field must exist");
     assert!(
