@@ -44,7 +44,7 @@ Adapter property tests may use `tempfile` for filesystem isolation.
 
 ### ci-fast (every push)
 
-Runs formatting check, linting, and the full test suite:
+Runs formatting check, linting, and the full test suite — the three core checks:
 
 ```bash
 cargo xtask ci-fast
@@ -52,17 +52,54 @@ cargo xtask ci-fast
 just ci
 ```
 
-This executes in sequence, stopping on first failure:
+Core checks:
 1. `cargo fmt --check`
-2. `cargo clippy --workspace` (deny-level lints in `[workspace.lints]` block at compile time; warn-level lints stay warn while panic-family debt is being baselined)
-3. `cargo xtask check-lint-policy` — workspace lint posture vs. `policy/clippy-lints.toml`
-4. `cargo xtask check-no-panic-family` — panic-family findings vs. `policy/no-panic-allowlist.toml`
-5. `cargo xtask check-file-policy` — non-Rust files vs. `policy/non-rust-allowlist.toml`
-6. `cargo test --workspace` (uses `cargo-nextest` if installed, falls back to `cargo test`)
+2. `cargo clippy --workspace -- -D warnings`
+3. `cargo test --workspace`
+
+Additionally, ci-fast runs policy gates in sequence, stopping on first failure:
+4. `cargo xtask check-lint-policy` — workspace lint posture vs. `policy/clippy-lints.toml`
+5. `cargo xtask check-no-panic-family` — panic-family findings vs. `policy/no-panic-allowlist.toml`
+6. `cargo xtask check-file-policy` — non-Rust files vs. `policy/non-rust-allowlist.toml`
+
+Note: `cargo test` uses `cargo-nextest` if installed, falls back to `cargo test`.
 
 Target time: under 5 minutes.
 
 The three policy gates live under [docs/CLIPPY_POLICY.md](docs/CLIPPY_POLICY.md), [docs/NO_PANIC_POLICY.md](docs/NO_PANIC_POLICY.md), and [docs/FILE_POLICY.md](docs/FILE_POLICY.md). The source-of-truth files are in [policy/](policy/).
+
+#### Known issues on Windows
+
+`cargo xtask ci-fast` can report a spurious failure on Windows even when every
+gate is healthy. Two root causes, both environmental:
+
+1. **xtask self-overwrite lock.** `xtask.exe` runs the gates as a subprocess and
+   then invokes `cargo nextest run --workspace` (or `cargo test --workspace`),
+   which recompiles the entire workspace — including `xtask` itself. Windows
+   refuses to overwrite `xtask.exe` while it is still executing, failing with
+   `error: failed to remove file ... xtask.exe` / `Access is denied. (os error 5)`
+   and surfacing as `Error: contract broken: test suite`. This is a process
+   lifecycle artifact, not a test or policy failure.
+2. **cmd.exe `%errorlevel%` masking.** In `cmd.exe`, `cargo ... & echo %errorlevel%`
+   does **not** reliably report the cargo exit code — `%errorlevel%` is expanded
+   at parse time for the compound line, so it often reads `0` even when the
+   command failed. Capture the exit code explicitly instead.
+
+Reliable verification on Windows — run the gates directly, and check the exit
+code through PowerShell:
+
+```powershell
+# Each of these reports its true exit code via $LASTEXITCODE
+cargo fmt --all -- --check
+cargo build --workspace --all-targets
+cargo nextest run --workspace   # or: cargo test --workspace
+cargo run -q -p xtask -- check-lint-policy
+cargo run -q -p xtask -- check-no-panic-family
+cargo run -q -p xtask -- check-file-policy
+```
+
+If `cmd.exe` must be used, capture the exit code with `call echo` and doubled
+percents: `cmd /c "cargo run -q -p xtask -- ci-fast & call echo %%errorlevel%%"`.
 
 ### Fallible test helpers
 
@@ -87,7 +124,7 @@ allowlist.
 
 ### ci-full (pull requests)
 
-Runs ci-fast plus golden artifact checks and schema validation:
+Runs ci-fast plus golden artifact checks and JSON Schema drift detection:
 
 ```bash
 cargo xtask ci-full
@@ -110,7 +147,13 @@ cargo xtask mutants        # or: just mutants
 cargo xtask release-check  # or: just release-check
 ```
 
+This tier covers:
+- Mutation testing via `cargo-mutants`
+- Supply-chain checks: `cargo-deny`, `cargo-audit`, `cargo-semver-checks`
+
 Requires external tools: `cargo-mutants`, `cargo-deny`, `cargo-audit`, `cargo-semver-checks`. The xtask will tell you what to install if anything is missing.
+
+> **Note on fuzz testing:** faultline supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow (`.github/workflows/ci-extended.yml`) does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration — see [How to Run Fuzz Tests](#how-to-run-fuzz-tests) below.
 
 ## How to Add a New Property Test
 
