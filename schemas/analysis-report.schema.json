@@ -33,6 +33,18 @@
     "outcome": {
       "$ref": "#/definitions/LocalizationOutcome"
     },
+    "provenance": {
+      "description": "Structured provenance metadata. None for reports produced before this change.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ArtifactProvenance"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "reproduction_capsules": {
       "default": [],
       "type": "array",
@@ -47,7 +59,7 @@
       "type": "string"
     },
     "schema_version": {
-      "default": "0.2.0",
+      "default": "0.3.0",
       "type": "string"
     },
     "sequence": {
@@ -109,6 +121,49 @@
           "type": "string"
         }
       }
+    },
+    "ArtifactProvenance": {
+      "description": "Structured provenance metadata for shareable artifacts.",
+      "type": "object",
+      "required": [
+        "env_values_redacted",
+        "output_scrubbed",
+        "redaction_policy"
+      ],
+      "properties": {
+        "artifact_source": {
+          "description": "Which file the report was loaded from",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ArtifactSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "env_values_redacted": {
+          "description": "Whether env variable values were masked with [REDACTED]",
+          "type": "boolean"
+        },
+        "output_scrubbed": {
+          "description": "Whether stdout/stderr secret patterns were scrubbed",
+          "type": "boolean"
+        },
+        "redaction_policy": {
+          "description": "Policy name: \"default\", \"none\", \"env-exposed\", \"secrets-exposed\"",
+          "type": "string"
+        }
+      }
+    },
+    "ArtifactSource": {
+      "description": "Source of the loaded report, recorded in provenance. Does NOT store filesystem paths — these are semantic tags only.",
+      "type": "string",
+      "enum": [
+        "ReportJson",
+        "AnalysisJson",
+        "DirectFile"
+      ]
     },
     "ChangeStatus": {
       "type": "string",

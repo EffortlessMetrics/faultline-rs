@@ -190,14 +190,18 @@ fn run_cmd(contract: &str, cmd: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Load an `AnalysisReport` from `<run_dir>/analysis.json`.
+/// Load an `AnalysisReport` from a run directory or file path using the shared loader.
+///
+/// Uses `faultline_loader::locate_and_load_report()` which implements deterministic
+/// precedence: `report.json` > `analysis.json` when given a directory.
+/// Diagnostics are printed to stderr to avoid corrupting stdout output streams.
 fn load_report(run_dir: &std::path::Path) -> Result<faultline_types::AnalysisReport> {
-    let path = run_dir.join("analysis.json");
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", path.display()))?;
-    let report: faultline_types::AnalysisReport = serde_json::from_str(&content)
-        .map_err(|e| anyhow::anyhow!("failed to parse {}: {e}", path.display()))?;
-    Ok(report)
+    let located =
+        faultline_loader::locate_and_load_report(run_dir).map_err(|e| anyhow::anyhow!("{e}"))?;
+    for diag in &located.diagnostics {
+        eprintln!("[xtask] {diag}");
+    }
+    Ok(located.report)
 }
 
 /// Write content to a file or stdout.
@@ -326,7 +330,10 @@ fn main() -> Result<()> {
             let report = load_report(&run_dir)?;
             #[cfg(feature = "export-adapters")]
             {
-                let md = faultline_render::render_markdown(&report);
+                let md = faultline_render::render_markdown(
+                    &report,
+                    &faultline_types::RedactionPolicy::default_safe(),
+                );
                 write_output(&md, output.as_deref())?;
             }
             #[cfg(not(feature = "export-adapters"))]
@@ -341,8 +348,11 @@ fn main() -> Result<()> {
             let report = load_report(&run_dir)?;
             #[cfg(feature = "export-adapters")]
             {
-                let sarif = faultline_sarif::to_sarif(&report)
-                    .map_err(|e| anyhow::anyhow!("SARIF serialization failed: {e}"))?;
+                let sarif = faultline_sarif::to_sarif(
+                    &report,
+                    &faultline_types::RedactionPolicy::default_safe(),
+                )
+                .map_err(|e| anyhow::anyhow!("SARIF serialization failed: {e}"))?;
                 write_output(&sarif, output.as_deref())?;
             }
             #[cfg(not(feature = "export-adapters"))]
@@ -433,7 +443,10 @@ fn main() -> Result<()> {
             let report = load_report(&run_dir)?;
             #[cfg(feature = "export-adapters")]
             {
-                let junit = faultline_junit::to_junit_xml(&report);
+                let junit = faultline_junit::to_junit_xml(
+                    &report,
+                    &faultline_types::RedactionPolicy::default_safe(),
+                );
                 write_output(&junit, output.as_deref())?;
             }
             #[cfg(not(feature = "export-adapters"))]

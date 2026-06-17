@@ -332,6 +332,7 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            provenance: None,
         }
     }
 
@@ -1065,6 +1066,7 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules: vec![],
+                        provenance: None,
                     }
                 },
             )
@@ -1300,6 +1302,59 @@ mod tests {
                 env!("CARGO_PKG_VERSION"),
                 "tool_version in metadata.json must match workspace version"
             );
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 7: Run Store Retains Unredacted Values
+    // **Validates: Requirements 6.7, 18.6**
+    mod prop_store_fidelity {
+        use super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_run_store_retains_unredacted_values(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                // The store saves report.json via serde_json::to_string_pretty().
+                // Verify that serializing the report preserves all sentinel env values.
+                let json = serde_json::to_string_pretty(&report)
+                    .expect("report must serialize to JSON");
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        json.contains(sentinel),
+                        "Run store JSON must retain unredacted sentinel env value '{}' \
+                         (store NEVER applies redaction)",
+                        sentinel
+                    );
+                }
+
+                // Also verify via actual FileRunStore round-trip
+                let tmp = TempDir::new().unwrap();
+                let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+                let request = sample_request();
+                let handle = store.prepare_run(&request).unwrap();
+
+                store.save_report(&handle, &report).unwrap();
+                let loaded = store.load_report(&handle).unwrap();
+                prop_assert!(loaded.is_some(), "load_report must return Some after save_report");
+
+                let loaded_report = loaded.unwrap();
+                let loaded_json = serde_json::to_string_pretty(&loaded_report)
+                    .expect("loaded report must serialize to JSON");
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        loaded_json.contains(sentinel),
+                        "Loaded report JSON must retain unredacted sentinel env value '{}' \
+                         after store round-trip",
+                        sentinel
+                    );
+                }
+            }
         }
     }
 }

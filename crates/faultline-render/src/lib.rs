@@ -1,4 +1,6 @@
-use faultline_types::{AnalysisReport, LocalizationOutcome, Result};
+use faultline_types::{
+    AnalysisReport, LocalizationOutcome, RedactionPolicy, Result, redact_report,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,28 +19,75 @@ impl ReportRenderer {
     }
 
     pub fn render(&self, report: &AnalysisReport) -> Result<()> {
+        self.render_with_policy(report, &RedactionPolicy::default_safe())
+    }
+
+    /// Render with redaction policy applied.
+    /// Applies `redact_report()` then writes `analysis.json` + `index.html`.
+    pub fn render_with_policy(
+        &self,
+        report: &AnalysisReport,
+        policy: &RedactionPolicy,
+    ) -> Result<()> {
+        let redacted = redact_report(report, policy);
         fs::create_dir_all(&self.output_dir)?;
         fs::write(
             self.output_dir.join("analysis.json"),
-            serde_json::to_string_pretty(report)?,
+            serde_json::to_string_pretty(&redacted)?,
         )?;
-        fs::write(self.output_dir.join("index.html"), self.render_html(report))?;
+        fs::write(
+            self.output_dir.join("index.html"),
+            self.render_html(&redacted),
+        )?;
         Ok(())
     }
 
     pub fn render_json_only(&self, report: &AnalysisReport) -> Result<()> {
+        self.render_json_only_with_policy(report, &RedactionPolicy::default_safe())
+    }
+
+    /// Render JSON only with redaction policy applied.
+    /// Applies `redact_report()` then writes `analysis.json`.
+    pub fn render_json_only_with_policy(
+        &self,
+        report: &AnalysisReport,
+        policy: &RedactionPolicy,
+    ) -> Result<()> {
+        let redacted = redact_report(report, policy);
         fs::create_dir_all(&self.output_dir)?;
         fs::write(
             self.output_dir.join("analysis.json"),
-            serde_json::to_string_pretty(report)?,
+            serde_json::to_string_pretty(&redacted)?,
         )?;
         Ok(())
     }
 
     /// Render JSON + HTML + Markdown dossier.
     pub fn render_with_markdown(&self, report: &AnalysisReport) -> Result<()> {
-        self.render(report)?;
-        fs::write(self.output_dir.join("dossier.md"), render_markdown(report))?;
+        self.render_with_markdown_and_policy(report, &RedactionPolicy::default_safe())
+    }
+
+    /// Render JSON + HTML + Markdown with redaction policy applied.
+    /// Applies `redact_report()` then writes `analysis.json` + `index.html` + `dossier.md`.
+    pub fn render_with_markdown_and_policy(
+        &self,
+        report: &AnalysisReport,
+        policy: &RedactionPolicy,
+    ) -> Result<()> {
+        let redacted = redact_report(report, policy);
+        fs::create_dir_all(&self.output_dir)?;
+        fs::write(
+            self.output_dir.join("analysis.json"),
+            serde_json::to_string_pretty(&redacted)?,
+        )?;
+        fs::write(
+            self.output_dir.join("index.html"),
+            self.render_html(&redacted),
+        )?;
+        fs::write(
+            self.output_dir.join("dossier.md"),
+            render_markdown(report, policy),
+        )?;
         Ok(())
     }
 
@@ -329,8 +378,13 @@ impl ReportRenderer {
 }
 
 /// Render a Markdown dossier from an analysis report.
-/// Never fails — returns placeholder text for missing/empty fields.
-pub fn render_markdown(report: &AnalysisReport) -> String {
+/// Applies `redact_report()` under `policy` before rendering, so the emitted
+/// markdown never contains env values or known secret patterns. Never fails —
+/// returns placeholder text for missing/empty fields.
+pub fn render_markdown(report: &AnalysisReport, policy: &RedactionPolicy) -> String {
+    let report = redact_report(report, policy);
+    let report = &report;
+
     let mut md = String::new();
 
     // Outcome summary
@@ -552,6 +606,7 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            provenance: None,
         }
     }
 
@@ -560,6 +615,41 @@ mod tests {
             .join("faultline-render-tests")
             .join(name)
             .join(format!("{}", std::process::id()))
+    }
+
+    // #44 (regression): render_markdown honors its RedactionPolicy. An
+    // unredacted report with a secret in a rendered field must come out
+    // scrubbed under default_safe and preserved under none().
+    #[test]
+    fn render_markdown_honors_policy_scrubbing_owner_hint_secret() {
+        let mut report = sample_report();
+        report.suspect_surface = vec![SuspectEntry {
+            path: "src/main.rs".into(),
+            priority_score: 100,
+            surface_kind: "source".into(),
+            change_status: ChangeStatus::Modified,
+            is_execution_surface: false,
+            owner_hint: Some("password=hunter2".into()),
+        }];
+
+        // default_safe scrubs the password= secret from the rendered markdown.
+        let md_safe = render_markdown(&report, &RedactionPolicy::default_safe());
+        assert!(
+            !md_safe.contains("hunter2"),
+            "default_safe markdown must not leak the raw secret; got:\n{md_safe}"
+        );
+        assert!(
+            md_safe.contains("password=[REDACTED]"),
+            "default_safe markdown must scrub the password= value; got:\n{md_safe}"
+        );
+
+        // none() preserves the raw secret — proves the policy is honored,
+        // not hardcoded.
+        let md_unsafe = render_markdown(&report, &RedactionPolicy::none());
+        assert!(
+            md_unsafe.contains("password=hunter2"),
+            "none() markdown must preserve the raw secret; got:\n{md_unsafe}"
+        );
     }
 
     // Req 6.1: writes analysis.json to output directory
@@ -662,7 +752,7 @@ mod tests {
         assert_eq!(renderer.output_dir(), dir.as_path());
     }
 
-    // Round-trip: deserializing the written JSON produces the original report
+    // Round-trip: deserializing the written JSON produces the redacted report
     #[test]
     fn analysis_json_round_trips() {
         let dir = temp_output_dir("round-trip");
@@ -674,7 +764,9 @@ mod tests {
 
         let content = std::fs::read_to_string(dir.join("analysis.json")).unwrap();
         let deserialized: AnalysisReport = serde_json::from_str(&content).unwrap();
-        assert_eq!(report, deserialized);
+        // render() applies redact_report() which sets provenance
+        let expected = redact_report(&report, &RedactionPolicy::default_safe());
+        assert_eq!(expected, deserialized);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1292,6 +1384,7 @@ mod tests {
                 },
             ],
             reproduction_capsules: vec![],
+            provenance: None,
         }
     }
 
@@ -1358,9 +1451,13 @@ mod tests {
             1
         );
 
-        // Verify round-trip: deserialize back and compare
+        // Verify round-trip: deserialize back and compare against redacted version
         let deserialized: AnalysisReport = serde_json::from_str(&content).unwrap();
-        assert_eq!(report, deserialized, "JSON round-trip must preserve report");
+        let expected = redact_report(&report, &RedactionPolicy::default_safe());
+        assert_eq!(
+            expected, deserialized,
+            "JSON round-trip must preserve redacted report"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1744,6 +1841,7 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules: vec![],
+                        provenance: None,
                     }
                 },
             )
@@ -2165,7 +2263,7 @@ mod tests {
                         .collect();
 
                     AnalysisReport {
-                        schema_version: "0.2.0".into(),
+                        schema_version: "0.3.0".into(),
                         run_id,
                         created_at_epoch_seconds,
                         request,
@@ -2176,6 +2274,7 @@ mod tests {
                         surface,
                         suspect_surface,
                         reproduction_capsules,
+                        provenance: None,
                     }
                 },
             )
@@ -2186,7 +2285,7 @@ mod tests {
 
         #[test]
         fn prop_markdown_dossier_contains_required_sections(report in arb_report_for_markdown()) {
-            let md = render_markdown(&report);
+            let md = render_markdown(&report, &RedactionPolicy::default_safe());
 
             // (a) Outcome variant name and boundary commit IDs
             match &report.outcome {
@@ -2223,6 +2322,94 @@ mod tests {
             // (e) Reproduction command if capsules non-empty
             if !report.reproduction_capsules.is_empty() {
                 prop_assert!(md.contains("```sh"), "markdown must contain shell code block for reproduction");
+            }
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 2: Env Redaction Completeness in Analysis JSON
+    // **Validates: Requirements 6.1, 18.1**
+    mod prop_redaction_json {
+        use super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+        use faultline_types::{RedactionPolicy, redact_report};
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_env_redaction_completeness_in_analysis_json(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                let redacted = redact_report(&report, &RedactionPolicy::default_safe());
+                let json = serde_json::to_string(&redacted)
+                    .expect("redacted report must serialize to JSON");
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        !json.contains(sentinel),
+                        "Analysis JSON must not contain sentinel env value '{}' after redaction",
+                        sentinel
+                    );
+                }
+            }
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 3: Env Redaction Completeness in Markdown
+    // **Validates: Requirements 6.2, 18.2**
+    mod prop_redaction_markdown {
+        use super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+        use faultline_types::{RedactionPolicy, redact_report};
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_env_redaction_completeness_in_markdown(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                let redacted = redact_report(&report, &RedactionPolicy::default_safe());
+                let markdown = render_markdown(&redacted, &RedactionPolicy::default_safe());
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        !markdown.contains(sentinel),
+                        "Markdown output must not contain sentinel env value '{}' after redaction",
+                        sentinel
+                    );
+                }
+            }
+        }
+    }
+
+    // Feature: v01-artifact-hardening, Property 8: Unsafe Flag Preserves Raw Env Values
+    // **Validates: Requirements 7.1, 7.2, 18.6**
+    mod prop_unsafe_flag {
+        use super::*;
+        use faultline_fixtures::secrets::arb_analysis_report_with_sentinels;
+        use faultline_types::{RedactionPolicy, redact_report};
+
+        proptest! {
+            #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+            #[test]
+            fn prop_unsafe_flag_preserves_raw_env_values(
+                (report, sentinels) in arb_analysis_report_with_sentinels()
+            ) {
+                // RedactionPolicy::none() simulates --unsafe-include-env + --unsafe-include-output
+                let redacted = redact_report(&report, &RedactionPolicy::none());
+                let json = serde_json::to_string(&redacted)
+                    .expect("redacted report must serialize to JSON");
+
+                for sentinel in &sentinels {
+                    prop_assert!(
+                        json.contains(sentinel),
+                        "With RedactionPolicy::none(), output must preserve raw sentinel \
+                         env value '{}' (unsafe flag means no redaction)",
+                        sentinel
+                    );
+                }
             }
         }
     }

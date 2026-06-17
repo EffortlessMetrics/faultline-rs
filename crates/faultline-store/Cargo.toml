@@ -18,6 +18,7 @@ libc = { workspace = true }
 tempfile = "3"
 proptest = { workspace = true }
 faultline-codes = { path = "../faultline-codes" }
+faultline-fixtures = { path = "../faultline-fixtures" }
 
 [lints]
 workspace = true

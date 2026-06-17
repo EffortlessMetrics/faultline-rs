@@ -217,6 +217,7 @@ impl<'a> FaultlineApp<'a> {
             surface,
             suspect_surface,
             reproduction_capsules,
+            provenance: None,
         };
         self.store.save_report(&run, &report)?;
         Ok(LocalizedRun { run, report })

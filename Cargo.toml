@@ -11,6 +11,7 @@ members = [
   "crates/faultline-store",
   "crates/faultline-render",
   "crates/faultline-cli",
+  "crates/faultline-loader",
   "crates/faultline-fixtures",
   "crates/faultline-sarif",
   "crates/faultline-junit",
@@ -39,6 +40,7 @@ anyhow = "1.0"
 toml = "0.8"
 glob = "0.3"
 walkdir = "2"
+regex = "1"
 
 # Effortless Metrics Rust policy stack: lint table.
 #

@@ -47,6 +47,13 @@
       "type": "string",
       "minLength": 1
     },
+    "analysis_scope": {
+      "description": "RIPR diff-scope analysis provenance (files, seams, and repair routes considered). Free-form: shape is owned by ripr and may evolve across releases.",
+      "type": [
+        "object",
+        "null"
+      ]
+    },
     "generated_at": {
       "type": "string",
       "format": "date-time"

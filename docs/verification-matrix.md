@@ -17,6 +17,7 @@ This matrix maps each workspace crate to its applicable verification techniques.
 | `faultline-store` | adapter | ✓ | ✓ | — | ✓ | ✓ | — |
 | `faultline-render` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | `faultline-cli` | entry | ✓ | ✓ | ✓ | ✓ | — | ✓ |
+| `faultline-loader` | infrastructure | ✓ | ✓ | — | — | — | — |
 | `faultline-fixtures` | testing | — | — | — | — | — | — |
 | `faultline-sarif` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | `faultline-junit` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
@@ -66,12 +67,14 @@ Mutation testing is run via `cargo xtask mutants` (supports `--crate <name>` for
 | `fuzz_sarif_export` | SARIF serialization with arbitrary `AnalysisReport` JSON | 60 seconds |
 | `fuzz_junit_export` | JUnit serialization with arbitrary `AnalysisReport` JSON | 60 seconds |
 
-Fuzz testing is run via `cargo xtask fuzz --duration <seconds>` and is part of the `ci-extended` tier.
+Fuzz testing is run via `cargo xtask fuzz --duration <seconds>` and is available as a manual tool for local exploration. It is NOT part of the `ci-extended` CI workflow.
 
 ## CI Tiers
 
 | Tier | Trigger | Techniques | Target Time |
 |------|---------|------------|-------------|
-| `ci-fast` | Every push | fmt + clippy + test (all crates) | < 5 minutes |
-| `ci-full` | Pull requests | ci-fast + golden + schema-check | < 10 minutes |
-| `ci-extended` | Manual / release | ci-full + mutation + fuzz + release-check | Variable |
+| `ci-fast` | Every push | fmt + clippy + test + policy gates | < 5 minutes |
+| `ci-full` | Pull requests | ci-fast + golden snapshot verification + JSON Schema drift detection | < 10 minutes |
+| `ci-extended` | Manual / release | mutation testing + supply-chain checks (`cargo-deny`, `cargo-audit`, `cargo-semver-checks`) | Variable |
+
+> **Note on fuzz testing:** faultline supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration.

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9e89d59a6d93ae94725168a96afb98aaaf1993ac4134ddf317e388b172a7749a # shrinks to observations = [ProbeObservation { commit: CommitId("commit_0000"), class: Pass, kind: Build, exit_code: None, timed_out: false, duration_ms: 0, stdout: "", stderr: "", sequence_index: 1, signal_number: None, probe_command: "", working_dir: "", flake_signal: None }, ProbeObservation { commit: CommitId("commit_0001"), class: Pass, kind: Build, exit_code: None, timed_out: false, duration_ms: 0, stdout: "", stderr: "", sequence_index: 4, signal_number: Some(2088965101), probe_command: " / //  bi//v// / / // //  q  /", working_dir: "a  ", flake_signal: None }]
