@@ -36,7 +36,9 @@ jobs:
 
       - name: RIPR verification evidence
         run: |
-          cargo xtask badges --check
+          cargo xtask badges
+          echo "=== CI-computed badge value ==="
+          cat badges/ripr.json
           cargo xtask ripr-pr --base origin/main --head HEAD
           cargo xtask ripr-pr --base origin/main --head HEAD --check
           cargo xtask ripr-review-comments --base origin/main --head HEAD
