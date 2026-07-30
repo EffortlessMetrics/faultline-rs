@@ -13,6 +13,21 @@ pub(crate) fn badges(check: bool) -> Result<(), String> {
     let generated = generate_ripr_badge(&root)?;
     validate_shields_endpoint(&root, &generated)?;
 
+    // The ripr badge score is non-reproducible across platforms (ripr computes
+    // different values on Windows vs Linux for identical repo content — see
+    // ripr-swarm#1320/#1319). Only enforce `--check` on Linux, where CI
+    // computes the authoritative value. On other platforms, warn and skip the
+    // check so local development doesn't write a CI-failing value.
+    if check && !cfg!(target_os = "linux") {
+        eprintln!(
+            "warning: {BADGE_JSON} --check skipped on non-Linux (ripr badge score is \
+             platform-dependent; see ripr-swarm#1319). The committed value is only \
+             authoritative when regenerated on Linux/CI."
+        );
+        write_generated(&root, &generated)?;
+        return Ok(());
+    }
+
     if check {
         check_badge(&root, &generated)
     } else {
