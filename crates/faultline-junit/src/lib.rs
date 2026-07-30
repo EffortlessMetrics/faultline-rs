@@ -10,28 +10,31 @@ use std::io::Cursor;
 /// Applies `redact_report()` internally before JUnit generation,
 /// ensuring shareable artifacts never contain raw secrets or env values
 /// unless the policy explicitly allows it.
-pub fn to_junit_xml(report: &AnalysisReport, policy: &RedactionPolicy) -> String {
+///
+/// Returns an error if the underlying XML writer fails (e.g. on invalid
+/// UTF-8 in report fields). In practice, writing to an in-memory buffer
+/// does not fail, but propagating the error avoids panicking on edge cases.
+pub fn to_junit_xml(
+    report: &AnalysisReport,
+    policy: &RedactionPolicy,
+) -> Result<String, Box<dyn std::error::Error>> {
     let redacted = redact_report(report, policy);
     generate_junit_xml(&redacted)
 }
 
 /// Internal JUnit XML generation from an already-redacted report.
-fn generate_junit_xml(report: &AnalysisReport) -> String {
+fn generate_junit_xml(report: &AnalysisReport) -> Result<String, Box<dyn std::error::Error>> {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
 
     // <?xml version="1.0" encoding="UTF-8"?>
-    writer
-        .write_event(Event::Decl(quick_xml::events::BytesDecl::new(
-            "1.0",
-            Some("UTF-8"),
-            None,
-        )))
-        .expect("write xml decl");
+    writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new(
+        "1.0",
+        Some("UTF-8"),
+        None,
+    )))?;
 
     // <testsuites>
-    writer
-        .write_event(Event::Start(BytesStart::new("testsuites")))
-        .expect("write testsuites start");
+    writer.write_event(Event::Start(BytesStart::new("testsuites")))?;
 
     let failure_count = match &report.outcome {
         LocalizationOutcome::FirstBad { .. }
@@ -44,18 +47,14 @@ fn generate_junit_xml(report: &AnalysisReport) -> String {
     testsuite.push_attribute(("name", "faultline"));
     testsuite.push_attribute(("tests", "1"));
     testsuite.push_attribute(("failures", failure_count));
-    writer
-        .write_event(Event::Start(testsuite))
-        .expect("write testsuite start");
+    writer.write_event(Event::Start(testsuite))?;
 
     // <testcase name="regression-localization" classname="faultline.{run_id}">
     let classname = format!("faultline.{}", report.run_id);
     let mut testcase = BytesStart::new("testcase");
     testcase.push_attribute(("name", "regression-localization"));
     testcase.push_attribute(("classname", classname.as_str()));
-    writer
-        .write_event(Event::Start(testcase))
-        .expect("write testcase start");
+    writer.write_event(Event::Start(testcase))?;
 
     // <failure> element based on outcome
     match &report.outcome {
@@ -67,9 +66,7 @@ fn generate_junit_xml(report: &AnalysisReport) -> String {
             let msg = format!("FirstBad: {last_good} \u{2192} {first_bad}");
             let mut failure = BytesStart::new("failure");
             failure.push_attribute(("message", msg.as_str()));
-            writer
-                .write_event(Event::Empty(failure))
-                .expect("write failure");
+            writer.write_event(Event::Empty(failure))?;
         }
         LocalizationOutcome::SuspectWindow {
             lower_bound_exclusive,
@@ -80,49 +77,33 @@ fn generate_junit_xml(report: &AnalysisReport) -> String {
                 format!("SuspectWindow: {lower_bound_exclusive} \u{2192} {upper_bound_inclusive}");
             let mut failure = BytesStart::new("failure");
             failure.push_attribute(("message", msg.as_str()));
-            writer
-                .write_event(Event::Empty(failure))
-                .expect("write failure");
+            writer.write_event(Event::Empty(failure))?;
         }
         LocalizationOutcome::Inconclusive { reasons } => {
             let reason_strs: Vec<String> = reasons.iter().map(|r| r.to_string()).collect();
             let msg = format!("Inconclusive: {}", reason_strs.join(", "));
             let mut failure = BytesStart::new("failure");
             failure.push_attribute(("message", msg.as_str()));
-            writer
-                .write_event(Event::Empty(failure))
-                .expect("write failure");
+            writer.write_event(Event::Empty(failure))?;
         }
     }
 
     // <system-out> with observations summary
     let observations_summary = build_observations_summary(report);
-    writer
-        .write_event(Event::Start(BytesStart::new("system-out")))
-        .expect("write system-out start");
-    writer
-        .write_event(Event::CData(BytesCData::new(&observations_summary)))
-        .expect("write system-out cdata");
-    writer
-        .write_event(Event::End(BytesEnd::new("system-out")))
-        .expect("write system-out end");
+    writer.write_event(Event::Start(BytesStart::new("system-out")))?;
+    writer.write_event(Event::CData(BytesCData::new(&observations_summary)))?;
+    writer.write_event(Event::End(BytesEnd::new("system-out")))?;
 
     // </testcase>
-    writer
-        .write_event(Event::End(BytesEnd::new("testcase")))
-        .expect("write testcase end");
+    writer.write_event(Event::End(BytesEnd::new("testcase")))?;
 
     // </testsuite>
-    writer
-        .write_event(Event::End(BytesEnd::new("testsuite")))
-        .expect("write testsuite end");
+    writer.write_event(Event::End(BytesEnd::new("testsuite")))?;
 
     // </testsuites>
-    writer
-        .write_event(Event::End(BytesEnd::new("testsuites")))
-        .expect("write testsuites end");
+    writer.write_event(Event::End(BytesEnd::new("testsuites")))?;
 
-    String::from_utf8(writer.into_inner().into_inner()).expect("valid utf-8")
+    String::from_utf8(writer.into_inner().into_inner()).map_err(|e| e.into())
 }
 
 fn build_observations_summary(report: &AnalysisReport) -> String {
@@ -228,7 +209,7 @@ mod tests {
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none());
+        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
         assert!(xml.contains("<testsuites>"));
         assert!(xml.contains(r#"name="faultline""#));
         assert!(xml.contains(r#"tests="1""#));
@@ -248,7 +229,7 @@ mod tests {
             confidence: Confidence::medium(),
             reasons: vec![AmbiguityReason::SkippedRevision],
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none());
+        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
         assert!(xml.contains("SuspectWindow:"));
         assert!(xml.contains("aaa"));
         assert!(xml.contains("bbb"));
@@ -259,7 +240,7 @@ mod tests {
         let report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingPassBoundary],
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none());
+        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
         assert!(xml.contains("Inconclusive:"));
         assert!(xml.contains("missing pass boundary"));
     }
@@ -271,7 +252,7 @@ mod tests {
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none());
+        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
         assert!(xml.contains("Observations:"));
         assert!(xml.contains("abc123"));
         assert!(xml.contains("duration=150ms"));
@@ -283,7 +264,7 @@ mod tests {
             reasons: vec![AmbiguityReason::MissingFailBoundary],
         });
         report.observations = vec![];
-        let xml = to_junit_xml(&report, &RedactionPolicy::none());
+        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
         assert!(xml.contains("No observations recorded."));
     }
 
@@ -300,7 +281,7 @@ mod tests {
 
             #[test]
             fn prop_junit_xml_export_structural_validity(report in arb_analysis_report()) {
-                let xml = to_junit_xml(&report, &RedactionPolicy::none());
+                let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
 
                 // (a) Well-formed XML (contains <?xml declaration)
                 prop_assert!(
@@ -360,7 +341,7 @@ mod tests {
             fn prop_env_redaction_completeness_in_junit_xml(
                 (report, sentinels) in arb_analysis_report_with_sentinels()
             ) {
-                let xml = to_junit_xml(&report, &RedactionPolicy::default_safe());
+                let xml = to_junit_xml(&report, &RedactionPolicy::default_safe()).expect("junit generation");
 
                 for sentinel in &sentinels {
                     prop_assert!(

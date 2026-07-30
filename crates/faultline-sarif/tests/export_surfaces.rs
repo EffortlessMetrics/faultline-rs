@@ -118,7 +118,7 @@ fn scenario_export_surfaces_sarif_and_junit_consistency() {
         serde_json::from_str(&sarif_json).expect("SARIF must be valid JSON");
 
     // Generate JUnit
-    let junit_xml = to_junit_xml(&report, &RedactionPolicy::none());
+    let junit_xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
 
     // --- Verify SARIF contains suspect surface paths ---
     let results = sarif["runs"][0]["results"].as_array().unwrap();

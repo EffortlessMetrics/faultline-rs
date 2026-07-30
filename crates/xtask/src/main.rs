@@ -446,7 +446,8 @@ fn main() -> Result<()> {
                 let junit = faultline_junit::to_junit_xml(
                     &report,
                     &faultline_types::RedactionPolicy::default_safe(),
-                );
+                )
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
                 write_output(&junit, output.as_deref())?;
             }
             #[cfg(not(feature = "export-adapters"))]
