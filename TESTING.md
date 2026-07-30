@@ -70,20 +70,18 @@ The three policy gates live under [docs/CLIPPY_POLICY.md](docs/CLIPPY_POLICY.md)
 
 #### Known issues on Windows
 
-`cargo xtask ci-fast` can report a spurious failure on Windows even when every
-gate is healthy. Two root causes, both environmental:
+Two environmental issues affect Windows contributors:
 
-1. **xtask self-overwrite lock.** `xtask.exe` runs the gates as a subprocess and
-   then invokes `cargo nextest run --workspace` (or `cargo test --workspace`),
-   which recompiles the entire workspace — including `xtask` itself. Windows
-   refuses to overwrite `xtask.exe` while it is still executing, failing with
-   `error: failed to remove file ... xtask.exe` / `Access is denied. (os error 5)`
-   and surfacing as `Error: contract broken: test suite`. This is a process
-   lifecycle artifact, not a test or policy failure.
-2. **cmd.exe `%errorlevel%` masking.** In `cmd.exe`, `cargo ... & echo %errorlevel%`
+1. **cmd.exe `%errorlevel%` masking.** In `cmd.exe`, `cargo ... & echo %errorlevel%`
    does **not** reliably report the cargo exit code — `%errorlevel%` is expanded
    at parse time for the compound line, so it often reads `0` even when the
    command failed. Capture the exit code explicitly instead.
+2. **ripr badge score is platform-dependent.** The `ripr` binary computes a
+   different readiness score on Windows vs Linux for identical repo content
+   (see ripr-swarm#1319/#1320). `cargo xtask badges --check` **skips on non-Linux**
+   with a warning so Windows contributors don't accidentally write a CI-failing
+   value. The committed `badges/ripr.json` is only authoritative when regenerated
+   on Linux (i.e., via CI).
 
 Reliable verification on Windows — run the gates directly, and check the exit
 code through PowerShell:
