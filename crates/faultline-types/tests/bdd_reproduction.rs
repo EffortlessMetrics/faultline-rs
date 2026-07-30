@@ -5,7 +5,7 @@
 //! shell scripts for various predicate types and edge cases.
 
 use faultline_codes::ProbeKind;
-use faultline_types::{CommitId, ProbeSpec, ReproductionCapsule, ShellKind};
+use faultline_types::{CommitId, ProbeSpec, RedactionPolicy, ReproductionCapsule, ShellKind};
 
 // ---------------------------------------------------------------------------
 // Scenario 1: Capsule from Shell predicate produces valid shell script
@@ -135,8 +135,9 @@ fn environment_variables_are_exported() {
         timeout_seconds: 10,
     };
 
-    // When: to_shell_script() is called
-    let script = capsule.to_shell_script();
+    // When: to_shell_script_with_policy() is called with no redaction
+    // (this test verifies the raw export mechanics, not redaction behavior)
+    let script = capsule.to_shell_script_with_policy(&RedactionPolicy::none());
 
     // Then: output contains export for RUST_LOG
     assert!(
