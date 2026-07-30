@@ -679,7 +679,7 @@ fn run_bundle(
 
     // If --include-junit passed, generate JUnit XML fresh into staging
     if include_junit {
-        let junit_content = faultline_junit::to_junit_xml(&report, policy);
+        let junit_content = faultline_junit::to_junit_xml(&report, policy)?;
         std::fs::write(staging_path.join("results.junit.xml"), junit_content)?;
         artifact_count += 1;
     }
