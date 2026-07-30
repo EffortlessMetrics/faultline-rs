@@ -1022,7 +1022,6 @@ mod tests {
                 num_obs in 1usize..=15,
                 selectors in prop::collection::vec(0usize..1000, 15),
             ) {
-                let n = n; // sequence length
                 let num_obs = num_obs.min(n); // can't observe more than n commits
 
                 let labels: Vec<CommitId> = (0..n)
@@ -1068,7 +1067,6 @@ mod tests {
                 num_obs in 1usize..=15,
                 selectors in prop::collection::vec(0usize..1000, 15),
             ) {
-                let n = n;
                 let num_obs = num_obs.min(n);
 
                 let labels: Vec<CommitId> = (0..n)
@@ -1150,10 +1148,10 @@ mod tests {
                             _ => {}
                         }
                     }
-                    if let Some(hp) = highest_pass {
-                        if let Some(lf) = fail_indices.iter().copied().filter(|&f| f > hp).min() {
-                            return lf - hp;
-                        }
+                    if let Some(hp) = highest_pass
+                        && let Some(lf) = fail_indices.iter().copied().filter(|&f| f > hp).min()
+                    {
+                        return lf - hp;
                     }
                     n // full sequence length as fallback
                 };
@@ -1609,7 +1607,7 @@ mod tests {
                 }
 
                 // Verify all observations have flake_signal == None
-                for (_, observation) in &session.observations {
+                for observation in session.observations.values() {
                     prop_assert!(
                         observation.flake_signal.is_none(),
                         "with default FlakePolicy (retries=0), observation for {} should have flake_signal == None, got {:?}",

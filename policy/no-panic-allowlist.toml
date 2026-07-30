@@ -874,3 +874,31 @@ kind = "baseline_glob"
 container = "*"
 callee = "*"
 
+[[allow]]
+id = "panic-baseline-0062"
+path = "crates/faultline-localization/tests/bdd_narrowing.rs"
+family = "unwrap"
+classification = "baseline"
+owner = "unassigned"
+explanation = "11 unwrap call site(s) in bdd-narrowing tests; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
+[[allow]]
+id = "panic-baseline-0063"
+path = "crates/faultline-localization/tests/bdd_narrowing.rs"
+family = "panic_macro"
+classification = "baseline"
+owner = "unassigned"
+explanation = "6 panic_macro call site(s) in bdd-narrowing tests; burn down by Q3 2026."
+expires = "2026-09-01"
+
+[allow.selector]
+kind = "baseline_glob"
+container = "*"
+callee = "*"
+
