@@ -129,6 +129,15 @@ reason = "GitHub Actions workflows are platform-required YAML."
 covered_by = []
 
 [[allow]]
+glob = ".github/ISSUE_TEMPLATE/*.yml"
+kind = "community_template"
+owner = "docs/community"
+surface = "community"
+classification = "production"
+reason = "GitHub issue templates are platform-required YAML for structured issue intake."
+covered_by = []
+
+[[allow]]
 path = "codecov.yml"
 kind = "ci_coverage_policy"
 owner = "release/ci"
