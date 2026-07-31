@@ -26,6 +26,7 @@ faultline-types = { path = "../faultline-types" }
 [dev-dependencies]
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }
+anyhow.workspace = true
 insta = { workspace = true }
 tempfile = "3"
 serde_json.workspace = true
