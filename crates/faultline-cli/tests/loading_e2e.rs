@@ -5,43 +5,46 @@
 //! correctly on empty directories.
 //!
 //! These tests invoke the actual CLI binary via `std::process::Command`.
+//!
+//! All test functions return `Result<(), anyhow::Error>` and use the
+//! fallible-helper macros from `faultline-fixtures` (`ensure`, `ensure_eq`,
+//! `require_ok`) instead of `unwrap()`/`expect()`/`panic!()`, per the
+//! no-panic policy.
 
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::TempDir;
 
+use faultline_fixtures::{ensure, ensure_eq, require_ok};
+
 /// Locate the faultline-cli binary built by cargo.
-fn cli_binary() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("current_exe")
+fn cli_binary() -> anyhow::Result<PathBuf> {
+    let path = std::env::current_exe()?
         .parent()
-        .expect("parent of test binary")
+        .ok_or_else(|| anyhow::anyhow!("current_exe has no parent"))?
         .parent()
-        .expect("parent of deps dir")
+        .ok_or_else(|| anyhow::anyhow!("no parent of deps dir"))?
         .to_path_buf();
-    if cfg!(windows) {
-        path.push("faultline-cli.exe");
+    Ok(if cfg!(windows) {
+        path.join("faultline-cli.exe")
     } else {
-        path.push("faultline-cli");
-    }
-    path
+        path.join("faultline-cli")
+    })
 }
 
 /// Locate the xtask binary built by cargo.
-fn xtask_binary() -> PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("current_exe")
+fn xtask_binary() -> anyhow::Result<PathBuf> {
+    let path = std::env::current_exe()?
         .parent()
-        .expect("parent of test binary")
+        .ok_or_else(|| anyhow::anyhow!("current_exe has no parent"))?
         .parent()
-        .expect("parent of deps dir")
+        .ok_or_else(|| anyhow::anyhow!("no parent of deps dir"))?
         .to_path_buf();
-    if cfg!(windows) {
-        path.push("xtask.exe");
+    Ok(if cfg!(windows) {
+        path.join("xtask.exe")
     } else {
-        path.push("xtask");
-    }
-    path
+        path.join("xtask")
+    })
 }
 
 /// Create a minimal valid AnalysisReport JSON string.
@@ -160,24 +163,28 @@ fn minimal_report_json() -> String {
 }
 
 /// Write a report to a temp directory as `report.json` only.
-fn setup_report_json_only() -> TempDir {
-    let dir = TempDir::new().expect("create temp dir");
-    std::fs::write(dir.path().join("report.json"), minimal_report_json())
-        .expect("write report.json");
-    dir
+fn setup_report_json_only() -> anyhow::Result<TempDir> {
+    let dir = TempDir::new()?;
+    require_ok!(std::fs::write(
+        dir.path().join("report.json"),
+        minimal_report_json()
+    ));
+    Ok(dir)
 }
 
 /// Write a report to a temp directory as `analysis.json` only.
-fn setup_analysis_json_only() -> TempDir {
-    let dir = TempDir::new().expect("create temp dir");
-    std::fs::write(dir.path().join("analysis.json"), minimal_report_json())
-        .expect("write analysis.json");
-    dir
+fn setup_analysis_json_only() -> anyhow::Result<TempDir> {
+    let dir = TempDir::new()?;
+    require_ok!(std::fs::write(
+        dir.path().join("analysis.json"),
+        minimal_report_json()
+    ));
+    Ok(dir)
 }
 
 /// Create an empty temp directory (no report files).
-fn setup_empty_dir() -> TempDir {
-    TempDir::new().expect("create temp dir")
+fn setup_empty_dir() -> anyhow::Result<TempDir> {
+    Ok(TempDir::new()?)
 }
 
 // ============================================================================
@@ -185,54 +192,54 @@ fn setup_empty_dir() -> TempDir {
 // ============================================================================
 
 #[test]
-fn cli_reproduce_loads_from_report_json_only_directory() {
-    let dir = setup_report_json_only();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_reproduce_loads_from_report_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args(["reproduce", "--run-dir", &dir.path().display().to_string()])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "reproduce from report.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     // Should contain capsule output (commit info)
-    assert!(
+    ensure!(
         stdout.contains("commit") || stdout.contains("aaaa1111") || stdout.contains("bbbb2222"),
         "reproduce output should contain commit info.\nstdout:\n{stdout}"
     );
+    Ok(())
 }
 
 #[test]
-fn cli_reproduce_loads_from_analysis_json_only_directory() {
-    let dir = setup_analysis_json_only();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_reproduce_loads_from_analysis_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args(["reproduce", "--run-dir", &dir.path().display().to_string()])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "reproduce from analysis.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stdout.contains("commit") || stdout.contains("aaaa1111") || stdout.contains("bbbb2222"),
         "reproduce output should contain commit info.\nstdout:\n{stdout}"
     );
+    Ok(())
 }
 
 // ============================================================================
@@ -240,10 +247,10 @@ fn cli_reproduce_loads_from_analysis_json_only_directory() {
 // ============================================================================
 
 #[test]
-fn cli_export_markdown_loads_from_report_json_only_directory() {
-    let dir = setup_report_json_only();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_export_markdown_loads_from_report_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -251,29 +258,29 @@ fn cli_export_markdown_loads_from_report_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "export-markdown from report.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     // Markdown output should contain some content
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "export-markdown should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn cli_export_markdown_loads_from_analysis_json_only_directory() {
-    let dir = setup_analysis_json_only();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_export_markdown_loads_from_analysis_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -281,21 +288,21 @@ fn cli_export_markdown_loads_from_analysis_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "export-markdown from analysis.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "export-markdown should produce non-empty output"
     );
+    Ok(())
 }
 
 // ============================================================================
@@ -303,11 +310,11 @@ fn cli_export_markdown_loads_from_analysis_json_only_directory() {
 // ============================================================================
 
 #[test]
-fn cli_diff_runs_loads_from_report_json_file_path() {
-    let dir = setup_report_json_only();
+fn cli_diff_runs_loads_from_report_json_file_path() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
     let report_path = dir.path().join("report.json");
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -317,30 +324,30 @@ fn cli_diff_runs_loads_from_report_json_file_path() {
             "--right",
             &report_path.display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "diff-runs from report.json file path should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
     // Should contain comparison output
-    assert!(
+    ensure!(
         stdout.contains("left-run") || stdout.contains("outcome"),
         "diff-runs output should contain comparison info.\nstdout:\n{stdout}"
     );
+    Ok(())
 }
 
 #[test]
-fn cli_diff_runs_loads_from_analysis_json_file_path() {
-    let dir = setup_analysis_json_only();
+fn cli_diff_runs_loads_from_analysis_json_file_path() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
     let analysis_path = dir.path().join("analysis.json");
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -350,21 +357,21 @@ fn cli_diff_runs_loads_from_analysis_json_file_path() {
             "--right",
             &analysis_path.display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "diff-runs from analysis.json file path should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stdout.contains("left-run") || stdout.contains("outcome"),
         "diff-runs output should contain comparison info.\nstdout:\n{stdout}"
     );
+    Ok(())
 }
 
 // ============================================================================
@@ -372,15 +379,15 @@ fn cli_diff_runs_loads_from_analysis_json_file_path() {
 // ============================================================================
 
 #[test]
-fn xtask_export_markdown_loads_from_report_json_only_directory() {
-    let dir = setup_report_json_only();
-    let bin = xtask_binary();
+fn xtask_export_markdown_loads_from_report_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -389,33 +396,33 @@ fn xtask_export_markdown_loads_from_report_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-markdown from report.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-markdown should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_markdown_loads_from_analysis_json_only_directory() {
-    let dir = setup_analysis_json_only();
-    let bin = xtask_binary();
+fn xtask_export_markdown_loads_from_analysis_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -424,33 +431,33 @@ fn xtask_export_markdown_loads_from_analysis_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-markdown from analysis.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-markdown should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_sarif_loads_from_report_json_only_directory() {
-    let dir = setup_report_json_only();
-    let bin = xtask_binary();
+fn xtask_export_sarif_loads_from_report_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -459,33 +466,33 @@ fn xtask_export_sarif_loads_from_report_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-sarif from report.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-sarif should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_sarif_loads_from_analysis_json_only_directory() {
-    let dir = setup_analysis_json_only();
-    let bin = xtask_binary();
+fn xtask_export_sarif_loads_from_analysis_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -494,33 +501,33 @@ fn xtask_export_sarif_loads_from_analysis_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-sarif from analysis.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-sarif should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_junit_loads_from_report_json_only_directory() {
-    let dir = setup_report_json_only();
-    let bin = xtask_binary();
+fn xtask_export_junit_loads_from_report_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_report_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -529,33 +536,33 @@ fn xtask_export_junit_loads_from_report_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-junit from report.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-junit should produce non-empty output"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_junit_loads_from_analysis_json_only_directory() {
-    let dir = setup_analysis_json_only();
-    let bin = xtask_binary();
+fn xtask_export_junit_loads_from_analysis_json_only_directory() -> anyhow::Result<()> {
+    let dir = setup_analysis_json_only()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -564,21 +571,21 @@ fn xtask_export_junit_loads_from_analysis_json_only_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_eq!(
+    ensure_eq!(
         output.status.code(),
         Some(0),
         "xtask export-junit from analysis.json-only dir should succeed.\nstdout:\n{stdout}\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         !stdout.is_empty(),
         "xtask export-junit should produce non-empty output"
     );
+    Ok(())
 }
 
 // ============================================================================
@@ -586,34 +593,33 @@ fn xtask_export_junit_loads_from_analysis_json_only_directory() {
 // ============================================================================
 
 #[test]
-fn cli_reproduce_errors_on_empty_directory() {
-    let dir = setup_empty_dir();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_reproduce_errors_on_empty_directory() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args(["reproduce", "--run-dir", &dir.path().display().to_string()])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "reproduce on empty dir should fail.\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stderr.contains("no report.json or analysis.json found"),
         "error message should mention missing files.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 #[test]
-fn cli_export_markdown_errors_on_empty_directory() {
-    let dir = setup_empty_dir();
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+fn cli_export_markdown_errors_on_empty_directory() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -621,28 +627,27 @@ fn cli_export_markdown_errors_on_empty_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "export-markdown on empty dir should fail.\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stderr.contains("no report.json or analysis.json found"),
         "error message should mention missing files.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 #[test]
-fn cli_diff_runs_errors_on_nonexistent_file() {
-    let dir = setup_empty_dir();
+fn cli_diff_runs_errors_on_nonexistent_file() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
     let nonexistent = dir.path().join("nonexistent.json");
-    let bin = cli_binary();
-    assert!(bin.exists(), "CLI binary not found at {}", bin.display());
+    let bin = cli_binary()?;
+    ensure!(bin.exists(), "CLI binary not found at {}", bin.display());
 
     let output = Command::new(&bin)
         .args([
@@ -652,35 +657,34 @@ fn cli_diff_runs_errors_on_nonexistent_file() {
             "--right",
             &nonexistent.display().to_string(),
         ])
-        .output()
-        .expect("failed to execute CLI");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "diff-runs on nonexistent file should fail.\nstderr:\n{stderr}"
     );
     // Should mention the path doesn't exist or isn't accessible
-    assert!(
+    ensure!(
         stderr.contains("does not exist")
             || stderr.contains("not accessible")
             || stderr.contains("path"),
         "error message should indicate file not found.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_markdown_errors_on_empty_directory() {
-    let dir = setup_empty_dir();
-    let bin = xtask_binary();
+fn xtask_export_markdown_errors_on_empty_directory() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -689,32 +693,31 @@ fn xtask_export_markdown_errors_on_empty_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "xtask export-markdown on empty dir should fail.\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stderr.contains("no report.json or analysis.json found"),
         "error message should mention missing files.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_sarif_errors_on_empty_directory() {
-    let dir = setup_empty_dir();
-    let bin = xtask_binary();
+fn xtask_export_sarif_errors_on_empty_directory() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -723,32 +726,31 @@ fn xtask_export_sarif_errors_on_empty_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "xtask export-sarif on empty dir should fail.\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stderr.contains("no report.json or analysis.json found"),
         "error message should mention missing files.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
 
 #[test]
-fn xtask_export_junit_errors_on_empty_directory() {
-    let dir = setup_empty_dir();
-    let bin = xtask_binary();
+fn xtask_export_junit_errors_on_empty_directory() -> anyhow::Result<()> {
+    let dir = setup_empty_dir()?;
+    let bin = xtask_binary()?;
     if !bin.exists() {
         eprintln!(
             "xtask binary not found at {}; skipping xtask test",
             bin.display()
         );
-        return;
+        return Ok(());
     }
 
     let output = Command::new(&bin)
@@ -757,18 +759,17 @@ fn xtask_export_junit_errors_on_empty_directory() {
             "--run-dir",
             &dir.path().display().to_string(),
         ])
-        .output()
-        .expect("failed to execute xtask");
+        .output()?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
-    assert_ne!(
-        output.status.code(),
-        Some(0),
+    ensure!(
+        output.status.code() != Some(0),
         "xtask export-junit on empty dir should fail.\nstderr:\n{stderr}"
     );
-    assert!(
+    ensure!(
         stderr.contains("no report.json or analysis.json found"),
         "error message should mention missing files.\nstderr:\n{stderr}"
     );
+    Ok(())
 }
