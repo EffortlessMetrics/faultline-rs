@@ -749,20 +749,6 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0057"
-path = "crates/faultline-cli/tests/loading_e2e.rs"
-family = "expect"
-classification = "baseline"
-owner = "unassigned"
-explanation = "29 expect call site(s) in artifact-loading e2e tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-09-01"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
 id = "panic-baseline-0058"
 path = "crates/faultline-fixtures/src/secrets.rs"
 family = "unwrap"
