@@ -16,7 +16,7 @@ version = "0.0.1"
 To bump the version:
 
 1. Update `version` in `[workspace.package]` in the root `Cargo.toml`.
-2. If the `AnalysisReport` schema has changed, ensure `schema_version` in the report struct matches the new version.
+2. If the `AnalysisReport` schema changes, bump its `schema_version` according to the report contract. The schema version is independent of the package version.
 3. Regenerate the JSON Schema if types changed:
    ```bash
    cargo xtask generate-schema
@@ -87,17 +87,17 @@ After the version bump, changelog update, and release check all pass:
 1. Commit the version bump and changelog:
    ```bash
    git add Cargo.toml Cargo.lock CHANGELOG.md
-   git commit -m "release: v0.2.0"
+   git commit -m "release: v0.0.1"
    ```
 
 2. Create an annotated tag:
    ```bash
-   git tag -a v0.2.0 -m "v0.2.0"
+   git tag -a v0.0.1 -m "v0.0.1"
    ```
 
 3. Push the tag:
    ```bash
-   git push origin v0.2.0
+   git push origin v0.0.1
    ```
 
 The tag push triggers the release CI workflow (`.github/workflows/release.yml`), which runs `cargo xtask release-check` before building release artifacts.

@@ -12,6 +12,10 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
   CARGO_INCREMENTAL: "0"
 
+concurrency:
+  group: release-check-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release-check:
     runs-on: ubuntu-latest
