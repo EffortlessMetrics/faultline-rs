@@ -10,13 +10,13 @@ faultline uses a single workspace version in the root `Cargo.toml`:
 
 ```toml
 [workspace.package]
-version = "0.1.0"
+version = "0.0.1"
 ```
 
 To bump the version:
 
 1. Update `version` in `[workspace.package]` in the root `Cargo.toml`.
-2. If the `AnalysisReport` schema has changed, ensure `schema_version` in the report struct matches the new version.
+2. If the `AnalysisReport` schema changes, bump its `schema_version` according to the report contract. The schema version is independent of the package version.
 3. Regenerate the JSON Schema if types changed:
    ```bash
    cargo xtask generate-schema
@@ -58,6 +58,18 @@ This executes in sequence:
 
 All three must pass before tagging.
 
+For the first registry release there is no crates.io API baseline. Compare the
+public crates with the reviewed pre-release source revision instead:
+
+```bash
+cargo xtask release-check --baseline-rev 9f6cba2cbd6ac381d732ebdd4f226704ec716217
+```
+
+This still runs deny and audit, then semver-checks for the documented public
+surfaces using strict patch-compatible API checks. The prototype's workspace
+version was not a published release; it is not used to relax compatibility.
+Subsequent releases use the default registry baseline by omitting the flag.
+
 ### Resolving Failures
 
 | Check | Failure | Resolution |
@@ -75,24 +87,78 @@ After the version bump, changelog update, and release check all pass:
 1. Commit the version bump and changelog:
    ```bash
    git add Cargo.toml Cargo.lock CHANGELOG.md
-   git commit -m "release: v0.2.0"
+   git commit -m "release: v0.0.1"
    ```
 
 2. Create an annotated tag:
    ```bash
-   git tag -a v0.2.0 -m "v0.2.0"
+   git tag -a v0.0.1 -m "v0.0.1"
    ```
 
 3. Push the tag:
    ```bash
-   git push origin v0.2.0
+   git push origin v0.0.1
    ```
 
 The tag push triggers the release CI workflow (`.github/workflows/release.yml`), which runs `cargo xtask release-check` before building release artifacts.
 
+## crates.io Publication
+
+The initial registry release targets `0.0.1`. Publish these packages in dependency
+order, all at the workspace version:
+
+1. `faultline-codes`
+2. `faultline-types`
+3. `faultline-localization`
+4. `faultline-surface`
+5. `faultline-ports`
+6. `faultline-app`
+7. `faultline-git`
+8. `faultline-probe-exec`
+9. `faultline-store`
+10. `faultline-render`
+11. `faultline-junit`
+12. `faultline-loader`
+13. `faultline-sarif`
+14. `faultline-cli`
+
+`faultline-fixtures` and `xtask` are private workspace tooling and must not be
+published. Internal runtime dependencies include both a local path and a registry
+version; unversioned development dependencies on fixtures are omitted by Cargo
+when packaging.
+
+The release workflow runs checks only. Use an existing authenticated Cargo
+session for publication after the release checks and independent review pass.
+Cargo 1.93 supports checking the complete graph before uploading any package:
+
+```bash
+cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked
+cargo publish --dry-run --workspace --exclude xtask --exclude faultline-fixtures --locked
+```
+
+Publish the reviewed graph with `cargo publish --workspace --exclude xtask
+--exclude faultline-fixtures --locked`, or publish individual packages in the
+order above with `cargo publish --locked -p <package>`. Individual dependent
+package checks require the earlier packages to be available in the registry.
+Confirm each new version's repository identity on crates.io.
+
+Before publication, confirm that each package archive contains the final README
+and package description. These are the crates.io landing-page copy.
+
+After publication, verify installation with:
+
+```bash
+cargo install faultline-cli --version 0.0.1 --locked
+faultline-cli --help
+```
+
+The installed executable retains the existing name `faultline-cli`.
+The report schema version is independent of
+the package version and remains unchanged when only release metadata changes.
+
 ## Binary Distribution
 
-faultline is currently distributed as a source-only Rust project. Binary distribution decisions are deferred until the project reaches a stable release.
+The crates.io package installs by compiling Rust source. Prebuilt platform binaries are not provided; binary distribution decisions are deferred until the project reaches a stable release.
 
 When binary distribution is adopted:
 - The release CI workflow will build platform binaries (Linux, macOS, Windows).

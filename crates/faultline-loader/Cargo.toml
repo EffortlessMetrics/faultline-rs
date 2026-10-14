@@ -3,11 +3,16 @@ name = "faultline-loader"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Validated loading of faultline analysis reports"
 
 [dependencies]
 serde_json.workspace = true
-faultline-types = { path = "../faultline-types" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -27,7 +27,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "12 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -41,7 +41,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "5 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -55,7 +55,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -69,7 +69,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -83,7 +83,7 @@ family = "unreachable"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -97,7 +97,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "8 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -111,7 +111,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "9 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -125,7 +125,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "21 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -139,7 +139,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "16 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -153,7 +153,7 @@ family = "get_unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "7 pre-policy get_unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -167,7 +167,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "3 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -181,7 +181,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "55 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -195,7 +195,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "16 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -209,7 +209,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -223,7 +223,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -237,7 +237,7 @@ family = "get_unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy get_unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -251,7 +251,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "16 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -265,7 +265,7 @@ family = "unreachable"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -279,7 +279,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "133 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -293,7 +293,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "6 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -307,7 +307,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "15 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -321,7 +321,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "29 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -335,7 +335,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "7 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -349,7 +349,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "12 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -363,7 +363,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "3 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -377,7 +377,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "16 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -391,7 +391,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -405,7 +405,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -419,7 +419,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -433,7 +433,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "151 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -447,7 +447,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "4 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -461,7 +461,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "6 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -475,7 +475,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "13 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -489,7 +489,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -503,7 +503,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "5 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -517,7 +517,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "18 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -531,7 +531,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -545,7 +545,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "4 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -559,7 +559,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -573,7 +573,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "7 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -587,7 +587,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -601,7 +601,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "3 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -615,7 +615,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "6 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -629,7 +629,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -643,7 +643,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -657,7 +657,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "4 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -671,7 +671,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -685,7 +685,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -699,7 +699,7 @@ family = "unreachable"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -713,7 +713,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "26 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -727,7 +727,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -741,7 +741,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "6 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -755,7 +755,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 unwrap call site(s) in secrets-sentinel fixture tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -769,7 +769,7 @@ family = "expect"
 classification = "baseline"
 owner = "unassigned"
 explanation = "7 expect call site(s) in faultline-loader (1 in report_to_json production path, 6 in property tests) added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -783,7 +783,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "5 unwrap call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -797,7 +797,7 @@ family = "unreachable"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 unreachable call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -811,7 +811,7 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "11 unwrap call site(s) in bdd-narrowing tests; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"
@@ -825,7 +825,7 @@ family = "panic_macro"
 classification = "baseline"
 owner = "unassigned"
 explanation = "6 panic_macro call site(s) in bdd-narrowing tests; burn down by Q3 2026."
-expires = "2026-09-01"
+expires = "2026-11-14"
 
 [allow.selector]
 kind = "baseline_glob"

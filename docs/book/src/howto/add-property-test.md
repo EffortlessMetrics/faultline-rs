@@ -97,7 +97,7 @@ If the test fails, proptest will print a minimal counterexample. Investigate whe
 2. The code has a bug — fix the code
 3. The specification is unclear — ask a maintainer before changing acceptance criteria
 
-Do not suppress or weaken a failing property test without maintainer approval (see the Human Review Gate pattern in the [Pattern Catalog](../../patterns/catalog.md)).
+Do not suppress or weaken a failing property test without maintainer approval (see the Human Review Gate pattern in the [Pattern Catalog](../../../patterns/catalog.md)).
 
 ## Step 6: Update the Scenario Atlas
 

@@ -3,12 +3,17 @@ name = "faultline-render"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "JSON, HTML and Markdown rendering for faultline analysis reports"
 
 [dependencies]
 serde_json.workspace = true
-faultline-types = { path = "../faultline-types" }
-faultline-codes = { path = "../faultline-codes" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
 
 [dev-dependencies]
 proptest.workspace = true

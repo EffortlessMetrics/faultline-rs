@@ -3,13 +3,18 @@ name = "faultline-store"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Filesystem-backed run persistence for faultline"
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-faultline-ports = { path = "../faultline-ports" }
-faultline-types = { path = "../faultline-types" }
+faultline-ports = { path = "../faultline-ports", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
@@ -17,7 +22,7 @@ libc = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 proptest = { workspace = true }
-faultline-codes = { path = "../faultline-codes" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
 faultline-fixtures = { path = "../faultline-fixtures" }
 
 [lints]

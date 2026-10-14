@@ -3,7 +3,12 @@ name = "faultline-types"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Shared value types and report contracts for faultline"
 
 [dependencies]
 serde.workspace = true
@@ -11,7 +16,7 @@ serde_json.workspace = true
 thiserror.workspace = true
 schemars.workspace = true
 regex.workspace = true
-faultline-codes = { path = "../faultline-codes" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
 
 [dev-dependencies]
 proptest.workspace = true

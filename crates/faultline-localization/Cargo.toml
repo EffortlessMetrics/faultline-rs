@@ -3,11 +3,16 @@ name = "faultline-localization"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Regression-window search engine for faultline"
 
 [dependencies]
-faultline-codes = { path = "../faultline-codes" }
-faultline-types = { path = "../faultline-types" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [dev-dependencies]
 proptest = { workspace = true }

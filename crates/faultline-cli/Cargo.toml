@@ -3,7 +3,12 @@ name = "faultline-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Find the smallest credible regression window in Git history with your own test or build command"
 
 [dependencies]
 clap.workspace = true
@@ -12,16 +17,16 @@ serde_json.workspace = true
 flate2 = "1"
 tar = "0.4"
 tempfile = "3"
-faultline-app = { path = "../faultline-app" }
-faultline-codes = { path = "../faultline-codes" }
-faultline-git = { path = "../faultline-git" }
-faultline-junit = { path = "../faultline-junit" }
-faultline-loader = { path = "../faultline-loader" }
-faultline-probe-exec = { path = "../faultline-probe-exec" }
-faultline-render = { path = "../faultline-render" }
-faultline-sarif = { path = "../faultline-sarif" }
-faultline-store = { path = "../faultline-store" }
-faultline-types = { path = "../faultline-types" }
+faultline-app = { path = "../faultline-app", version = "0.0.1" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
+faultline-git = { path = "../faultline-git", version = "0.0.1" }
+faultline-junit = { path = "../faultline-junit", version = "0.0.1" }
+faultline-loader = { path = "../faultline-loader", version = "0.0.1" }
+faultline-probe-exec = { path = "../faultline-probe-exec", version = "0.0.1" }
+faultline-render = { path = "../faultline-render", version = "0.0.1" }
+faultline-sarif = { path = "../faultline-sarif", version = "0.0.1" }
+faultline-store = { path = "../faultline-store", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [dev-dependencies]
 proptest.workspace = true

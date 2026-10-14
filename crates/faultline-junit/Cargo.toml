@@ -3,14 +3,19 @@ name = "faultline-junit"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+license-file.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "JUnit XML export for faultline analysis reports"
 
 [dependencies]
-faultline-types = { path = "../faultline-types" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 quick-xml.workspace = true
 
 [dev-dependencies]
-faultline-codes = { path = "../faultline-codes" }
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
 faultline-fixtures = { path = "../faultline-fixtures" }
 proptest = { workspace = true }
 

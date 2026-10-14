@@ -1,128 +1,63 @@
-# Your First Faultline Run
+# Find where a regression began
 
-This tutorial walks you through installing faultline, running it against a Git repository, and reading the output artifacts.
+Your test or build passed at an earlier commit and fails now. Use faultline to
+find the smallest window the results support, then inspect those commits.
 
-## Prerequisites
+## Start with a check you trust
 
-- Rust stable toolchain (install via [rustup](https://rustup.rs/))
-- Git installed and on your PATH
-- A Git repository with a known regression (a good commit and a bad commit)
+Choose a command you can run repeatedly at older commits. Confirm that it passes
+at your good commit and fails at your bad commit. If `cargo test` captures the
+problem, use that same command throughout the investigation.
 
-## Step 1: Install faultline
-
-Clone the repository and build the CLI:
-
-```bash
-git clone https://github.com/your-org/faultline.git
-cd faultline
-cargo build --release
-```
-
-The binary is at `target/release/faultline-cli`. You can add it to your PATH or invoke it directly.
-
-## Step 2: Identify your regression boundaries
-
-You need two pieces of information:
-
-1. A **good** commit — a revision where your test or build passes
-2. A **bad** commit — a revision where it fails
-
-For example, if your tests pass on `v1.0.0` but fail on `main`:
+You need Git and Rust 1.93 or newer. Install the initial release:
 
 ```bash
-git log --oneline v1.0.0..main
+cargo install faultline-cli --version 0.0.1 --locked
 ```
 
-## Step 3: Write a predicate
+If the release is not yet available, [build from source](../../../../BUILDING.md).
+The executable is named `faultline-cli`.
 
-A predicate is a command that faultline runs at each candidate revision. It must follow the [predicate contract](../reference/predicate-contract.md):
+## Run the investigation
 
-- Exit `0` → pass
-- Exit `125` → skip (untestable revision)
-- Any other non-zero exit → fail
-- Timeout → indeterminate
-
-For example, to test whether `cargo test` passes:
+From your project's directory, replace `GOOD_COMMIT` with a commit where the
+check passes. Use `HEAD` as the bad commit only if the check fails there:
 
 ```bash
-# Using --cmd (shell command)
-faultline-cli --repo . --good v1.0.0 --bad main --cmd "cargo test"
+faultline-cli --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 ```
 
-Or using a standalone script:
+For a different check, replace `cargo test` with your command. Choose the shell
+with `--shell` when needed. To run a program directly, use `--program` and supply
+each argument with `--arg`.
+The [command contract](../reference/predicate-contract.md) explains passing,
+failing, skipped and timed-out checks.
 
-```bash
-# Using --program (direct exec)
-faultline-cli --repo . --good v1.0.0 --bad main --program ./test.sh
-```
+## Read the evidence
 
-## Step 4: Run faultline
+Open `faultline-report/index.html` in your browser. It shows the checked commits,
+their results and the reported regression window.
+Keep `faultline-report/analysis.json` when you need to share or automate the run.
 
-Run the full command:
+| Result | What to do next |
+|--------|-----------------|
+| FirstBad | Compare the last passing and first failing commits and investigate the relevant changes. |
+| SuspectWindow | Inspect the reported range and the reasons that kept it from narrowing further. |
+| Inconclusive | Read the reasons, correct the command or boundaries, and run again. |
 
-```bash
-cargo run -p faultline-cli -- \
-  --repo /path/to/your/repo \
-  --good abc1234 \
-  --bad def5678 \
-  --cmd "cargo test --lib" \
-  --output-dir faultline-report
-```
+The result points you toward changes to investigate. You still need to establish
+the cause and fix it. A flaky command, a timeout or an untestable commit may leave
+a range rather than one commit.
 
-Faultline will:
+## Improve or share the run
 
-1. Enumerate the commits between `--good` and `--bad`
-2. Probe boundary commits first (the good and bad endpoints)
-3. Use binary narrowing to select the next candidate
-4. Run your predicate at each candidate revision using a disposable worktree
-5. Converge on the narrowest credible regression window
+- Use `--retries` for a command that sometimes changes its result.
+- Repeated investigations can reuse previous results. Fresh rechecks are not
+  currently available through the command; see the
+  [rerun limitation](../reference/cli-flags.md#run-mode-flags).
+- Use `--output-dir` to keep separate investigations in different folders.
+- Review reports before sharing them, even though common secret patterns and
+  environment values are scrubbed by default.
 
-You'll see output like:
-
-```
-run-id       a1b2c3d4
-observations 7
-output-dir   faultline-report
-artifacts    faultline-report/analysis.json
-             faultline-report/index.html
-history      ancestry-path
-outcome      FirstBad  last_good=abc1234 first_bad=def5678 confidence=90(high)
-```
-
-## Step 5: Read the output artifacts
-
-Faultline produces two artifacts in the output directory:
-
-### analysis.json
-
-A machine-readable JSON report containing the full analysis: the request parameters, the revision sequence, all probe observations, the localization outcome, changed paths, and surface summary. This file conforms to the [artifact schema](../reference/artifact-schema.md).
-
-```bash
-cat faultline-report/analysis.json | jq '.outcome'
-```
-
-### index.html
-
-A human-readable HTML report you can open in any browser. It shows the same information in a visual layout with the commit timeline, observation results, and outcome summary.
-
-```bash
-open faultline-report/index.html
-```
-
-## Step 6: Interpret the outcome
-
-Faultline produces one of three outcome types:
-
-| Outcome | Meaning |
-|---------|---------|
-| **FirstBad** | Exact regression commit identified with high confidence |
-| **SuspectWindow** | A range of suspect commits, with reasons for ambiguity (skipped revisions, non-monotonic evidence, etc.) |
-| **Inconclusive** | Not enough evidence to narrow the window (missing boundaries, max probes exhausted, etc.) |
-
-If you get a `SuspectWindow` or `Inconclusive` result, check the `reasons` field in the JSON output for details on what prevented convergence.
-
-## Next steps
-
-- Learn about [CLI flags](../reference/cli-flags.md) for advanced options
-- Read [How Localization Works](../explanations/localization.md) to understand the algorithm
-- See [Adding a New Property Test](../howto/add-property-test.md) if you're contributing to faultline
+See [CLI options](../reference/cli-flags.md) for the full command reference.
+For automated consumers, use the [report reference](../reference/artifact-schema.md).

@@ -1,10 +1,8 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+unmaintained = "all"
 yanked = "deny"
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -14,9 +12,15 @@ allow = [
     "Unicode-DFS-2016",
 ]
 
+[[licenses.exceptions]]
+name = "unicode-ident"
+version = "=1.0.24"
+allow = ["Unicode-3.0"]
+
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"
