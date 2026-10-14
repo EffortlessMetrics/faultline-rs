@@ -21,7 +21,7 @@ Tool versions are pinned in [.mise.toml](.mise.toml). If you use [mise](https://
 
 ## Finding Work
 
-- Check [GitHub Issues](../../issues) for open tasks. Issues labeled `good first issue` are scoped for newcomers.
+- Check [GitHub Issues](https://github.com/EffortlessMetrics/faultline-rs/issues) for open tasks. Issues labeled `good first issue` are scoped for newcomers.
 - **Adapter crates** (`faultline-git`, `faultline-store`, `faultline-render`, `faultline-sarif`, `faultline-junit`) are the best starting point — they have clear boundaries and self-contained tests.
 - The [crate map](docs/crate-map.md) shows every crate's responsibility and tier.
 
@@ -83,7 +83,7 @@ For the full picture, see [docs/architecture.md](docs/architecture.md) and [AGEN
 
 ## Communication
 
-- Use [GitHub Issues](../../issues) for bug reports, feature requests, and questions.
+- Use [GitHub Issues](https://github.com/EffortlessMetrics/faultline-rs/issues) for bug reports, feature requests, and questions.
 - If you are unsure whether a change is welcome, open an issue first to discuss the approach before writing code.
 
 ## Further Reading
