@@ -23,6 +23,7 @@ resolver = "2"
 version = "0.0.1"
 edition = "2024"
 license = "Apache-2.0"
+license-file = "LICENSE"
 authors = ["faultline contributors"]
 rust-version = "1.93"
 repository = "https://github.com/EffortlessMetrics/faultline-rs"
