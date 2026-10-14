@@ -52,13 +52,15 @@ Supporting flags:
 
 ## Run mode flags
 
-These flags are mutually exclusive:
+These flags are mutually exclusive. The current CLI uses cached observations
+for all three modes. `--force` and `--fresh` are accepted and validated, but do
+not currently request fresh checks:
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--resume` | bool | `false` | Explicitly resume from cached observations (default behavior) |
-| `--force` | bool | `false` | Discard cached observations and re-probe all commits |
-| `--fresh` | bool | `false` | Delete the entire run directory and start from scratch |
+| `--force` | bool | `false` | Currently does not clear cached observations or force re-probing |
+| `--fresh` | bool | `false` | Currently does not delete the run directory or start a fresh run |
 
 If none of these are specified, faultline resumes from cached observations by default.
 

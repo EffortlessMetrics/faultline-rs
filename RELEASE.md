@@ -140,8 +140,8 @@ cargo install faultline-cli --version 0.0.1 --locked
 faultline-cli --help
 ```
 
-The installed executable retains the existing name `faultline-cli`; its help
-uses the product name `faultline`. The report schema version is independent of
+The installed executable retains the existing name `faultline-cli`.
+The report schema version is independent of
 the package version and remains unchanged when only release metadata changes.
 
 ## Binary Distribution

@@ -16,7 +16,7 @@ cargo install faultline-cli --version 0.0.1 --locked
 ```
 
 If the release is not yet available, [build from source](../../../../BUILDING.md).
-The executable is named `faultline-cli`, even though its help uses `faultline`.
+The executable is named `faultline-cli`.
 
 ## Run the investigation
 
@@ -24,11 +24,12 @@ From your project's directory, replace `GOOD_COMMIT` with a commit where the
 check passes. Use `HEAD` as the bad commit only if the check fails there:
 
 ```bash
-faultline-cli --good GOOD_COMMIT --bad HEAD --kind test --program cargo --arg test
+faultline-cli --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 ```
 
-For another program, change `--program` and supply each argument with `--arg`.
-For a shell command, use `--cmd` and choose the shell with `--shell` when needed.
+For a different check, replace `cargo test` with your command. Choose the shell
+with `--shell` when needed. To run a program directly, use `--program` and supply
+each argument with `--arg`.
 The [command contract](../reference/predicate-contract.md) explains passing,
 failing, skipped and timed-out checks.
 
@@ -51,7 +52,9 @@ a range rather than one commit.
 ## Improve or share the run
 
 - Use `--retries` for a command that sometimes changes its result.
-- Reruns reuse previous observations; use `--force` when you need fresh checks.
+- Repeated investigations can reuse previous results. Fresh rechecks are not
+  currently available through the command; see the
+  [rerun limitation](../reference/cli-flags.md#run-mode-flags).
 - Use `--output-dir` to keep separate investigations in different folders.
 - Review reports before sharing them, even though common secret patterns and
   environment values are scrubbed by default.

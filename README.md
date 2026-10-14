@@ -28,15 +28,12 @@ known passing commit. This example uses `HEAD` as the failing commit and
 `cargo test` as the check:
 
 ```bash
-faultline-cli --good GOOD_COMMIT --bad HEAD --kind test --program cargo --arg test
+faultline-cli --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 ```
 
 Use your own test or build command if the project needs a different check.
 The [first-run guide](docs/book/src/tutorials/first-run.md) walks through choosing
 the commits and reading the result.
-
-The installed command is `faultline-cli`; its help text uses the product name
-`faultline`.
 
 ## What you get
 
@@ -55,6 +52,7 @@ checked, what happened, and where to investigate next. Keep
 - You still need to explain and fix the regression after inspecting the reported commits.
 - Flaky results, timeouts and commits that cannot be tested can leave a range or an inconclusive result.
 - Your command needs to run at older commits with the tools and dependencies it requires.
+- Repeated investigations can reuse earlier results. Fresh rechecks are not currently available through the command.
 - Shareable reports scrub common secret patterns and environment values by default. Review the files before sharing; scrubbing cannot recognize every secret.
 
 ## Where to go next
