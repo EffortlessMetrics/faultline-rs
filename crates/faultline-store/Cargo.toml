@@ -4,12 +4,16 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Filesystem-backed run persistence for faultline"
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-faultline-ports = { path = "../faultline-ports" }
-faultline-types = { path = "../faultline-types" }
+faultline-ports = { path = "../faultline-ports", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }

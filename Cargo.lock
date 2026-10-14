@@ -208,7 +208,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "faultline-app"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-localization",
@@ -220,7 +220,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -246,7 +246,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-codes"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "schemars",
  "serde",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-fixtures"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "faultline-codes",
@@ -265,7 +265,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-git"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -278,7 +278,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-junit"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -289,7 +289,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-loader"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-fixtures",
  "faultline-types",
@@ -300,7 +300,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-localization"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -310,14 +310,14 @@ dependencies = [
 
 [[package]]
 name = "faultline-ports"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-types",
 ]
 
 [[package]]
 name = "faultline-probe-exec"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-ports",
@@ -328,7 +328,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-render"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-sarif"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-store"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "faultline-fixtures",
@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-surface"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-types",
  "proptest",
@@ -377,7 +377,7 @@ dependencies = [
 
 [[package]]
 name = "faultline-types"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "faultline-codes",
  "proptest",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "clap",

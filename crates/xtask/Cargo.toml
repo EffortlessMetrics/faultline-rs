@@ -4,15 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+publish = false
 
 [dependencies]
 clap.workspace = true
 anyhow.workspace = true
-faultline-types = { path = "../faultline-types" }
-faultline-loader = { path = "../faultline-loader" }
-faultline-render = { path = "../faultline-render", optional = true }
-faultline-sarif = { path = "../faultline-sarif", optional = true }
-faultline-junit = { path = "../faultline-junit", optional = true }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
+faultline-loader = { path = "../faultline-loader", version = "0.0.1" }
+faultline-render = { path = "../faultline-render", version = "0.0.1", optional = true }
+faultline-sarif = { path = "../faultline-sarif", version = "0.0.1", optional = true }
+faultline-junit = { path = "../faultline-junit", version = "0.0.1", optional = true }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

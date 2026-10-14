@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Infrastructure port traits for faultline regression localization"
 
 [dependencies]
-faultline-types = { path = "../faultline-types" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [lints]
 workspace = true

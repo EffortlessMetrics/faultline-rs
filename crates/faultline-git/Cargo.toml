@@ -4,10 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Git history and disposable worktree adapters for faultline"
 
 [dependencies]
-faultline-ports = { path = "../faultline-ports" }
-faultline-types = { path = "../faultline-types" }
+faultline-ports = { path = "../faultline-ports", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
 [dev-dependencies]
 faultline-codes = { path = "../faultline-codes" }

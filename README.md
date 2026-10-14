@@ -47,7 +47,7 @@ When the history is messy, it returns a suspect window instead of fake precision
 
 ## Current scope
 
-This v0.1 implementation is deliberately narrow.
+This initial implementation is deliberately narrow.
 
 ### Included
 
@@ -221,7 +221,7 @@ Codecov is execution-surface telemetry only; see [Coverage](docs/ci/coverage.md)
 
 ## Packaging
 
-faultline v0.1 is a **source-only release**. Install by cloning the repository and building with `cargo build --release`. See [BUILDING.md](BUILDING.md) for prerequisites and commands. Prebuilt binaries are not provided for v0.1.
+The initial crates.io release targets **0.0.1**. Once published, install it with `cargo install faultline-cli --version 0.0.1 --locked`, then run `faultline-cli --help`. The installed executable is `faultline-cli`; the help text uses the product name `faultline`. Until publication, clone the repository and build with `cargo build --release`. See [BUILDING.md](BUILDING.md) for prerequisites and commands. Prebuilt binaries are not provided.
 
 ## Export commands
 
