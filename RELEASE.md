@@ -58,6 +58,18 @@ This executes in sequence:
 
 All three must pass before tagging.
 
+For the first registry release there is no crates.io API baseline. Compare the
+public crates with the reviewed pre-release source revision instead:
+
+```bash
+cargo xtask release-check --baseline-rev 9f6cba2cbd6ac381d732ebdd4f226704ec716217
+```
+
+This still runs deny and audit, then semver-checks for the documented public
+surfaces using strict patch-compatible API checks. The prototype's workspace
+version was not a published release; it is not used to relax compatibility.
+Subsequent releases use the default registry baseline by omitting the flag.
+
 ### Resolving Failures
 
 | Check | Failure | Resolution |

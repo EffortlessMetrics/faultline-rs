@@ -41,7 +41,11 @@ enum Command {
     /// Build docs and check links
     DocsCheck,
     /// Run cargo-deny + cargo-audit + cargo-semver-checks
-    ReleaseCheck,
+    ReleaseCheck {
+        /// Compare an initial unpublished release with this source revision.
+        #[arg(long)]
+        baseline_rev: Option<String>,
+    },
     /// Generate boilerplate for new repo artifacts
     Scaffold {
         #[command(subcommand)]
@@ -290,7 +294,7 @@ fn main() -> Result<()> {
             println!("\n=== docs-check passed ===");
         }
 
-        Command::ReleaseCheck => {
+        Command::ReleaseCheck { baseline_rev } => {
             tools::ensure_tool("cargo-deny", "cargo install cargo-deny");
             tools::ensure_tool("cargo-audit", "cargo install cargo-audit");
             tools::ensure_tool("cargo-semver-checks", "cargo install cargo-semver-checks");
@@ -298,7 +302,21 @@ fn main() -> Result<()> {
             println!("=== release-check ===\n");
             run_cmd("supply-chain policy", "cargo", &["deny", "check"])?;
             run_cmd("security audit", "cargo", &["audit"])?;
-            run_cmd("semver compatibility", "cargo", &["semver-checks"])?;
+            let mut semver_args = vec![
+                "semver-checks",
+                "-p",
+                "faultline-types",
+                "-p",
+                "faultline-codes",
+                "-p",
+                "faultline-ports",
+            ];
+            if let Some(revision) = baseline_rev.as_deref() {
+                // The prototype version was never published. Require unchanged
+                // public APIs instead of inferring compatibility from that version.
+                semver_args.extend(["--baseline-rev", revision, "--release-type", "patch"]);
+            }
+            run_cmd("semver compatibility", "cargo", &semver_args)?;
             println!("\n=== release-check passed ===");
         }
 

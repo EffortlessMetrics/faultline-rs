@@ -2,18 +2,26 @@ name: Release Check
 
 on:
   push:
+    branches: ["main", "release/**"]
     tags: ["v*"]
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "1"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   release-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.93.1
 
       - uses: actions/cache@v4
         with:
@@ -21,8 +29,68 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: release-check-${{ runner.os }}-1.93.1-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: cargo install cargo-deny cargo-audit cargo-semver-checks
+      - name: Install release check tools
+        run: cargo install --locked --profile dev --target-dir target/release-tools cargo-deny@0.19.0 cargo-audit@0.22.1 cargo-semver-checks@0.47.0
 
-      - run: cargo xtask release-check
+      - name: Release checks
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 --locked | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "faultline-codes"))')"
+          if [ "$version" = "0.0.1" ]; then
+            cargo xtask release-check --baseline-rev 9f6cba2cbd6ac381d732ebdd4f226704ec716217
+          else
+            cargo xtask release-check
+          fi
+
+      - name: Verify package graph
+        run: cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked --jobs 1
+
+      - name: Verify publication without uploading
+        run: cargo publish --dry-run --workspace --exclude xtask --exclude faultline-fixtures --locked --jobs 1
+
+      - name: Inspect clean archive identity and landing copy
+        env:
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, tarfile, tomllib
+          root = pathlib.Path.cwd()
+          expected = {'faultline-codes', 'faultline-types', 'faultline-localization', 'faultline-surface', 'faultline-ports', 'faultline-app', 'faultline-git', 'faultline-probe-exec', 'faultline-store', 'faultline-render', 'faultline-junit', 'faultline-loader', 'faultline-sarif', 'faultline-cli'}
+          source_sha = os.environ['RELEASE_SOURCE_SHA']
+          readme = (root / 'README.md').read_bytes()
+          license_text = (root / 'LICENSE').read_bytes()
+          assert b'END OF TERMS AND CONDITIONS' in license_text
+          archives = sorted((root / 'target/package').glob('*.crate'))
+          receipts = []
+          names = set()
+          for archive in archives:
+              with tarfile.open(archive, 'r:gz') as package:
+                  prefix = archive.name[:-6] + '/'
+                  manifest = tomllib.loads(package.extractfile(prefix + 'Cargo.toml').read().decode())
+                  info = manifest['package']
+                  names.add(info['name'])
+                  assert info['name'] in expected
+                  assert info['version'] == tomllib.loads((root / 'Cargo.toml').read_text())['workspace']['package']['version']
+                  assert info['license'] == 'Apache-2.0'
+                  assert info['rust-version'] == '1.93'
+                  assert info['repository'] == 'https://github.com/EffortlessMetrics/faultline-rs'
+                  assert package.extractfile(prefix + 'LICENSE').read() == license_text
+                  assert package.extractfile(prefix + 'README.md').read() == readme
+                  vcs = json.load(package.extractfile(prefix + '.cargo_vcs_info.json'))
+                  assert vcs['git']['sha1'] == source_sha
+                  assert not vcs['git'].get('dirty', False)
+                  receipts.append({'name': info['name'], 'version': info['version'], 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'source_sha': source_sha, 'license_bytes': len(license_text), 'readme_bytes': len(readme), 'description': info['description']})
+          assert names == expected, (names, expected)
+          output = root / 'target/package/release-receipts.json'
+          output.write_text(json.dumps({'source_sha': source_sha, 'packages': receipts}, indent=2) + '\n')
+          print(output.read_text())
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crates-source-${{ github.sha }}
+          path: |
+            target/package/*.crate
+            target/package/release-receipts.json
+          if-no-files-found: error
