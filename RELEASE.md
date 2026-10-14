@@ -117,11 +117,21 @@ when packaging.
 
 The release workflow runs checks only. Use an existing authenticated Cargo
 session for publication after the release checks and independent review pass.
-Check each package with `cargo package --locked -p <package>` and
-`cargo publish --dry-run --locked -p <package>`, then publish with
-`cargo publish --locked -p <package>`. Dependent package checks require the earlier
-packages to be available in the registry. Confirm each new version's repository
-identity on crates.io before proceeding to the next package.
+Cargo 1.93 supports checking the complete graph before uploading any package:
+
+```bash
+cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked
+cargo publish --dry-run --workspace --exclude xtask --exclude faultline-fixtures --locked
+```
+
+Publish the reviewed graph with `cargo publish --workspace --exclude xtask
+--exclude faultline-fixtures --locked`, or publish individual packages in the
+order above with `cargo publish --locked -p <package>`. Individual dependent
+package checks require the earlier packages to be available in the registry.
+Confirm each new version's repository identity on crates.io.
+
+Before publication, confirm that each package archive contains the final README
+and package description. These are the crates.io landing-page copy.
 
 After publication, verify installation with:
 

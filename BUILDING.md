@@ -1,49 +1,31 @@
-# Building faultline
+# Build faultline from source
 
-## Prerequisites
+Use this path when the crates.io release is not yet available or you need the
+current repository changes.
 
-- **Rust stable** (edition 2024) — install via [rustup](https://rustup.rs/)
-- **git** on PATH — faultline shells out to the system `git` binary
+You need Git and Rust 1.93 or newer. See [rustup](https://rustup.rs/) if Rust is
+not installed.
 
-## Build
-
-```bash
-cargo build --workspace
-```
-
-## Test
+## Build and start
 
 ```bash
-cargo test --workspace
+git clone https://github.com/EffortlessMetrics/faultline-rs.git
+cd faultline-rs
+cargo build --release -p faultline-cli
 ```
 
-Run a specific crate's tests:
+Run `target/release/faultline-cli --help` (`faultline-cli.exe` on Windows).
+Then follow the [first-run guide](docs/book/src/tutorials/first-run.md) in the
+repository you want to investigate.
+
+## Contributor checks
 
 ```bash
-cargo test -p faultline-localization
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked
 ```
 
-## Formatting
-
-```bash
-cargo fmt --all --check   # verify
-cargo fmt --all           # fix
-```
-
-## Linting
-
-```bash
-cargo clippy --workspace -- -D warnings
-```
-
-## Run the CLI
-
-```bash
-cargo run -p faultline-cli -- --help
-```
-
-## Notes
-
-- faultline shells out to the system `git` binary for history linearization and worktree management.
-- The probe adapter runs your predicate command in disposable linked worktrees under `.faultline/scratch/`.
-- Reports are emitted as `analysis.json` (structured) and `index.html` (human-readable) in the output directory.
+The repository's complete checks are documented in [TESTING.md](TESTING.md).
+See [AGENTS.md](AGENTS.md) for contributor orientation and
+[RELEASE.md](RELEASE.md) for publication checks.

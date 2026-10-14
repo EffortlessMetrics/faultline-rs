@@ -7,7 +7,7 @@ authors.workspace = true
 rust-version.workspace = true
 repository.workspace = true
 readme.workspace = true
-description = "Local-first regression localization for Git repositories"
+description = "Find the smallest credible regression window in Git history with your own test or build command"
 
 [dependencies]
 clap.workspace = true
