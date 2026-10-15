@@ -136,7 +136,7 @@ version; unversioned development dependencies on fixtures are omitted by Cargo
 when packaging.
 
 The release workflow uses the existing repository `CARGO_REGISTRY_TOKEN` secret
-only in its tag-only publication step. It has read-only GitHub contents access;
+only in its publication step after a matching tag or explicitly enabled recovery. It has read-only GitHub contents access;
 checkout does not persist Git credentials. Do not print, copy, or pass the token
 on the command line. Independent review and required checks must pass before
 creating the release tag. Cargo 1.93 supports checking the complete graph before
@@ -157,6 +157,39 @@ checksums against the qualified archive receipts and verifies the exact-version
 CLI installation in a fresh install directory. These checks do not receive the
 publishing token. A failure is not a completed release; keep the release issue
 open until registry and installation verification succeed.
+
+### Immutable v0.0.1 checkout recovery
+
+The first v0.0.1 tag run failed before packaging or upload because checkout's
+implicit tag-plus-commit fallback replaced only the runner-local annotated tag
+ref with its peeled commit. The remote tag remains immutable. New runs use a
+SHA-only controller checkout, preserving the fetched annotated tag object.
+
+After this workflow repair is reviewed, merged and qualified, the release
+operator can dispatch `release.yml` from `main` with `publish=false` (the default).
+This narrowly pinned recovery checks the existing v0.0.1 object
+`bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0`, source commit
+`a2c59ef1cedfee120762a4e7727b62224e57a8e7` and tree
+`66deea4bc3e0a490eda8e08f4392dead3f62c177`. There are no arbitrary tag or source
+inputs. The fixed controller's tests run before checkout selects the unchanged
+release source. Validation still comes from the executing fixed workflow.
+Controller SHA and release-source SHA are separate identities; receipts and
+artifact names use the validated release source.
+
+The default dispatch reruns all checks, cache isolation, package verification,
+publication dry-run and archive inspection without publishing. Independently
+compare its 14 archives and complete internal lock graph with the qualified
+merged-main artifact from Release Check run `38725082016`. Recheck that all 14
+registry versions remain absent before the authorized operator dispatches the
+same reviewed main workflow with `publish=true`. This repeats qualification
+before the existing credential-bound upload and registry/install verification.
+A default-off dispatch cannot be treated as publication. If any version is
+already present, follow the partial-publication process below instead.
+
+Do not rerun the old failed tag workflow, move the tag or select a newer package
+source to recover this failure. Dispatch and tag runs share the same release
+concurrency group. Source-workflow maintenance does not itself authorize the
+operator to publish.
 
 ### Interrupted publication and reruns
 
