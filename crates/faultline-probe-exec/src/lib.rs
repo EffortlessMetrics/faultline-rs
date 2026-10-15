@@ -46,9 +46,7 @@ where
         .name(format!("faultline-{stream_name}-reader"))
         .spawn(move || read_stream(stream))
         .map_err(|err| {
-            FaultlineError::Probe(format!(
-                "failed to start probe {stream_name} reader: {err}"
-            ))
+            FaultlineError::Probe(format!("failed to start probe {stream_name} reader: {err}"))
         })
 }
 
