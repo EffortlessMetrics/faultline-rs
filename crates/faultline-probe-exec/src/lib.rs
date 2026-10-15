@@ -415,7 +415,10 @@ mod tests {
     fn truncate_output_over_limit_truncated() {
         let input = "a".repeat(DEFAULT_TRUNCATION_LIMIT + 100);
         let result = truncate_output(&input, DEFAULT_TRUNCATION_LIMIT);
-        assert_eq!(result.len(), DEFAULT_TRUNCATION_LIMIT + TRUNCATION_MARKER.len());
+        assert_eq!(
+            result.len(),
+            DEFAULT_TRUNCATION_LIMIT + TRUNCATION_MARKER.len()
+        );
         assert!(result.ends_with(TRUNCATION_MARKER));
         assert_eq!(
             &result[..DEFAULT_TRUNCATION_LIMIT],
@@ -540,7 +543,10 @@ mod tests {
             .run_with_limit(&checkout, &probe, small_limit)
             .expect("probe should complete");
 
-        assert!(!obs.timed_out, "large output should not cause a false timeout");
+        assert!(
+            !obs.timed_out,
+            "large output should not cause a false timeout"
+        );
         assert_eq!(obs.class, ObservationClass::Pass);
         assert!(
             obs.stdout.ends_with(TRUNCATION_MARKER),
