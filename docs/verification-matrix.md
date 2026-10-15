@@ -16,7 +16,7 @@ This matrix maps each workspace crate to its applicable verification techniques.
 | `faultline-probe-exec` | adapter | ✓ | ✓ | — | — | ✓ | — |
 | `faultline-store` | adapter | ✓ | ✓ | — | ✓ | ✓ | — |
 | `faultline-render` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-| `faultline-cli` | entry | ✓ | ✓ | ✓ | ✓ | — | ✓ |
+| `faultline-rs` | entry | ✓ | ✓ | ✓ | ✓ | — | ✓ |
 | `faultline-loader` | infrastructure | ✓ | ✓ | — | — | — | — |
 | `faultline-fixtures` | testing | — | — | — | — | — | — |
 | `faultline-sarif` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |

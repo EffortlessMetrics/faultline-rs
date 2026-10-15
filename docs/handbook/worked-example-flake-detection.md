@@ -9,7 +9,7 @@ You're bisecting a test failure, but the failing test is known to be intermitten
 ## Step 1: Run faultline without flake detection (the problem)
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . \
   --good v1.0 \
   --bad main \
@@ -30,7 +30,7 @@ The low confidence and non-monotonic evidence suggest the predicate is flaky —
 Re-run with `--retries` and `--stability-threshold`:
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . \
   --good v1.0 \
   --bad main \
@@ -112,7 +112,7 @@ Lower thresholds tolerate more noise but may misclassify borderline commits. Sta
 If you want to manually verify a flaky commit, use the reproduction capsule:
 
 ```bash
-faultline reproduce --run-dir regression-report --commit abc1234 --shell
+faultline-rs reproduce --run-dir regression-report --commit abc1234 --shell
 ```
 
 This emits a shell script that checks out the exact commit, sets the environment, and runs the predicate — so you can reproduce the probe conditions exactly.

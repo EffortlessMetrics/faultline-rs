@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Rename the public CLI package and executable to `faultline-rs`; align clap help, diagnostic prefixes and current installation guidance while preserving all thirteen supporting library package names.
+- Use Cargo-selected integration-test executables so a stale `faultline-cli` binary cannot satisfy naming qualification.
+- Qualify nine fresh packages against five immutable published `0.0.1` anchors, with exact mixed-source archive and lock-graph receipts, distinct source tag, and paced checksum-confirmed uploads.
+
 ## 0.0.1 — 2026-10-14
 
 ### Added

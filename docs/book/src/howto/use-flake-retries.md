@@ -14,7 +14,7 @@ Enable retries when:
 The `--retries` flag sets how many additional probe attempts faultline makes per commit (on top of the initial probe):
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . --good v1.0 --bad main \
   --cmd "cargo test" \
   --retries 3
@@ -27,7 +27,7 @@ This probes each commit up to 4 times (1 initial + 3 retries). The final classif
 The `--stability-threshold` flag (0.0–1.0) controls how much agreement is required to consider a result stable:
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . --good v1.0 --bad main \
   --cmd "cargo test" \
   --retries 3 \

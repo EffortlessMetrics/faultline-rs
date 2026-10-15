@@ -33,13 +33,13 @@ When the predicate is noisy (non-deterministic), faultline will reduce confidenc
 A simple test predicate:
 
 ```bash
-faultline-cli --good v1.0 --bad main --cmd "cargo test --lib my_module"
+faultline-rs --good v1.0 --bad main --cmd "cargo test --lib my_module"
 ```
 
 A build predicate:
 
 ```bash
-faultline-cli --good v1.0 --bad main --cmd "cargo build" --kind build
+faultline-rs --good v1.0 --bad main --cmd "cargo build" --kind build
 ```
 
 A predicate that skips revisions missing a file:
@@ -54,5 +54,5 @@ cargo test --lib feature_tests
 ```
 
 ```bash
-faultline-cli --good v1.0 --bad main --program ./test-with-skip.sh
+faultline-rs --good v1.0 --bad main --program ./test-with-skip.sh
 ```

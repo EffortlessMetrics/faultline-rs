@@ -5,7 +5,7 @@ Every workspace crate with its tier, direct dependencies, applicable verificatio
 ## Overview
 
 ```text
-faultline-cli (entry: +reproduce, +diff-runs, +export-markdown, --retries, --stability-threshold, --markdown)
+faultline-rs (entry: +reproduce, +diff-runs, +export-markdown, --retries, --stability-threshold, --markdown)
     ↓
 faultline-app (app: +flake retry loop, +capsule emit, +suspect surface wiring)
     ↓                         ↓
@@ -40,7 +40,7 @@ Tooling: xtask (+smoke, +docs-check, +check-scenarios, +export-*)
 | `faultline-probe-exec` | adapter | `faultline-ports`, `faultline-types`, `faultline-codes` | property, BDD/unit, mutation | Process execution adapter — implements `ProbePort`, spawns the operator's predicate command, captures output, enforces timeouts, classifies exit codes. |
 | `faultline-store` | adapter | `faultline-ports`, `faultline-types`, `faultline-codes` | property, BDD/unit, fuzz, mutation | Filesystem-backed run persistence — implements `RunStorePort` with atomic writes, lock files, and per-commit probe log storage. |
 | `faultline-render` | adapter | `faultline-types`, `faultline-codes` | property, unit, golden, fuzz, mutation | JSON + HTML + Markdown artifact writers — produces `analysis.json`, self-contained `index.html`, and Markdown dossier from an `AnalysisReport`. Renders ranked suspect surface with owner hints in all output formats. |
-| `faultline-cli` | entry | `faultline-app`, `faultline-git`, `faultline-probe-exec`, `faultline-store`, `faultline-render`, `faultline-types`, `faultline-codes`, `clap` | property, unit, golden, fuzz, smoke | Operator-facing CLI — parses arguments (including `--retries`, `--stability-threshold`, `--markdown`), constructs adapters, invokes `FaultlineApp::localize`, renders artifacts, prints summary. Subcommands: `reproduce`, `diff-runs`, `export-markdown`. |
+| `faultline-rs` | entry | `faultline-app`, `faultline-git`, `faultline-probe-exec`, `faultline-store`, `faultline-render`, `faultline-types`, `faultline-codes`, `clap` | property, unit, golden, fuzz, smoke | Operator-facing CLI — parses arguments (including `--retries`, `--stability-threshold`, `--markdown`), constructs adapters, invokes `FaultlineApp::localize`, renders artifacts, prints summary. Subcommands: `reproduce`, `diff-runs`, `export-markdown`. |
 | `faultline-fixtures` | testing | `faultline-types` | — | Fixture builders for BDD-style test scenarios — `RevisionSequenceBuilder` and `GitRepoBuilder` for constructing synthetic test data. Arbitrary generators for all new types (`SuspectEntry`, `FlakeSignal`, `FlakePolicy`, `ReproductionCapsule`, `RunComparison`). |
 | `faultline-sarif` | adapter | `faultline-types`, `serde`, `serde_json` | property, unit, golden, fuzz, mutation | SARIF v2.1.0 export adapter — converts an `AnalysisReport` (including suspect surface locations) into a SARIF document for GitHub Code Scanning and other SARIF-compatible tools. |
 | `faultline-junit` | adapter | `faultline-types`, `quick-xml` | property, unit, golden, fuzz, mutation | JUnit XML export adapter — converts an `AnalysisReport` (including suspect surface in system-out) into JUnit XML for CI dashboards. |

@@ -1,403 +1,869 @@
-"""Offline contracts for the actual inline release guards (Python 3.11+).
+"""Offline contracts against the real scoped release helper (Python 3.11+).
 
-Generated archives are fixtures, not Cargo qualification. No Cargo, network,
-credentials, or downloaded release artifacts are used. To reproduce RED against
-an older workflow, set FAULTLINE_RELEASE_WORKFLOW to that workflow's path.
+All .crate data is generated. Every subprocess and HTTP boundary is denied by
+installation of the harness, then replaced with an explicit spy where needed.
+No Cargo, Git subprocess, registry, credentials or environment management is performed.
 """
+from __future__ import annotations
 
+from contextlib import ExitStack, redirect_stdout
+import copy
 import gzip
-import hashlib
+import importlib.util
 import io
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
-import tarfile
 import tempfile
-import textwrap
+import tarfile
+import tomllib
 import unittest
+from unittest import mock
+import urllib.error
+import zlib
+
+from release_fixtures import (ANCHORS, BUILD, DEV, FRESH, LICENSE, NEW_README,
+                               NEW_SOURCE, NEW_TAG, NEW_TREE, NORMAL, OLD_README,
+                               OLD_SOURCE, OLD_TAG, OLD_TREE, ORDER, PUBLIC,
+                               REGISTRY, REPOSITORY, SyntheticRelease, VERSION,
+                               archive_bytes, closure, sha, toml_lock)
+
+HERE = Path(__file__).resolve()
+DEFAULT_HELPER = HERE.parents[1] / "scripts/release.py"
+if not DEFAULT_HELPER.exists():
+    DEFAULT_HELPER = HERE.parents[2] / "proposed/.github/scripts/release.py"
+HELPER = Path(os.environ.get("FAULTLINE_RELEASE_HELPER", DEFAULT_HELPER)).resolve()
+SPEC = importlib.util.spec_from_file_location("faultline_release_under_test", HELPER)
+release = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(release)
+PUBLISH_ORDER = [name for name in ORDER if name in FRESH]
+REAL_ANCHOR_HASHES = {
+    "faultline-codes": "5264d08a500db06e13588eef398e3d89a93588d9e2b4ed08897ef8325b6d74cc",
+    "faultline-types": "cad57d092855ffc41feaada58016c5c0d6b4ae62b09bbbf53c36f19ab6bb458a",
+    "faultline-junit": "a27af02b740111d56bdc9a9b2d43b0afb0c661a3e110a532f4406fff97253de9",
+    "faultline-loader": "dba9c88801b17ad020c625e7fbe9221feca13bd7f504c1bec2f3a5331dd43332",
+    "faultline-localization": "86f3dcd7cb3f5ff44a1c1c3de1dc20123f2bdc884aa929a9a766d3ab5266e8b7",
+}
 
 
-WORKFLOW = Path(os.environ.get(
-    "FAULTLINE_RELEASE_WORKFLOW", Path(__file__).parents[1] / "workflows/release.yml"
-)).resolve()
-SCENARIO_INDEX = Path(__file__).parents[2] / "docs/scenarios/scenario_index.md"
-ISOLATE = "Isolate cached package artifacts"
-INSPECT = "Inspect clean archive identity and landing copy"
-SELECT = "Validate release selection and tag"
-SOURCE = "1" * 40
-VERSION = "0.0.1"
-REGISTRY = "registry+https://github.com/rust-lang/crates.io-index"
-NAMES = ["faultline-codes", "faultline-types", "faultline-localization",
-         "faultline-surface", "faultline-ports", "faultline-app", "faultline-git",
-         "faultline-probe-exec", "faultline-store", "faultline-render",
-         "faultline-junit", "faultline-loader", "faultline-sarif", "faultline-cli"]
-
-
-def inline_python(name):
-    """Read the real step, failing closed if its name/heredoc format changes."""
-    step = WORKFLOW.read_text().split("      - name: " + name + "\n", 1)[1]
-    step = step.split("\n      - ", 1)[0]
-    match = re.search(r"^          python3 - <<'PY'\n(.*?)^          PY$",
-                      step, re.MULTILINE | re.DOTALL)
-    if not match:
-        raise AssertionError("Missing inline Python in " + name)
-    return textwrap.dedent(match.group(1))
-
-
-def git(root, *args):
-    return subprocess.check_output(["git", "-c", "commit.gpgsign=false", "-c",
-                                    "tag.gpgsign=false", *args], cwd=root,
-                                   text=True, stderr=subprocess.DEVNULL).strip()
-
-
-def digest(data):
-    return hashlib.sha256(data).hexdigest()
-
-
-class ReleaseWorkflowContracts(unittest.TestCase):
+class MixedReleaseContracts(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="faultline-release-test-")
-        self.root = Path(self.temporary.name)
-        (self.root / "Cargo.toml").write_text('[workspace.package]\nversion = "0.0.1"\n')
-        (self.root / "README.md").write_bytes(b"Generated landing copy\n")
-        (self.root / "LICENSE").write_bytes(b"Generated END OF TERMS AND CONDITIONS\n")
+        self.temp = tempfile.TemporaryDirectory(prefix="faultline-mixed-contract-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.fixture = SyntheticRelease()
+        self.fixture.write(self.root)
+        self.source_files = copy.deepcopy(self.fixture.files)
+        self.plan = {"version": VERSION, "tag": "faultline-rs-v0.0.1",
+                     "published_source": copy.deepcopy(release.LEGACY),
+                     "published": {name: sha(self.fixture.archives[name]) for name in sorted(ANCHORS)},
+                     "publish_order": list(PUBLISH_ORDER),
+                     "minimum_publish_interval_seconds": 60}
+        self.save_plan()
+        self.stage()
+        self.boundaries = ExitStack()
+        self.addCleanup(self.boundaries.close)
+        self.boundaries.enter_context(mock.patch.object(release, "git", side_effect=self.git))
+        self.boundaries.enter_context(mock.patch.object(release, "git_file", side_effect=self.git_file))
+        self.boundaries.enter_context(mock.patch.object(release.subprocess, "run", side_effect=AssertionError("Unexpected subprocess")))
+        self.boundaries.enter_context(mock.patch.object(release.subprocess, "check_output", side_effect=AssertionError("Unexpected subprocess")))
+        self.boundaries.enter_context(mock.patch.object(release.urllib.request, "urlopen", side_effect=AssertionError("Unexpected HTTP request")))
+        self.boundaries.enter_context(mock.patch.dict(os.environ, {}, clear=True))
+        self.output = self.boundaries.enter_context(redirect_stdout(io.StringIO()))
 
-    def tearDown(self):
-        self.temporary.cleanup()
+    def save_plan(self):
+        directory = self.root / ".github"
+        directory.mkdir(exist_ok=True)
+        (directory / "release-0.0.1.json").write_text(json.dumps(self.plan))
 
-    def execute(self, name, success=True):
-        result = subprocess.run([sys.executable, "-c", inline_python(name)],
-                                cwd=self.root, capture_output=True, text=True, timeout=20,
-                                env=dict(os.environ, RELEASE_SOURCE_SHA=SOURCE))
-        self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
-        if not success and name == INSPECT:
-            self.assertFalse((self.root / "target/package/release-receipts.json").exists())
-        return result
-
-    def fixtures(self, mutation=None):
-        """Synthetic acyclic 14-package graph, with all transitive lock entries."""
-        blobs = {}
-        for name in NAMES:
-            lock = [{"name": name, "version": VERSION}]
-            lock += [{"name": dep, "version": VERSION, "source": REGISTRY,
-                      "checksum": digest(data)} for dep, data in blobs.items()]
-            if mutation and name == "faultline-types":
-                mutation(lock[1])
-            lock_toml = "version = 4\n" + "".join(
-                "\n[[package]]\n" + "".join(k + " = " + json.dumps(v) + "\n"
-                                              for k, v in p.items()) for p in lock)
-            fields = {"name": name, "version": VERSION, "license": "Apache-2.0",
-                      "rust-version": "1.93", "description": "Generated fixture",
-                      "repository": "https://github.com/EffortlessMetrics/faultline-rs"}
-            manifest = "[package]\n" + "".join(k + " = " + json.dumps(v) + "\n"
-                                                 for k, v in fields.items())
-            files = {"Cargo.toml": manifest.encode(), "Cargo.lock": lock_toml.encode(),
-                     "README.md": (self.root / "README.md").read_bytes(),
-                     "LICENSE": (self.root / "LICENSE").read_bytes(),
-                     ".cargo_vcs_info.json": json.dumps({"git": {"sha1": SOURCE,
-                                                                 "dirty": False}}).encode()}
-            stream = io.BytesIO()
-            with tarfile.open(fileobj=stream, mode="w") as archive:
-                for path, data in files.items():
-                    member = tarfile.TarInfo(name + "-" + VERSION + "/" + path)
-                    member.size = len(data)
-                    archive.addfile(member, io.BytesIO(data))
-            blobs[name] = gzip.compress(stream.getvalue(), mtime=0)
-        return blobs
-
-    def stage(self, blobs, stale=False):
+    def stage(self):
         package = self.root / "target/package"
-        scratch = package / "tmp-crate"
-        scratch.mkdir(parents=True, exist_ok=True)
+        anchors = self.root / "target/published-anchors"
+        anchors.mkdir(parents=True, exist_ok=True)
+        temporary = package / "tmp-crate"
+        temporary.mkdir(parents=True, exist_ok=True)
         (package / "release-receipts.json").unlink(missing_ok=True)
-        for name, data in blobs.items():
-            source = scratch / (name + "-" + VERSION + ".crate")
-            source.write_bytes(data)  # Cargo's temporary archive is truncated.
-            destination = package / source.name
-            if stale:
-                destination.write_bytes(b"x" * (len(data) + 19))
+        (package / "package-file-lists.json").write_text(json.dumps({name: sorted(self.fixture.files[name]) for name in PUBLISH_ORDER}))
+        for name, data in self.fixture.archives.items():
+            canonical = (anchors if name in ANCHORS else package) / f"{name}-{VERSION}.crate"
+            canonical.write_bytes(data)
+            if name in ANCHORS:
+                (package / canonical.name).unlink(missing_ok=True)
             else:
-                # Independent negatives start fresh, so a previous subtest's
-                # longer fixture cannot hide a lock failure behind a gzip tail.
-                destination.unlink(missing_ok=True)
-            # Cargo 1.93.1 uplift: O_CREAT|O_RDWR plus copy, without O_TRUNC.
-            fd = os.open(destination, os.O_CREAT | os.O_RDWR, 0o600)
-            with os.fdopen(fd, "r+b") as output, source.open("rb") as input_file:
-                shutil.copyfileobj(input_file, output)
+                (temporary / canonical.name).write_bytes(data)
         return package
 
-    def test_clean_graph_receipts_match_full_archive_bytes(self):
-        blobs = self.fixtures()
-        package = self.stage(blobs)
-        self.execute(INSPECT)
-        receipt = json.loads((package / "release-receipts.json").read_text())
-        self.assertEqual(receipt["source_sha"], SOURCE)
-        self.assertEqual({p["name"]: p["sha256"] for p in receipt["packages"]},
-                         {name: digest(data) for name, data in blobs.items()})
+    def replace(self, name, data, temporary=True):
+        directory = "target/published-anchors" if name in ANCHORS else "target/package"
+        path = self.root / directory / f"{name}-{VERSION}.crate"
+        path.write_bytes(data)
+        if temporary and name in FRESH:
+            (self.root / "target/package/tmp-crate" / path.name).write_bytes(data)
 
-    def test_nontruncating_uplift_quarantine_and_fresh_generation(self):
-        blobs = self.fixtures()
-        package = self.stage(blobs, stale=True)
-        # The old tar/identity-only inspection accepts these valid first members.
-        for path in package.glob("*.crate"):
-            with tarfile.open(path, "r:gz") as archive:
-                self.assertTrue(archive.getnames())
-            name = path.name.removesuffix("-" + VERSION + ".crate")
-            self.assertNotEqual(digest(path.read_bytes()), digest(blobs[name]))
-        self.execute(INSPECT, False)
-        before = {p.relative_to(package): p.read_bytes() for p in package.rglob("*") if p.is_file()}
+    def mutated_lock(self, mutation, name="faultline-rs"):
+        files = copy.deepcopy(self.fixture.files[name])
+        records = copy.deepcopy(self.fixture.locks[name])
+        mutation(records)
+        files["Cargo.lock"] = toml_lock(records)
+        self.replace(name, archive_bytes(name, files))
+
+    def git(self, root, *args):
+        self.assertEqual(Path(root), self.root)
+        ref = "refs/tags/faultline-rs-v0.0.1"
+        old = "refs/tags/v0.0.1"
+        identities = {
+            ("rev-parse", "HEAD"): NEW_SOURCE,
+            ("rev-parse", "HEAD^{tree}"): NEW_TREE,
+            ("status", "--porcelain", "--untracked-files=no"): "",
+            ("cat-file", "-t", old): "tag", ("rev-parse", old): OLD_TAG,
+            ("rev-parse", old + "^{commit}"): OLD_SOURCE,
+            ("rev-parse", old + "^{tree}"): OLD_TREE,
+            ("cat-file", "-t", ref): "tag", ("rev-parse", ref): NEW_TAG,
+            ("rev-parse", ref + "^{commit}"): NEW_SOURCE,
+            ("rev-parse", ref + "^{tree}"): NEW_TREE,
+            ("ls-remote", "origin", ref): NEW_TAG + "\t" + ref,
+        }
+        self.assertIn(args, identities, "Unexpected Git read")
+        return identities[args]
+
+    def git_file(self, root, source, path):
+        self.assertEqual(Path(root), self.root)
+        self.assertIn(source, {OLD_SOURCE, NEW_SOURCE})
+        if path == "README.md":
+            return OLD_README if source == OLD_SOURCE else NEW_README
+        if path == "LICENSE":
+            return LICENSE
+        prefix, relative = path.rsplit("/", 1) if "/src/" not in path else path.split("/src/", 1)
+        if "/src/" in path:
+            relative = "src/" + relative
+        name = "faultline-rs" if prefix == "crates/faultline-cli" else prefix.removeprefix("crates/")
+        self.assertIn(name, self.source_files)
+        self.assertEqual(source == OLD_SOURCE, name in ANCHORS)
+        return self.source_files[name]["Cargo.toml.orig" if relative == "Cargo.toml" else relative]
+
+    def inspect(self):
+        return release.inspect_archives(self.root, NEW_SOURCE)
+
+    def expect_inspection_failure(self):
+        receipt = self.root / "target/package/release-receipts.json"
+        receipt.unlink(missing_ok=True)
+        with self.assertRaises((AssertionError, KeyError, ValueError, OSError, EOFError)):
+            self.inspect()
+        self.assertFalse(receipt.exists(), "A failed qualification cannot emit receipts")
+
+    def environment(self, **updates):
+        result = {"GITHUB_EVENT_NAME": "push", "GITHUB_SHA": NEW_SOURCE,
+                  "GITHUB_WORKFLOW_SHA": NEW_SOURCE, "GITHUB_REF_TYPE": "tag",
+                  "GITHUB_REF": "refs/tags/faultline-rs-v0.0.1"}
+        result.update(updates)
+        return result
+
+    def published(self, name, checksum=None):
+        return {"crate": name, "num": VERSION, "repository": REPOSITORY,
+                "yanked": False, "checksum": checksum or sha(self.fixture.archives[name])}
+
+    def qualify_receipt(self):
+        return self.inspect()
+
+    def test_real_plan_keeps_nine_fresh_five_original_pins_and_distinct_tag(self):
+        actual = release.load_plan(HELPER.parents[2])
+        self.assertEqual(actual["published"], REAL_ANCHOR_HASHES)
+        self.assertEqual(actual["published_source"], {"sha": OLD_SOURCE, "tree": OLD_TREE,
+                                                       "tag": "v0.0.1", "tag_object": OLD_TAG})
+        self.assertEqual(set(actual["publish_order"]), FRESH)
+        self.assertEqual(len(actual["publish_order"]), 9)
+        self.assertEqual(actual["version"], VERSION)
+        self.assertEqual(actual["tag"], "faultline-rs-v0.0.1")
+
+    def test_plan_rejects_wrong_inventory_duplicate_order_and_duplicate_json_fields(self):
+        for mutate in [lambda p: p["publish_order"].append("faultline-fixtures"),
+                       lambda p: p["publish_order"].__setitem__(0, p["publish_order"][1]),
+                       lambda p: p["published"].pop("faultline-codes"),
+                       lambda p: p.__setitem__("tag", "v0.0.1"),
+                       lambda p: p["published_source"].__setitem__("sha", NEW_SOURCE),
+                       lambda p: p.__setitem__("minimum_publish_interval_seconds", 0)]:
+            with self.subTest(mutation=mutate):
+                before = copy.deepcopy(self.plan)
+                mutate(self.plan)
+                self.save_plan()
+                with self.assertRaises(AssertionError):
+                    release.load_plan(self.root)
+                self.plan = before
+        self.save_plan()
+        path = self.root / ".github/release-0.0.1.json"
+        path.write_text(path.read_text().replace('"version": "0.0.1"', '"version": "0.0.1", "version": "0.0.1"'))
+        with self.assertRaises(AssertionError):
+            release.load_plan(self.root)
+
+    def test_mixed_graph_receipts_keep_original_and_fresh_source_readme_and_hashes(self):
+        result = self.inspect()
+        self.assertEqual([item["name"] for item in result["packages"]], PUBLISH_ORDER)
+        self.assertEqual({item["name"] for item in result["published_anchors"]}, ANCHORS)
+        self.assertEqual(result["source_sha"], NEW_SOURCE)
+        self.assertEqual(result["source_tree"], NEW_TREE)
+        self.assertEqual(result["controller_sha"], NEW_SOURCE)
+        self.assertEqual(result["published_source"], release.LEGACY)
+        for item in result["packages"] + result["published_anchors"]:
+            original = item["name"] in ANCHORS
+            self.assertEqual(item["sha256"], sha(self.fixture.archives[item["name"]]))
+            self.assertEqual(item["files"], sorted(self.fixture.files[item["name"]]))
+            self.assertEqual(item["source_sha"], OLD_SOURCE if original else NEW_SOURCE)
+            self.assertEqual(item["readme_bytes"], len(OLD_README if original else NEW_README))
+        self.assertEqual(result["internal_lock_edges"], sum(len(closure(name)) for name in PUBLIC))
+        self.assertIn("faultline-loader", closure("faultline-types"))
+        self.assertNotIn("faultline-loader", closure("faultline-rs"))
+        self.assertIn("faultline-junit", closure("faultline-app"))
+        self.assertNotIn("faultline-junit", closure("faultline-rs"))
+        self.assertEqual(release.read_receipts(self.root), result)
+
+    def test_exact_fresh_and_anchor_archive_inventory_is_enforced(self):
+        for directory, name, action in [("target/package", "faultline-rs", "missing"),
+                                         ("target/published-anchors", "faultline-loader", "missing"),
+                                         ("target/package", "faultline-codes", "extra"),
+                                         ("target/published-anchors", "faultline-rs", "extra")]:
+            with self.subTest(directory=directory, name=name, action=action):
+                self.stage()
+                path = self.root / directory / f"{name}-{VERSION}.crate"
+                if action == "missing":
+                    path.unlink()
+                else:
+                    path.write_bytes(self.fixture.archives[name])
+                self.expect_inspection_failure()
+                path.unlink(missing_ok=True)
+        self.stage()
+
+    def test_anchor_hash_source_readme_and_included_source_mutations_are_rejected(self):
+        for name, path, data in [("faultline-codes", "README.md", NEW_README),
+                                 ("faultline-rs", "README.md", OLD_README),
+                                 ("faultline-rs", "src/main.rs", b"// Wrong source\n"),
+                                 ("faultline-rs", "Cargo.toml.orig", b"# Rewritten manifest\n"),
+                                 ("faultline-rs", ".cargo_vcs_info.json", json.dumps({"git": {"sha1": OLD_SOURCE}, "path_in_vcs": "crates/faultline-cli"}).encode())]:
+            with self.subTest(name=name, path=path):
+                self.stage()
+                files = copy.deepcopy(self.fixture.files[name])
+                files[path] = data
+                self.replace(name, archive_bytes(name, files))
+                self.expect_inspection_failure()
+        self.stage()
+        self.plan["published"]["faultline-codes"] = "0" * 64
+        self.save_plan()
+        self.expect_inspection_failure()
+
+    def test_normalized_manifest_cannot_change_internal_source_dependencies(self):
+        for mode in ("remove", "extra"):
+            with self.subTest(mode=mode):
+                self.stage()
+                name = "faultline-rs"
+                files = copy.deepcopy(self.fixture.files[name])
+                records = copy.deepcopy(self.fixture.locks[name])
+                manifest = files["Cargo.toml"].decode()
+                if mode == "remove":
+                    manifest = manifest.replace('faultline-app = "0.0.1"\n', "")
+                    records = [record for record in records if record["name"] not in {"faultline-app", "faultline-surface"}]
+                    records[0]["dependencies"].remove("faultline-app 0.0.1")
+                else:
+                    manifest = manifest.replace("[dependencies]\n", '[dependencies]\nfaultline-loader = "0.0.1"\n')
+                    records[0]["dependencies"].append("faultline-loader 0.0.1")
+                    records.append({"name": "faultline-loader", "version": VERSION, "source": REGISTRY,
+                                    "checksum": sha(self.fixture.archives["faultline-loader"])})
+                files["Cargo.toml"] = manifest.encode()
+                files["Cargo.lock"] = toml_lock(records)
+                self.replace(name, archive_bytes(name, files))
+                self.expect_inspection_failure()
+
+    def test_normalized_cli_binary_identity_is_exact(self):
+        original = self.fixture.files["faultline-rs"]["Cargo.toml"]
+        binary = b'\n[[bin]]\nname = "faultline-rs"\npath = "src/main.rs"\n'
+        self.assertIn(binary, original)
+        self.assertNotIn(b"[[bin]]", self.fixture.manifests["faultline-rs"])
+        for replacement in (binary.replace(b'"faultline-rs"', b'"faultline-cli"'),
+                            binary.replace(b'"src/main.rs"', b'"src/other.rs"'),
+                            b"", binary + binary):
+            with self.subTest(replacement=replacement):
+                self.stage()
+                files = copy.deepcopy(self.fixture.files["faultline-rs"])
+                files["Cargo.toml"] = original.replace(binary, replacement)
+                self.replace("faultline-rs", archive_bytes("faultline-rs", files))
+                self.expect_inspection_failure()
+
+    def test_orphan_obsolete_private_and_unsupported_internal_lock_records_are_rejected(self):
+        for name in ("faultline-cli", "faultline-fixtures", "xtask", "faultline-unsupported"):
+            with self.subTest(name=name):
+                self.stage()
+                self.mutated_lock(lambda records: records.append({"name": name, "version": VERSION}))
+                self.expect_inspection_failure()
+
+    def test_duplicate_tar_members_and_wrong_package_identity_are_rejected(self):
+        name = "faultline-rs"
+        stream = io.BytesIO()
+        with tarfile.open(fileobj=stream, mode="w") as archive:
+            members = list(self.fixture.files[name].items()) + [("README.md", NEW_README)]
+            for path, data in members:
+                member = tarfile.TarInfo(f"{name}-{VERSION}/{path}")
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+        self.replace(name, gzip.compress(stream.getvalue(), mtime=0))
+        self.expect_inspection_failure()
+        self.stage()
+        files = copy.deepcopy(self.fixture.files[name])
+        files["Cargo.toml"] = files["Cargo.toml"].replace(b'name = "faultline-rs"', b'name = "faultline-app"', 1)
+        self.replace(name, archive_bytes(name, files))
+        self.expect_inspection_failure()
+
+    def test_exact_source_inventory_rejects_missing_extra_duplicate_and_wrong_package_lists(self):
+        inventory = self.root / "target/package/package-file-lists.json"
+        for mode in ("missing-file", "extra-file", "duplicate-file", "missing-package", "extra-package", "duplicate-package", "missing-inventory"):
+            with self.subTest(mode=mode):
+                self.stage()
+                lists = json.loads(inventory.read_text())
+                if mode == "missing-file":
+                    lists["faultline-rs"].remove("src/main.rs")
+                elif mode == "extra-file":
+                    lists["faultline-rs"].append("src/unexpected.rs")
+                elif mode == "duplicate-file":
+                    lists["faultline-rs"].append("src/main.rs")
+                elif mode == "missing-package":
+                    lists.pop("faultline-rs")
+                elif mode == "extra-package":
+                    lists["faultline-codes"] = sorted(self.fixture.files["faultline-codes"])
+                if mode == "duplicate-package":
+                    raw = json.dumps(lists)
+                    inventory.write_text(raw[:-1] + ', "faultline-rs": ' + json.dumps(lists["faultline-rs"]) + "}")
+                elif mode == "missing-inventory":
+                    inventory.unlink()
+                else:
+                    inventory.write_text(json.dumps(lists))
+                self.expect_inspection_failure()
+
+    def test_source_inventory_rejects_missing_and_extra_archive_source_members(self):
+        for mode in ("missing", "extra"):
+            with self.subTest(mode=mode):
+                self.stage()
+                files = copy.deepcopy(self.fixture.files["faultline-rs"])
+                if mode == "missing":
+                    files.pop("src/main.rs")
+                else:
+                    files["src/unexpected.rs"] = b"// Unexpected generated member\n"
+                self.replace("faultline-rs", archive_bytes("faultline-rs", files))
+                self.expect_inspection_failure()
+
+    def test_dry_run_must_reproduce_canonical_bytes_exactly(self):
+        path = self.root / "target/package/tmp-crate/faultline-rs-0.0.1.crate"
+        path.write_bytes(path.read_bytes() + b"different dry-run bytes")
+        self.expect_inspection_failure()
+
+    def test_complete_single_gzip_member_negative_controls(self):
+        original = self.fixture.archives["faultline-rs"]
+        crc = bytearray(original)
+        crc[-8] ^= 1
+        size = bytearray(original)
+        size[-4] ^= 1
+        controls = {"nonzero-tail": original + b"stale", "zero-tail": original + b"\0",
+                    "second-member": original + gzip.compress(b"second", mtime=0),
+                    "truncated-trailer": original[:-1], "truncated-body": original[:len(original)//2],
+                    "wrong-crc": bytes(crc), "wrong-size": bytes(size)}
+        for label, data in controls.items():
+            with self.subTest(control=label):
+                self.stage()
+                self.replace("faultline-rs", data)
+                with self.assertRaises((AssertionError, zlib.error)):
+                    release.single_gzip(data)
+                with self.assertRaises((AssertionError, zlib.error)):
+                    self.inspect()
+                self.assertFalse((self.root / "target/package/release-receipts.json").exists())
+
+    def test_cache_nontruncating_uplift_red_then_recoverable_isolation_green(self):
+        package = self.root / "target/package"
+        original = self.fixture.archives["faultline-rs"]
+        canonical = package / "faultline-rs-0.0.1.crate"
+        canonical.write_bytes(b"x" * (len(original) + 23))
+        temporary = package / "tmp-crate" / canonical.name
+        # Match Cargo's nontruncating uplift instead of just concatenating bytes.
+        fd = os.open(canonical, os.O_CREAT | os.O_RDWR, 0o600)
+        with os.fdopen(fd, "r+b") as output, temporary.open("rb") as source:
+            shutil.copyfileobj(source, output)
+        self.assertGreater(canonical.stat().st_size, len(original))
+        with tarfile.open(canonical, "r:gz") as archive:
+            self.assertTrue(archive.getnames(), "Old first-member-only inspection accepts this")
+        self.expect_inspection_failure()
+        before = {path.relative_to(package): path.read_bytes() for path in package.rglob("*") if path.is_file()}
         inode = package.stat().st_ino
         marker = self.root / "target/debug/build-cache-marker"
         marker.parent.mkdir()
-        marker.write_bytes(b"Keep the build cache")
-        self.execute(ISOLATE)
+        marker.write_bytes(b"Keep unrelated build cache")
+        release.isolate_packages(self.root)
         self.assertFalse(package.exists())
         preserved, = (self.root / "target").glob("package-quarantine-*/package")
         self.assertEqual(preserved.stat().st_ino, inode)
-        self.assertEqual(before, {p.relative_to(preserved): p.read_bytes()
-                                  for p in preserved.rglob("*") if p.is_file()})
-        self.assertEqual(marker.read_bytes(), b"Keep the build cache")
-        self.stage(blobs)  # New generation; no trimming of contaminated files.
-        self.execute(INSPECT)
-        self.assertEqual(before, {p.relative_to(preserved): p.read_bytes()
-                                  for p in preserved.rglob("*") if p.is_file()})
-
-    def test_quarantine_is_recoverable_and_cold_cache_is_noop(self):
-        self.execute(ISOLATE)
-        self.assertFalse((self.root / "target").exists())
-        package = self.stage(self.fixtures())
-        before = {p.relative_to(package): p.read_bytes() for p in package.rglob("*") if p.is_file()}
-        self.execute(ISOLATE)
-        preserved, = (self.root / "target").glob("package-quarantine-*/package")
+        self.assertEqual(before, {path.relative_to(preserved): path.read_bytes() for path in preserved.rglob("*") if path.is_file()})
+        self.assertEqual(marker.read_bytes(), b"Keep unrelated build cache")
+        self.stage()
+        self.inspect()
+        self.assertEqual(before, {path.relative_to(preserved): path.read_bytes() for path in preserved.rglob("*") if path.is_file()})
+        shutil.rmtree(package)
         preserved.rename(package)
-        self.assertEqual(before, {p.relative_to(package): p.read_bytes()
-                                  for p in package.rglob("*") if p.is_file()})
+        self.assertEqual(before, {path.relative_to(package): path.read_bytes() for path in package.rglob("*") if path.is_file()})
 
-    def test_symlinked_package_is_rejected_without_moving_its_target(self):
-        target = self.root / "target"
+    def test_cold_cache_noop_and_symlink_cache_rejection_preserve_target(self):
+        other = self.root / "empty"
+        other.mkdir()
+        release.isolate_packages(other)
+        self.assertFalse((other / "target").exists())
+        target = other / "target"
         target.mkdir()
-        elsewhere = self.root / "untouched"
+        elsewhere = other / "untouched"
         elsewhere.mkdir()
-        (elsewhere / "marker").write_bytes(b"Untouched")
+        (elsewhere / "marker").write_bytes(b"untouched")
         (target / "package").symlink_to(elsewhere, target_is_directory=True)
-        self.execute(ISOLATE, False)
+        with self.assertRaises(AssertionError):
+            release.isolate_packages(other)
         self.assertTrue((target / "package").is_symlink())
-        self.assertEqual((elsewhere / "marker").read_bytes(), b"Untouched")
+        self.assertEqual((elsewhere / "marker").read_bytes(), b"untouched")
 
-    def test_gzip_suffix_second_member_truncation_and_crc_are_rejected(self):
-        blobs = self.fixtures()
-        # Mutate a leaf: no other fixture's lock checksum refers to this file,
-        # so internal-lock rejection cannot conceal a missing gzip guard.
-        original = blobs["faultline-cli"]
-        corrupt_crc = bytearray(original)
-        corrupt_crc[-8] ^= 1
-        for data in [original + b"stale", original + b"\0",
-                     original + gzip.compress(b"second member"), original[:-1], bytes(corrupt_crc)]:
-            with self.subTest(length=len(data)):
-                package = self.stage(blobs)
-                (package / "faultline-cli-0.0.1.crate").write_bytes(data)
-                self.execute(INSPECT, False)
+    def test_full_internal_closure_rejects_missing_extra_and_wrong_records(self):
+        for mutate in [lambda records: records.pop(1),
+                       lambda records: records.append({"name": "faultline-loader", "version": VERSION, "source": REGISTRY, "checksum": sha(self.fixture.archives["faultline-loader"])}),
+                       lambda records: records[1].__setitem__("checksum", "0" * 64),
+                       lambda records: records[1].__setitem__("version", "0.0.2"),
+                       lambda records: records[1].__setitem__("source", "registry+https://example.invalid/index")]:
+            with self.subTest(mutation=mutate):
+                self.stage()
+                self.mutated_lock(mutate)
+                self.expect_inspection_failure()
 
-    def test_internal_checksum_version_and_source_are_rejected(self):
-        for field, wrong in [("checksum", "0" * 64), ("version", "0.0.2"),
-                             ("source", "registry+https://example.invalid/index")]:
+    def test_duplicate_lock_identities_are_rejected(self):
+        self.mutated_lock(lambda records: records.append(copy.deepcopy(records[1])))
+        self.expect_inspection_failure()
+
+    def test_duplicate_internal_name_with_different_identity_is_rejected(self):
+        def mutate(records):
+            extra = copy.deepcopy(records[1])
+            extra["version"] = "0.0.2"
+            records.insert(1, extra)  # Valid record comes later; dict collapse is unsafe.
+        self.mutated_lock(mutate)
+        self.expect_inspection_failure()
+
+    def test_lock_dependency_edges_reject_wrong_missing_and_extra_edges(self):
+        for mode in ("wrong-version", "wrong-source", "missing", "extra", "duplicate"):
+            with self.subTest(mode=mode):
+                self.stage()
+                def mutate(records):
+                    edges = records[0]["dependencies"]
+                    if mode == "wrong-version":
+                        edges[0] = "faultline-app 0.0.2"
+                    elif mode == "wrong-source":
+                        edges[0] = "faultline-app 0.0.1 (registry+https://example.invalid/index)"
+                    elif mode == "duplicate":
+                        edges.append(edges[0])
+                    elif mode == "missing":
+                        edges.pop()
+                    else:
+                        edges.append("faultline-loader 0.0.1")
+                self.mutated_lock(mutate)
+                self.expect_inspection_failure()
+
+    def test_missing_root_and_replaced_root_lock_identities_are_rejected(self):
+        for mode in ("missing", "wrong-version", "registry-root"):
+            with self.subTest(mode=mode):
+                self.stage()
+                def mutate(records):
+                    if mode == "missing":
+                        records.pop(0)
+                    elif mode == "wrong-version":
+                        records[0]["version"] = "0.0.2"
+                    else:
+                        records[0]["source"] = REGISTRY
+                        records[0]["checksum"] = "0" * 64
+                self.mutated_lock(mutate)
+                self.expect_inspection_failure()
+
+    def test_root_dev_edge_is_required_but_transitive_dev_edge_is_forbidden(self):
+        self.mutated_lock(lambda records: records.__setitem__(slice(None), [record for record in records if record["name"] != "faultline-junit"]), name="faultline-app")
+        self.expect_inspection_failure()
+        self.stage()
+        def include_transitive_dev(records):
+            records.append({"name": "faultline-loader", "version": VERSION, "source": REGISTRY,
+                            "checksum": sha(self.fixture.archives["faultline-loader"])})
+        self.mutated_lock(include_transitive_dev)
+        self.expect_inspection_failure()
+
+    def test_target_alias_build_and_root_dev_dependency_rules(self):
+        manifest = {"dependencies": {"codes_alias": {"package": "faultline-codes", "version": VERSION}, "private_fixture": {"package": "faultline-fixtures", "path": "../faultline-fixtures"}},
+                    "build-dependencies": {"faultline-types": VERSION},
+                    "dev-dependencies": {"faultline-junit": VERSION},
+                    "target": {"cfg(unix)": {"dependencies": {"faultline-ports": VERSION}, "dev-dependencies": {"faultline-loader": VERSION}}}}
+        self.assertEqual(release.internal_dependencies(manifest), {"faultline-codes", "faultline-types", "faultline-ports"})
+        self.assertEqual(release.internal_dependencies(manifest, True), {"faultline-codes", "faultline-types", "faultline-ports", "faultline-junit", "faultline-loader"})
+        manifest["dependencies"]["faultline-app"] = "0.0.2"
+        with self.assertRaises(AssertionError):
+            release.internal_dependencies(manifest, True)
+
+    def test_new_annotated_tag_only_and_branch_is_check_only(self):
+        calls = []
+        def git_command(command, **kwargs):
+            calls.append(command)
+            self.assertEqual(command, ["git", "merge-base", "--is-ancestor", "HEAD", "origin/main"])
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.object(release.subprocess, "run", side_effect=git_command):
+            self.assertEqual(release.validate_selection(self.root, self.environment()), {"source_sha": NEW_SOURCE, "publish": "true"})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(release.validate_selection(self.root, self.environment(GITHUB_REF_TYPE="branch", GITHUB_REF="refs/heads/main"))["publish"], "false")
+        for changes in [{"GITHUB_EVENT_NAME": "workflow_dispatch"}, {"GITHUB_REF": "refs/tags/v0.0.1"}, {"GITHUB_SHA": OLD_SOURCE}, {"GITHUB_WORKFLOW_SHA": OLD_SOURCE}, {"GITHUB_REF_TYPE": "branch", "GITHUB_REF": "refs/heads/unrelated"}]:
+            with self.subTest(changes=changes), self.assertRaises(AssertionError):
+                release.validate_selection(self.root, self.environment(**changes))
+
+    def test_annotated_checkout_fallback_red_and_explicit_sha_green_preserve_remote(self):
+        ref = "refs/tags/faultline-rs-v0.0.1"
+        # Model the exact checkout fallback: raw annotated tag object A differs
+        # from event commit C; a fallback fetch C:refs/tags/name rewrites only
+        # the runner-local ref to C. Remote A must remain unchanged.
+        local = {"object": NEW_TAG, "kind": "tag"}
+        remote = NEW_TAG
+        def git(root, *args):
+            if args == ("rev-parse", ref):
+                return local["object"]
+            if args == ("cat-file", "-t", ref):
+                return local["kind"]
+            if args == ("ls-remote", "origin", ref):
+                return remote + "\t" + ref
+            return self.git(root, *args)
+        self.assertNotEqual(local["object"], NEW_SOURCE)
+        local.update(object=NEW_SOURCE, kind="commit")
+        with mock.patch.object(release, "git", side_effect=git), self.assertRaises(AssertionError):
+            release.validate_selection(self.root, self.environment())
+        self.assertEqual(remote, NEW_TAG)
+        # SHA-only checkout gives the action no tag ref to force-rewrite.
+        local.update(object=NEW_TAG, kind="tag")
+        with mock.patch.object(release, "git", side_effect=git), mock.patch.object(release.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)):
+            self.assertEqual(release.validate_selection(self.root, self.environment()), {"source_sha": NEW_SOURCE, "publish": "true"})
+        self.assertEqual(local, {"object": NEW_TAG, "kind": "tag"})
+        self.assertEqual(remote, NEW_TAG)
+
+    def test_lightweight_moved_remote_dirty_and_legacy_mutations_fail_selection(self):
+        changes = {("cat-file", "-t", "refs/tags/faultline-rs-v0.0.1"): "commit",
+                   ("rev-parse", "refs/tags/faultline-rs-v0.0.1^{commit}"): OLD_SOURCE,
+                   ("rev-parse", "refs/tags/faultline-rs-v0.0.1^{tree}"): OLD_TREE,
+                   ("ls-remote", "origin", "refs/tags/faultline-rs-v0.0.1"): OLD_TAG + "\trefs/tags/faultline-rs-v0.0.1",
+                   ("status", "--porcelain", "--untracked-files=no"): " M Cargo.toml",
+                   ("rev-parse", "refs/tags/v0.0.1"): NEW_TAG,
+                   ("rev-parse", "refs/tags/v0.0.1^{commit}"): NEW_SOURCE,
+                   ("rev-parse", "refs/tags/v0.0.1^{tree}"): NEW_TREE}
+        for args, wrong in changes.items():
+            with self.subTest(args=args):
+                def git(root, *actual):
+                    return wrong if actual == args else self.git(root, *actual)
+                with mock.patch.object(release, "git", side_effect=git), self.assertRaises(AssertionError):
+                    release.validate_selection(self.root, self.environment())
+
+    def test_qualification_selects_exact_nine_with_no_token(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            self.assertFalse(release.TOKEN_KEYS & kwargs["env"].keys())
+            if "--list" in command:
+                self.assertEqual(command[:5], ["cargo", "package", "--list", "--offline", "--locked"])
+                self.assertNotIn("--registry", command)
+                self.assertNotIn("--jobs", command)
+                name = command[command.index("-p") + 1]
+                return subprocess.CompletedProcess(command, 0, "\n".join(sorted(self.fixture.files[name])) + "\n", "")
+            return subprocess.CompletedProcess(command, 0, "", "")
+        os.environ["CARGO_REGISTRY_TOKEN"] = "generated-sentinel-not-a-credential"
+        with mock.patch.object(release.subprocess, "run", side_effect=run):
+            release.qualify(self.root)
+            release.qualify(self.root, dry_run=True)
+        self.assertEqual(len(calls), 11)
+        for command in (calls[0], calls[-1]):
+            self.assertNotIn("--workspace", command)
+            selected = [command[index + 1] for index, arg in enumerate(command) if arg == "-p"]
+            self.assertEqual(selected, PUBLISH_ORDER)
+            self.assertFalse(ANCHORS & set(selected))
+        self.assertEqual(calls[0][1], "package")
+        self.assertIn("--dry-run", calls[-1])
+        self.assertEqual([command[-1] for command in calls[1:-1]], PUBLISH_ORDER)
+        inventory = json.loads((self.root / "target/package/package-file-lists.json").read_text())
+        self.assertEqual(inventory, {name: sorted(self.fixture.files[name]) for name in PUBLISH_ORDER})
+
+    def test_offline_source_list_failure_stops_without_registry_fallback_or_partial_inventory(self):
+        inventory = self.root / "target/package/package-file-lists.json"
+        inventory.unlink()
+        calls = []
+        failing = PUBLISH_ORDER[2]
+        def run(command, **kwargs):
+            calls.append(command)
+            self.assertFalse(release.TOKEN_KEYS & kwargs["env"].keys())
+            if "--list" not in command:
+                self.assertEqual(command[1], "package")
+                return subprocess.CompletedProcess(command, 0, "", "")
+            self.assertEqual(command, ["cargo", "package", "--list", "--offline", "--locked", "-p", command[-1]])
+            if command[-1] == failing:
+                return subprocess.CompletedProcess(command, 1, "", "offline metadata unavailable")
+            return subprocess.CompletedProcess(command, 0, "\n".join(sorted(self.fixture.files[command[-1]])), "")
+        with mock.patch.object(release.subprocess, "run", side_effect=run), self.assertRaises(SystemExit):
+            release.qualify(self.root)
+        self.assertEqual(len(calls), 4)
+        self.assertEqual([command[-1] for command in calls[1:]], PUBLISH_ORDER[:3])
+        self.assertFalse(inventory.exists())
+
+    def test_offline_source_list_rejects_empty_duplicate_missing_required_and_unsafe_paths(self):
+        inventory = self.root / "target/package/package-file-lists.json"
+        expected = sorted(self.fixture.files[PUBLISH_ORDER[0]])
+        for label, files in [("empty", []), ("duplicate", expected + [expected[0]]),
+                             ("missing-required", [path for path in expected if path != "Cargo.lock"]),
+                             ("absolute", expected + ["/unexpected"]),
+                             ("traversal", expected + ["../unexpected"])]:
+            with self.subTest(control=label):
+                inventory.unlink(missing_ok=True)
+                calls = []
+                def run(command, **kwargs):
+                    calls.append(command)
+                    return subprocess.CompletedProcess(command, 0, "\n".join(files) if "--list" in command else "", "")
+                with mock.patch.object(release.subprocess, "run", side_effect=run), self.assertRaises(AssertionError):
+                    release.qualify(self.root)
+                self.assertEqual(len(calls), 2)
+                self.assertFalse(inventory.exists())
+
+    def test_nonpublish_main_rejects_tokens_and_public_environment_strips_both_keys(self):
+        for key in release.TOKEN_KEYS:
+            with self.subTest(key=key), mock.patch.dict(os.environ, {key: "generated-sentinel"}, clear=True), mock.patch.object(sys, "argv", [str(HELPER), "inspect"]):
+                with self.assertRaises(AssertionError):
+                    release.main()
+                self.assertNotIn(key, release.public_environment())
+
+    def publication_harness(self, initially_published=(), fail_upload=None, mismatch=None, mutate_dry_run=None, unconfirmed=None):
+        self.qualify_receipt()
+        state = set(ANCHORS) | set(initially_published)
+        events = []
+        clock = [0.0]
+        sentinel = "generated-token-sentinel-not-a-real-credential"
+        def sleep(seconds):
+            self.assertGreaterEqual(seconds, 0)
+            events.append(("sleep", seconds))
+            clock[0] += seconds
+        def registry(name, version):
+            self.assertEqual(version, VERSION)
+            self.assertFalse(release.TOKEN_KEYS & os.environ.keys())
+            events.append(("registry", name))
+            if mismatch and name == mismatch:
+                return self.published(name, "0" * 64)
+            if name == unconfirmed and name in state:
+                return None
+            return self.published(name) if name in state else None
+        def cargo(command, **kwargs):
+            self.assertEqual(command[:2], ["cargo", "publish"])
+            self.assertIn("--no-verify", command)
+            self.assertIn("--locked", command)
+            self.assertNotIn("--workspace", command)
+            name = command[command.index("-p") + 1]
+            self.assertIn(name, FRESH)
+            dry = "--dry-run" in command
+            events.append(("dry" if dry else "upload", name, clock[0]))
+            keys = release.TOKEN_KEYS & kwargs["env"].keys()
+            self.assertEqual(keys, set() if dry else {"CARGO_REGISTRY_TOKEN"})
+            if not dry:
+                self.assertEqual(kwargs["env"]["CARGO_REGISTRY_TOKEN"], sentinel)
+                if name == fail_upload:
+                    return subprocess.CompletedProcess(command, 1, "", "429 Retry-After: 120 " + sentinel)
+                state.add(name)
+            elif name == mutate_dry_run:
+                path = self.root / f"target/package/tmp-crate/{name}-{VERSION}.crate"
+                path.write_bytes(path.read_bytes() + b"stale")
+            return subprocess.CompletedProcess(command, 0, "", "")
+        context = ExitStack()
+        context.enter_context(mock.patch.dict(os.environ, dict(self.environment(), CARGO_REGISTRY_TOKEN=sentinel), clear=True))
+        context.enter_context(mock.patch.object(release, "registry_version", side_effect=registry))
+        context.enter_context(mock.patch.object(release.subprocess, "run", side_effect=cargo))
+        context.enter_context(mock.patch.object(release.time, "sleep", side_effect=sleep))
+        context.enter_context(mock.patch.object(release.time, "monotonic", side_effect=lambda: clock[0]))
+        # Selection has its own exact-head tests; don't let Git run in upload tests.
+        context.enter_context(mock.patch.object(release, "validate_selection", return_value={"source_sha": NEW_SOURCE, "publish": "true"}))
+        return context, events, state, sentinel
+
+    def test_paced_ordered_single_crate_dry_run_exact_bytes_upload_and_confirmation(self):
+        context, events, state, sentinel = self.publication_harness()
+        with context:
+            release.publish(self.root)
+        uploads = [event for event in events if event[0] == "upload"]
+        self.assertEqual([event[1] for event in uploads], PUBLISH_ORDER)
+        self.assertEqual(state, PUBLIC)
+        for earlier, later in zip(uploads, uploads[1:]):
+            self.assertGreaterEqual(later[2] - earlier[2], 60)
+        for name in PUBLISH_ORDER:
+            dry = next(index for index, event in enumerate(events) if event[:2] == ("dry", name))
+            upload = next(index for index, event in enumerate(events) if event[:2] == ("upload", name))
+            self.assertLess(dry, upload)
+            self.assertEqual(events[upload - 1][:2], ("registry", name))
+            self.assertEqual(events[upload + 1][:2], ("registry", name))
+        self.assertNotIn(sentinel, self.output.getvalue())
+
+    def test_partial_success_stops_then_resume_skips_matching_published_versions(self):
+        failed = PUBLISH_ORDER[2]
+        context, events, state, sentinel = self.publication_harness(fail_upload=failed)
+        with context, self.assertRaises(SystemExit):
+            release.publish(self.root)
+        self.assertEqual([event[1] for event in events if event[0] == "upload"], PUBLISH_ORDER[:3])
+        self.assertEqual(state - ANCHORS, set(PUBLISH_ORDER[:2]))
+        self.assertIn("Retry-After: 120", self.output.getvalue())
+        self.assertNotIn(sentinel, self.output.getvalue())
+        context, events, state, _ = self.publication_harness(initially_published=state - ANCHORS)
+        with context:
+            release.publish(self.root)
+        self.assertEqual([event[1] for event in events if event[0] == "upload"], PUBLISH_ORDER[2:])
+        self.assertEqual([event[1] for event in events if event[0] == "dry"], PUBLISH_ORDER[2:])
+        self.assertEqual(state, PUBLIC)
+
+    def test_occupied_mismatch_stops_before_any_dry_run_or_upload(self):
+        for name in (PUBLISH_ORDER[3], "faultline-codes"):
+            with self.subTest(name=name):
+                context, events, _, _ = self.publication_harness(mismatch=name)
+                with context, self.assertRaises(AssertionError):
+                    release.publish(self.root)
+                self.assertFalse([event for event in events if event[0] in {"dry", "upload"}])
+
+    def test_unconfirmed_upload_stops_before_next_crate_without_retry(self):
+        context, events, state, _ = self.publication_harness(unconfirmed=PUBLISH_ORDER[0])
+        with context, self.assertRaises(AssertionError):
+            release.publish(self.root)
+        self.assertEqual([event[1] for event in events if event[0] == "upload"], PUBLISH_ORDER[:1])
+        self.assertEqual(state - ANCHORS, set(PUBLISH_ORDER[:1]))
+
+    def test_changed_single_crate_dry_run_bytes_stop_before_upload(self):
+        context, events, _, _ = self.publication_harness(mutate_dry_run=PUBLISH_ORDER[0])
+        with context, self.assertRaises((AssertionError, zlib.error)):
+            release.publish(self.root)
+        self.assertEqual(len([event for event in events if event[0] == "dry"]), 1)
+        self.assertFalse([event for event in events if event[0] == "upload"])
+
+    def test_anchor_fetch_verifies_hash_and_preserves_matching_cached_bytes(self):
+        anchors = self.root / "target/published-anchors"
+        for path in anchors.glob("*.crate"):
+            path.unlink()
+        downloaded = []
+        def http(request, **kwargs):
+            name = request.full_url.split("/crates/", 1)[1].split("/", 1)[0]
+            self.assertIn(name, ANCHORS)
+            downloaded.append(name)
+            response = mock.MagicMock()
+            response.__enter__.return_value = io.BytesIO(self.fixture.archives[name])
+            return response
+        with mock.patch.object(release, "registry_version", side_effect=lambda name, version: self.published(name)), mock.patch.object(release.urllib.request, "urlopen", side_effect=http), mock.patch.object(release.time, "sleep") as sleep:
+            release.fetch_published(self.root)
+            self.assertEqual(set(downloaded), ANCHORS)
+            self.assertEqual(sleep.call_count, 5)
+            for name in ANCHORS:
+                self.assertEqual((anchors / f"{name}-{VERSION}.crate").read_bytes(), self.fixture.archives[name])
+            downloaded.clear()
+            release.fetch_published(self.root)
+            self.assertEqual(downloaded, [], "Matching immutable anchors must not be rebuilt or redownloaded")
+        for path in anchors.glob("*.crate"):
+            path.unlink()
+        response = mock.MagicMock()
+        response.__enter__.return_value = io.BytesIO(b"Wrong generated archive bytes")
+        with mock.patch.object(release, "registry_version", side_effect=lambda name, version: self.published(name)), mock.patch.object(release.urllib.request, "urlopen", return_value=response), mock.patch.object(release.time, "sleep"), self.assertRaises(AssertionError):
+            release.fetch_published(self.root)
+        self.assertEqual(list(anchors.glob("*.crate")), [])
+
+    def test_mismatching_cached_anchor_is_quarantined_before_exact_replacement(self):
+        name = "faultline-codes"
+        archive = self.root / f"target/published-anchors/{name}-{VERSION}.crate"
+        evidence = b"Owned stale anchor evidence"
+        archive.write_bytes(evidence)
+        response = mock.MagicMock()
+        response.__enter__.return_value = io.BytesIO(self.fixture.archives[name])
+        with mock.patch.object(release, "registry_version", side_effect=lambda package, version: self.published(package)), \
+                mock.patch.object(release.urllib.request, "urlopen", return_value=response) as request, \
+                mock.patch.object(release.time, "sleep"):
+            release.fetch_published(self.root)
+        self.assertEqual(request.call_count, 1)
+        self.assertEqual(archive.read_bytes(), self.fixture.archives[name])
+        preserved = list((self.root / "target").glob(f"published-anchor-quarantine-*/{archive.name}"))
+        self.assertEqual(len(preserved), 1)
+        self.assertEqual(preserved[0].read_bytes(), evidence)
+
+    def test_registry_429_during_publication_preflight_has_no_upload_or_retry(self):
+        context, events, _, _ = self.publication_harness()
+        with context, mock.patch.object(release, "registry_version", side_effect=SystemExit("Registry rate limited; Retry-After=120; stopping")) as registry, self.assertRaisesRegex(SystemExit, "Retry-After=120"):
+            release.publish(self.root)
+        self.assertEqual(registry.call_count, 1)
+        self.assertFalse([event for event in events if event[0] in {"dry", "upload"}])
+
+    def test_registry_429_reports_retry_after_and_does_not_retry(self):
+        error = urllib.error.HTTPError("https://crates.io/generated", 429, "Too Many Requests", {"Retry-After": "120"}, None)
+        with mock.patch.object(release.urllib.request, "urlopen", side_effect=error) as request:
+            with self.assertRaisesRegex(SystemExit, "Retry-After=120"):
+                release.registry_version("faultline-rs", VERSION)
+            self.assertEqual(request.call_count, 1)
+
+    def test_registry_404_absence_and_wrong_identity_yanked_repository_fail_closed(self):
+        error = urllib.error.HTTPError("https://crates.io/generated", 404, "Not Found", {}, None)
+        with mock.patch.object(release.urllib.request, "urlopen", side_effect=error):
+            self.assertIsNone(release.registry_version("faultline-rs", VERSION))
+        for field, value in [("crate", "faultline-cli"), ("num", "0.0.2"), ("yanked", True), ("repository", "https://example.invalid")]:
             with self.subTest(field=field):
-                self.stage(self.fixtures(lambda dep: dep.update({field: wrong})))
-                self.execute(INSPECT, False)
+                data = self.published("faultline-rs")
+                data[field] = value
+                response = mock.MagicMock()
+                response.__enter__.return_value = io.StringIO(json.dumps({"version": data}))
+                with mock.patch.object(release.urllib.request, "urlopen", return_value=response), self.assertRaises(AssertionError):
+                    release.registry_version("faultline-rs", VERSION)
 
-    def test_workflow_runs_contracts_and_isolates_after_cache_before_packaging(self):
-        workflow = WORKFLOW.read_text()
-        contracts = workflow.index("      - name: Test release workflow contracts\n")
-        isolation = workflow.index("      - name: " + ISOLATE + "\n")
-        package = workflow.index("      - name: Verify package graph\n")
-        self.assertLess(workflow.index("uses: actions/cache@v4"), isolation)
-        self.assertLess(workflow.index("      - name: Release checks\n"), isolation)
-        self.assertLess(contracts, isolation)
-        self.assertLess(isolation, package)
-        self.assertIn("          python3 .github/tests/test_release_workflow.py\n", workflow)
-        self.assertIn("            target\n", workflow)
-        # The Rust atlas scanner only discovers Rust tests under crates/.
-        # Keep Python scenarios cataloged and checked by their own suite.
-        scenarios = SCENARIO_INDEX.read_text()
-        for name in unittest.defaultTestLoader.getTestCaseNames(type(self)):
-            self.assertIn("| Python: `" + name + "` |", scenarios)
-
-    def git_fixture(self):
-        """A real local origin, immutable release tag and newer controller main."""
-        upstream = self.root / "upstream"
-        upstream.mkdir()
-        members = NAMES + ["faultline-fixtures", "xtask"]
-        (upstream / "Cargo.toml").write_text(
-            "[workspace]\nmembers = " + json.dumps(members) +
-            '\n[workspace.package]\nversion = "0.0.1"\n')
-        for name in members:
-            (upstream / name).mkdir()
-            (upstream / name / "Cargo.toml").write_text(
-                '[package]\nname = ' + json.dumps(name) + '\nversion.workspace = true\n' +
-                ('publish = false\n' if name in ["faultline-fixtures", "xtask"] else ''))
-        for path, data in {".github/workflows/release.yml": "obsolete release controls\n",
-                           ".github/tests/test_release_workflow.py": "print('obsolete tests executed')\n",
-                           "docs/scenarios/scenario_index.md": "obsolete scenarios\n"}.items():
-            destination = upstream / path
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(data)
-        git(upstream, "init", "--initial-branch=main")
-        git(upstream, "config", "user.name", "Generated fixture")
-        git(upstream, "config", "user.email", "fixture@example.invalid")
-        git(upstream, "add", ".")
-        git(upstream, "commit", "-m", "Release source")
-        source = git(upstream, "rev-parse", "HEAD")
-        tree = git(upstream, "rev-parse", "HEAD^{tree}")
-        git(upstream, "tag", "-a", "v0.0.1", "-m", "v0.0.1")
-        tag = git(upstream, "rev-parse", "refs/tags/v0.0.1")
-        (upstream / ".github/workflows/release.yml").write_text("fixed controller\n")
-        (upstream / "docs/scenarios/scenario_index.md").write_text("fixed scenarios\n")
-        (upstream / ".github/tests/test_release_workflow.py").write_text(
-            "from pathlib import Path\n" +
-            "assert Path('.github/workflows/release.yml').read_text() == 'fixed controller\\n'\n" +
-            "assert Path('docs/scenarios/scenario_index.md').read_text() == 'fixed scenarios\\n'\n" +
-            "print('FIXED_CONTROLLER_TESTS')\n")
-        git(upstream, "add", ".")
-        git(upstream, "commit", "-m", "Fixed controller")
-        controller = git(upstream, "rev-parse", "HEAD")
-        remote = self.root / "remote.git"
-        git(self.root, "clone", "--bare", str(upstream), str(remote))
-        runner = self.root / "runner"
-        runner.mkdir()
-        git(runner, "init")
-        git(runner, "remote", "add", "origin", str(remote))
-        git(runner, "fetch", "--force", "origin",
-            "+refs/heads/*:refs/remotes/origin/*", "+refs/tags/*:refs/tags/*")
-        git(runner, "checkout", "--detach", source)
-        return {"runner": runner, "remote": remote, "source": source, "tree": tree,
-                "tag": tag, "controller": controller}
-
-    def select(self, fixture, event="workflow_dispatch", publish="false", success=True, **changes):
-        output = self.root / "selection-output"
-        output.unlink(missing_ok=True)
-        environment = dict(os.environ, GITHUB_EVENT_NAME=event, GITHUB_OUTPUT=str(output),
-                           GITHUB_REF_TYPE="branch" if event == "workflow_dispatch" else "tag",
-                           GITHUB_REF="refs/heads/main" if event == "workflow_dispatch" else "refs/tags/v0.0.1",
-                           GITHUB_REF_NAME="main" if event == "workflow_dispatch" else "v0.0.1",
-                           GITHUB_SHA=fixture["controller"] if event == "workflow_dispatch" else fixture["source"],
-                           GITHUB_WORKFLOW_SHA=fixture["controller"],
-                           GITHUB_WORKFLOW_REF="EffortlessMetrics/faultline-rs/.github/workflows/release.yml@refs/heads/main",
-                           RECOVERY_SOURCE_SHA=fixture["source"], RECOVERY_SOURCE_TREE=fixture["tree"],
-                           RECOVERY_TAG_OBJECT=fixture["tag"], RECOVERY_PUBLISH=publish)
-        environment.update(changes)
-        result = subprocess.run([sys.executable, "-c", inline_python(SELECT)],
-                                cwd=fixture["runner"], capture_output=True, text=True,
-                                env=environment, timeout=20)
-        self.assertEqual(result.returncode == 0, success, result.stdout + result.stderr)
-        if not success:
-            self.assertFalse(output.exists(), "Failure must not authorize upload or source receipts")
-            return {}
-        return dict(line.split("=", 1) for line in output.read_text().splitlines())
-
-    def test_annotated_checkout_fallback_is_red_and_explicit_sha_is_green(self):
-        fixture = self.git_fixture()
-        runner, remote = fixture["runner"], fixture["remote"]
-        remote_before = git(runner, "ls-remote", "origin", "refs/tags/v0.0.1*")
-        # checkout's implicit tag+commit testRef compares the raw object to the
-        # event commit, then force-fetches the commit into the runner-local tag.
-        self.assertNotEqual(git(runner, "rev-parse", "refs/tags/v0.0.1"), fixture["source"])
-        git(runner, "fetch", "--no-tags", "--force", "origin",
-            "+" + fixture["source"] + ":refs/tags/v0.0.1")
-        self.assertEqual(git(runner, "cat-file", "-t", "refs/tags/v0.0.1"), "commit")
-        self.select(fixture, event="push", success=False)
-        # SHA-only checkout has no tag ref to overwrite; full history retains A.
-        git(runner, "fetch", "--force", "origin", "+refs/tags/*:refs/tags/*")
-        self.assertEqual(git(runner, "cat-file", "-t", "refs/tags/v0.0.1"), "tag")
-        self.assertEqual(self.select(fixture, event="push"),
-                         {"source_sha": fixture["source"], "publish": "true"})
-        self.assertEqual(git(runner, "ls-remote", "origin", "refs/tags/v0.0.1*"), remote_before)
-        self.assertEqual(git(remote, "rev-parse", "refs/tags/v0.0.1"), fixture["tag"])
-        git(runner, "-c", "user.name=Generated fixture", "-c", "user.email=fixture@example.invalid",
-            "tag", "-a", "v0.0.2", fixture["source"], "-m", "Wrong version")
-        self.select(fixture, event="push", success=False, GITHUB_REF="refs/tags/v0.0.2")
-        git(runner, "-c", "user.name=Generated fixture", "-c", "user.email=fixture@example.invalid",
-            "tag", "--force", "-a", "v0.0.1", fixture["controller"], "-m", "Wrong commit")
-        self.select(fixture, event="push", success=False)
-        git(runner, "update-ref", "refs/tags/v0.0.1", fixture["tag"])
-
-    def test_recovery_pins_and_main_push_publication_gate_fail_closed(self):
-        fixture = self.git_fixture()
-        self.assertEqual(self.select(fixture), {"source_sha": fixture["source"], "publish": "false"})
-        self.assertEqual(self.select(fixture, publish="true")["publish"], "true")
-        self.assertEqual(self.select(fixture, event="push", GITHUB_REF_TYPE="branch",
-                                     GITHUB_REF="refs/heads/main")["publish"], "false")
-        for changes in [{"RECOVERY_SOURCE_SHA": "0" * 40}, {"RECOVERY_SOURCE_TREE": "0" * 40},
-                        {"RECOVERY_TAG_OBJECT": "0" * 40}, {"GITHUB_REF": "refs/heads/release/other"},
-                        {"GITHUB_WORKFLOW_SHA": "0" * 40}, {"GITHUB_SHA": fixture["source"]},
-                        {"GITHUB_SHA": fixture["source"], "GITHUB_WORKFLOW_SHA": fixture["source"]},
-                        {"GITHUB_WORKFLOW_REF": "other/repo/.github/workflows/release.yml@refs/heads/main"},
-                        {"RECOVERY_PUBLISH": "yes"}]:
-            with self.subTest(changes=changes):
-                self.select(fixture, success=False, **changes)
-        self.select(fixture, event="push", success=False, GITHUB_REF_TYPE="branch",
-                    GITHUB_REF="refs/heads/main", GITHUB_SHA=fixture["controller"])
-        runner = fixture["runner"]
-        (runner / "Cargo.toml").write_text((runner / "Cargo.toml").read_text() + "# dirty\n")
-        self.select(fixture, success=False)
-        git(runner, "checkout", "--", "Cargo.toml")
-        git(runner, "update-ref", "refs/tags/v0.0.1", fixture["source"])
-        self.select(fixture, success=False)
-        self.select(fixture, event="push", success=False)
-        git(runner, "update-ref", "refs/tags/v0.0.1", fixture["tag"])
-        unrelated = git(runner, "-c", "user.name=Generated fixture", "-c",
-                        "user.email=fixture@example.invalid", "commit-tree", fixture["tree"],
-                        "-m", "Unrelated main")
-        git(runner, "update-ref", "refs/remotes/origin/main", unrelated)
-        self.select(fixture, event="push", success=False)
-        self.select(fixture, success=False, GITHUB_SHA=unrelated, GITHUB_WORKFLOW_SHA=unrelated)
-
-    def test_fixed_controller_tests_run_before_immutable_source_selection(self):
-        fixture = self.git_fixture()
-        runner = fixture["runner"]
-        workflow = WORKFLOW.read_text()
-        start = workflow.index("      - name: Test release workflow contracts\n")
-        end = workflow.index("\n      - ", start + 1)
-        test_step = textwrap.dedent(workflow[start:end].split("        run: |\n", 1)[1])
-        self.assertLess(start, workflow.index("      - name: Select immutable v0.0.1 recovery source\n"))
-        git(runner, "checkout", "--detach", fixture["controller"])
-        result = subprocess.run(["bash", "-e", "-c", test_step], cwd=runner,
-                                capture_output=True, text=True, timeout=20,
-                                env=dict(os.environ, GITHUB_WORKFLOW_SHA=fixture["controller"]))
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("FIXED_CONTROLLER_TESTS", result.stdout)
-        git(runner, "checkout", "--detach", "refs/tags/v0.0.1")
-        self.assertIn("obsolete", (runner / ".github/tests/test_release_workflow.py").read_text())
-        wrong_controller = subprocess.run(
-            ["bash", "-e", "-c", test_step], cwd=runner, capture_output=True,
-            text=True, timeout=20,
-            env=dict(os.environ, GITHUB_WORKFLOW_SHA=fixture["controller"]))
-        self.assertNotEqual(wrong_controller.returncode, 0)
-        self.assertNotIn("obsolete tests executed", wrong_controller.stdout)
-        self.assertEqual(self.select(fixture)["source_sha"], fixture["source"])
-        self.assertEqual(git(runner, "rev-parse", "HEAD"), fixture["source"])
-        self.assertEqual(git(runner, "status", "--porcelain", "--untracked-files=no"), "")
-
-    def test_recovery_workflow_wiring_preserves_pins_token_scope_and_concurrency(self):
-        workflow = WORKFLOW.read_text()
-        for pin in ["RECOVERY_SOURCE_SHA: a2c59ef1cedfee120762a4e7727b62224e57a8e7",
-                    "RECOVERY_SOURCE_TREE: 66deea4bc3e0a490eda8e08f4392dead3f62c177",
-                    "RECOVERY_TAG_OBJECT: bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0"]:
-            self.assertIn(pin, workflow)
+    def test_normal_workflow_runs_contracts_then_isolation_qualification_and_gated_publish(self):
+        workflow = (HELPER.parents[1] / "workflows/release.yml").read_text()
         self.assertIn("          ref: ${{ github.sha }}\n", workflow)
-        self.assertIn("          ref: refs/tags/v0.0.1\n", workflow)
-        self.assertEqual(workflow.count("persist-credentials: false"), 2)
-        self.assertIn("default: false", workflow)
-        self.assertIn("group: release-check-${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.1' || github.ref }}", workflow)
-        self.assertIn("RELEASE_SOURCE_SHA: ${{ steps.selection.outputs.source_sha }}", workflow)
-        self.assertIn("name: crates-source-${{ steps.selection.outputs.source_sha }}", workflow)
-        self.assertEqual(workflow.count("if: steps.selection.outputs.publish == 'true'"), 3)
+        self.assertIn("persist-credentials: false", workflow)
+        self.assertNotIn("ref: refs/tags/v0.0.1", workflow)
+        self.assertNotIn("workflow_dispatch:", workflow)
+        self.assertIn('tags: ["faultline-rs-v0.0.1"]', workflow)
+        self.assertIn("cancel-in-progress: false", workflow)
+        self.assertIn("contents: read", workflow)
+        contracts = min(index for index in [workflow.find("python3 .github/tests/test_release_workflow.py"),
+                                              workflow.find("python3 -m unittest discover -s .github/tests")] if index >= 0)
+        cache = workflow.index("uses: actions/cache@v4")
+        isolation = workflow.index("python3 .github/scripts/release.py isolate")
+        self.assertLess(contracts, isolation)
+        self.assertLess(cache, isolation)
+        previous = isolation
+        for command in ("package", "dry-run", "inspect", "preflight", "publish", "verify"):
+            current = workflow.index("python3 .github/scripts/release.py " + command)
+            self.assertLess(previous, current)
+            previous = current
+        self.assertLess(workflow.index("python3 .github/scripts/release.py inspect"), workflow.index("uses: actions/upload-artifact@v4"))
+        artifact = workflow.split("uses: actions/upload-artifact@v4", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("target/package/package-file-lists.json", artifact)
+        self.assertIn("target/package/release-receipts.json", artifact)
+        self.assertIn("target/published-anchors/*.crate", artifact)
         self.assertEqual(workflow.count("${{ secrets.CARGO_REGISTRY_TOKEN }}"), 1)
-        upload = workflow.split("      - name: Publish qualified workspace to crates.io\n", 1)[1]
-        self.assertIn("${{ secrets.CARGO_REGISTRY_TOKEN }}", upload.split("\n      - ", 1)[0])
+        steps = workflow.split("\n      - ")
+        token_steps = [step for step in steps if "${{ secrets.CARGO_REGISTRY_TOKEN }}" in step]
+        self.assertEqual(len(token_steps), 1)
+        self.assertIn("python3 .github/scripts/release.py publish", token_steps[0])
+        self.assertIn("if: steps.selection.outputs.publish == 'true'", token_steps[0])
+        self.assertNotIn("cargo publish --workspace", workflow)
+        self.assertIn("cargo install faultline-rs", workflow)
+        self.assertIn("bin/faultline-rs", workflow)
+        self.assertNotIn("bin/faultline-cli", workflow)
+
+    def test_all_mixed_contracts_are_cataloged_and_exact_files_have_policy_receipts(self):
+        repository = HELPER.parents[2]
+        scenarios = (repository / "docs/scenarios/scenario_index.md").read_text()
+        for name in unittest.defaultTestLoader.getTestCaseNames(type(self)):
+            self.assertTrue("| Python: `" + name + "` |" in scenarios, "Missing Python scenario receipt: " + name)
+        policy = tomllib.loads((repository / "policy/non-rust-allowlist.toml").read_text())
+        covered = {item.get("path", item.get("glob")): item for item in policy["allow"]}
+        for path in (".github/scripts/release.py", ".github/release-0.0.1.json", ".github/tests/release_fixtures.py"):
+            self.assertIn(path, covered)
+            self.assertEqual(covered[path]["owner"], "release/ci")
+            self.assertTrue(covered[path]["covered_by"])
+        self.assertTrue(".github/tests/test_release_workflow.py" in covered or ".github/tests/test_mixed_release.py" in covered)
+
+    def test_verification_requires_all_fourteen_qualified_registry_identities(self):
+        self.qualify_receipt()
+        with mock.patch.object(release, "registry_version", side_effect=lambda name, version: self.published(name)), mock.patch.object(release.time, "sleep"):
+            self.assertTrue(all(release.preflight(self.root, require_all=True).values()))
+        with mock.patch.object(release, "registry_version", side_effect=lambda name, version: None if name == "faultline-rs" else self.published(name)), mock.patch.object(release.time, "sleep"), self.assertRaises(AssertionError):
+            release.preflight(self.root, require_all=True)
 
 
 if __name__ == "__main__":

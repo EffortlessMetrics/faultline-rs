@@ -1,23 +1,23 @@
-# AGENTS.md — faultline Contributor & Agent Onboarding
+# AGENTS.md — faultline-rs Contributor & Agent Onboarding
 
-This is the primary entry point for agents and new contributors working in the faultline repository. Read this first, then follow links to deeper documents as needed.
+This is the primary entry point for agents and new contributors working in the faultline-rs repository. Read this first, then follow links to deeper documents as needed.
 
 ## Purpose and Mission
 
-faultline is a local-first regression archaeologist for Git repositories. Given a known-good commit, a known-bad commit, and a predicate (test/build command), it narrows the regression window and produces portable artifacts showing where to start investigating.
+faultline-rs is a local-first regression archaeologist for Git repositories. Given a known-good commit, a known-bad commit, and a predicate (test/build command), it narrows the regression window and produces portable artifacts showing where to start investigating.
 
 Core promise: walk history safely, run the operator's trusted predicate at candidate revisions, emit JSON + HTML artifacts explaining the narrowest credible regression window.
 
 Design principles: honest over impressive, predicate-native, local-first, artifact-first, narrow core with thick edges.
 
-See [docs/mission-and-vision.md](docs/mission-and-vision.md) for the full mission statement and [docs/non-goals.md](docs/non-goals.md) for what faultline is not.
+See [docs/mission-and-vision.md](docs/mission-and-vision.md) for the full mission statement and [docs/non-goals.md](docs/non-goals.md) for what faultline-rs is not.
 
 ## Architecture Overview
 
-faultline follows a hexagonal (ports-and-adapters) architecture:
+faultline-rs follows a hexagonal (ports-and-adapters) architecture:
 
 ```text
-faultline-cli (entry)
+faultline-rs (entry)
     ↓
 faultline-app (orchestration)
     ↓                         ↓
@@ -99,7 +99,7 @@ Tool versions are pinned in [.mise.toml](.mise.toml).
 
 ## Artifact Contracts
 
-faultline produces machine-readable artifacts with versioned contracts:
+faultline-rs produces machine-readable artifacts with versioned contracts:
 
 ### JSON Schema
 
@@ -114,7 +114,7 @@ cargo xtask generate-schema
 Snapshot tests (via `insta`) guard artifact stability:
 - `analysis.json` output — in `faultline-render`
 - `index.html` output — in `faultline-render`
-- CLI `--help` text — in `faultline-cli`
+- CLI `--help` text — in `faultline-rs`
 
 When a golden test fails, review and accept changes:
 

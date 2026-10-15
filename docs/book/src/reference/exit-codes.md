@@ -17,7 +17,7 @@ Faultline uses distinct exit codes to communicate the analysis outcome to callin
 You can use exit codes to drive CI behavior:
 
 ```bash
-faultline-cli --good v1.0 --bad main --cmd "cargo test"
+faultline-rs --good v1.0 --bad main --cmd "cargo test"
 case $? in
   0) echo "Exact regression commit found" ;;
   1) echo "Suspect window identified — manual review needed" ;;

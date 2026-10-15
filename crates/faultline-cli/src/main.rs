@@ -13,7 +13,7 @@ use std::io;
 use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
-#[command(name = "faultline")]
+#[command(name = "faultline-rs")]
 #[command(version)]
 #[command(about = "Local-first regression localization for Git repos")]
 struct Cli {
@@ -200,7 +200,7 @@ fn main() {
             {
                 exit_code_for_operator_code(OperatorCode::InvalidInput)
             } else {
-                eprintln!("faultline: {err}");
+                eprintln!("faultline-rs: {err}");
                 exit_code_for_operator_code(OperatorCode::ExecutionError)
             };
             std::process::exit(exit_code);
@@ -438,7 +438,7 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
         Ok(result) => result,
         Err(err) => {
             if let FaultlineError::InvalidBoundary(msg) = &err {
-                eprintln!("faultline: boundary validation failed");
+                eprintln!("faultline-rs: boundary validation failed");
                 eprintln!("  {}", msg);
             }
             return Err(err.into());
@@ -486,12 +486,12 @@ fn run_reproduce(
 ) -> Result<i32, Box<dyn std::error::Error>> {
     let located = faultline_loader::locate_and_load_report(&run_dir)?;
     for diag in &located.diagnostics {
-        eprintln!("faultline: {}", diag);
+        eprintln!("faultline-rs: {}", diag);
     }
     let report = located.report;
 
     if report.reproduction_capsules.is_empty() {
-        eprintln!("faultline: no reproduction capsules in report");
+        eprintln!("faultline-rs: no reproduction capsules in report");
         return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
     }
 
@@ -523,7 +523,7 @@ fn run_reproduce(
         } else {
             "no capsule found for boundary commits".to_string()
         };
-        eprintln!("faultline: {}", msg);
+        eprintln!("faultline-rs: {}", msg);
         return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
     }
 
@@ -574,10 +574,10 @@ fn run_diff_runs(
     let right_located = faultline_loader::locate_and_load_report(&right_path)?;
 
     for diag in &left_located.diagnostics {
-        eprintln!("faultline: {}", diag);
+        eprintln!("faultline-rs: {}", diag);
     }
     for diag in &right_located.diagnostics {
-        eprintln!("faultline: {}", diag);
+        eprintln!("faultline-rs: {}", diag);
     }
 
     let cmp = faultline_types::compare_runs(&left_located.report, &right_located.report);
@@ -600,7 +600,7 @@ fn run_export_markdown(
     let located = faultline_loader::locate_and_load_report(&run_dir)?;
     // Print diagnostics to stderr to avoid corrupting stdout output stream
     for diag in &located.diagnostics {
-        eprintln!("faultline: {}", diag);
+        eprintln!("faultline-rs: {}", diag);
     }
     let md = faultline_render::render_markdown(&located.report, policy);
     print!("{}", md);
@@ -648,14 +648,14 @@ fn run_bundle(
         Ok(l) => l,
         Err(_) => {
             eprintln!(
-                "faultline: no loadable report found in source: {}",
+                "faultline-rs: no loadable report found in source: {}",
                 source.display()
             );
             return Ok(exit_code_for_operator_code(OperatorCode::ExecutionError));
         }
     };
     for diag in &located.diagnostics {
-        eprintln!("faultline: {}", diag);
+        eprintln!("faultline-rs: {}", diag);
     }
     let report = located.report;
 
@@ -843,14 +843,14 @@ fn run_inspect_run(run_dir: PathBuf, json: bool) -> Result<i32, Box<dyn std::err
                 Ok(observations) => Some(observations.len()),
                 Err(e) => {
                     if !json {
-                        eprintln!("faultline: warning: failed to parse observations.json: {e}");
+                        eprintln!("faultline-rs: warning: failed to parse observations.json: {e}");
                     }
                     None
                 }
             },
             Err(e) => {
                 if !json {
-                    eprintln!("faultline: warning: failed to read observations.json: {e}");
+                    eprintln!("faultline-rs: warning: failed to read observations.json: {e}");
                 }
                 None
             }
@@ -892,7 +892,7 @@ fn run_inspect_run(run_dir: PathBuf, json: bool) -> Result<i32, Box<dyn std::err
             println!("  observations    {}", summary.observation_count);
             println!("  created-at      {}", summary.created_at_epoch_seconds);
         } else if let Some(ref err) = report_parse_error {
-            eprintln!("faultline: warning: {err}");
+            eprintln!("faultline-rs: warning: {err}");
         }
 
         // Observation count

@@ -15,19 +15,9 @@ use tempfile::TempDir;
 
 use faultline_fixtures::{ensure, ensure_eq, require_ok, require_some};
 
-/// Locate the faultline-cli binary built by cargo.
+/// Use the exact CLI executable Cargo built for this integration test.
 fn cli_binary() -> anyhow::Result<PathBuf> {
-    let path = std::env::current_exe()?
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("current_exe has no parent"))?
-        .parent()
-        .ok_or_else(|| anyhow::anyhow!("no parent of deps dir"))?
-        .to_path_buf();
-    Ok(if cfg!(windows) {
-        path.join("faultline-cli.exe")
-    } else {
-        path.join("faultline-cli")
-    })
+    Ok(PathBuf::from(env!("CARGO_BIN_EXE_faultline-rs")))
 }
 
 /// Create a minimal valid AnalysisReport JSON string.

@@ -1,4 +1,4 @@
-# faultline-cli
+# faultline-rs
 
 This crate is the user-facing CLI entrypoint and owns argument parsing, command dispatch, and request construction for `faultline-app`.
 
@@ -15,7 +15,7 @@ Behavior notes:
 - Input conflicts (`resume/force/fresh`) must remain rejected before invoking app orchestration.
 
 Validation:
-- `cargo test -p faultline-cli --test smoke`
-- `cargo run -p faultline-cli -- --help`
-- `cargo test -p faultline-cli` and `cargo insta test -p faultline-cli` when snapshots change
+- `cargo test -p faultline-rs --test smoke`
+- `cargo run -p faultline-rs -- --help`
+- `cargo test -p faultline-rs` and `cargo insta test -p faultline-rs` when snapshots change
 

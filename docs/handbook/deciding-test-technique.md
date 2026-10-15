@@ -60,7 +60,7 @@ Is the code in a mutation-targeted crate?
 
 **Use when:** The output is a structured artifact (JSON, HTML, CLI help text) and you want to detect any change to its format or content.
 
-**Sweet spot:** `faultline-render` (JSON + HTML artifacts), `faultline-cli` (`--help` text), `faultline-sarif` and `faultline-junit` (export format).
+**Sweet spot:** `faultline-render` (JSON + HTML artifacts), `faultline-rs` (`--help` text), `faultline-sarif` and `faultline-junit` (export format).
 
 **Examples from faultline:**
 - `golden_analysis_json` — snapshots the canonical JSON report
@@ -75,7 +75,7 @@ Is the code in a mutation-targeted crate?
 
 **Use when:** The code parses, deserializes, or processes untrusted or arbitrary input and must not panic.
 
-**Sweet spot:** Deserialization paths (`faultline-store` JSON loading), Git output parsing (`faultline-git`), HTML escaping (`faultline-render`), CLI argument parsing (`faultline-cli`).
+**Sweet spot:** Deserialization paths (`faultline-store` JSON loading), Git output parsing (`faultline-git`), HTML escaping (`faultline-render`), CLI argument parsing (`faultline-rs`).
 
 **Examples from faultline:**
 - `fuzz_git_diff_parse` — arbitrary byte strings as `git diff --name-status` output

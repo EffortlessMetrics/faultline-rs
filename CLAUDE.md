@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-faultline is a local-first regression archaeologist for Git repositories. Given good/bad commits and a predicate command, it narrows the regression window via binary search over Git history and emits JSON + HTML artifacts showing where to investigate. Design principles: honest over impressive, predicate-native, local-first, artifact-first.
+faultline-rs is a local-first regression archaeologist for Git repositories. Given good/bad commits and a predicate command, it narrows the regression window via binary search over Git history and emits JSON + HTML artifacts showing where to investigate. Design principles: honest over impressive, predicate-native, local-first, artifact-first.
 
 ## Build & Test Commands
 
@@ -44,7 +44,7 @@ cargo xtask mutants --crate faultline-localization  # single crate
 cargo xtask smoke
 
 # Run the CLI
-cargo run -p faultline-cli -- --help
+cargo run -p faultline-rs -- --help
 ```
 
 `just` aliases exist for most xtask commands (e.g., `just ci`, `just ci-full`, `just mutants`).
@@ -54,7 +54,7 @@ cargo run -p faultline-cli -- --help
 Hexagonal (ports-and-adapters) with strict dependency direction:
 
 ```
-faultline-cli (entry point, clap)
+faultline-rs (entry point, clap)
     |
 faultline-app (orchestration)
     |                           |
@@ -78,7 +78,7 @@ faultline-app (orchestration)
 - **faultline-surface**: Ranked suspect surface with scoring, bucketing, owner hints
 - **faultline-ports**: Trait definitions only (HistoryPort, CheckoutPort, ProbePort, RunStorePort)
 - **faultline-app**: Orchestration: linearize -> validate boundaries -> binary narrow -> generate report
-- **faultline-cli**: clap-based CLI with subcommands (reproduce, diff-runs, export-markdown, export-sarif, export-junit)
+- **faultline-rs**: clap-based CLI with subcommands (reproduce, diff-runs, export-markdown, export-sarif, export-junit)
 - **faultline-git**: HistoryPort + CheckoutPort impl, shells out to system `git`, worktree management
 - **faultline-probe-exec**: ProbePort impl, process execution with timeout
 - **faultline-store**: RunStorePort impl, filesystem under `.faultline/runs/`, atomic writes with lock files

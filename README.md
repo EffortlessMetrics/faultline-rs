@@ -1,4 +1,4 @@
-# faultline
+# faultline-rs
 
 [![CI Fast](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/EffortlessMetrics/faultline-rs/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -6,7 +6,7 @@
 A test or build used to pass. Now it fails, and you are checking commits by hand
 to work out where to start.
 
-faultline runs the same command through your Git history and returns the
+faultline-rs runs the same command through your Git history and returns the
 narrowest regression window supported by the results. You get commits to inspect
 and a report showing the evidence behind that result.
 
@@ -18,7 +18,7 @@ where it fails.
 Install the initial release:
 
 ```bash
-cargo install faultline-cli --version 0.0.1 --locked
+cargo install faultline-rs --version 0.0.1 --locked
 ```
 
 If 0.0.1 is not yet available on crates.io, [build from source](BUILDING.md).
@@ -28,7 +28,7 @@ known passing commit. This example uses `HEAD` as the failing commit and
 `cargo test` as the check:
 
 ```bash
-faultline-cli --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
+faultline-rs --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 ```
 
 Use your own test or build command if the project needs a different check.

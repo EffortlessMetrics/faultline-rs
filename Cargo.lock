@@ -219,32 +219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "faultline-cli"
-version = "0.0.1"
-dependencies = [
- "anyhow",
- "clap",
- "faultline-app",
- "faultline-codes",
- "faultline-fixtures",
- "faultline-git",
- "faultline-junit",
- "faultline-loader",
- "faultline-probe-exec",
- "faultline-render",
- "faultline-sarif",
- "faultline-store",
- "faultline-types",
- "flate2",
- "insta",
- "proptest",
- "serde",
- "serde_json",
- "tar",
- "tempfile",
-]
-
-[[package]]
 name = "faultline-codes"
 version = "0.0.1"
 dependencies = [
@@ -336,6 +310,32 @@ dependencies = [
  "insta",
  "proptest",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "faultline-rs"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "faultline-app",
+ "faultline-codes",
+ "faultline-fixtures",
+ "faultline-git",
+ "faultline-junit",
+ "faultline-loader",
+ "faultline-probe-exec",
+ "faultline-render",
+ "faultline-sarif",
+ "faultline-store",
+ "faultline-types",
+ "flate2",
+ "insta",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tar",
  "tempfile",
 ]
 

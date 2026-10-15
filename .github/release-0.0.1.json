@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "tag": "faultline-rs-v0.0.1",
+  "published_source": {
+    "sha": "a2c59ef1cedfee120762a4e7727b62224e57a8e7",
+    "tree": "66deea4bc3e0a490eda8e08f4392dead3f62c177",
+    "tag": "v0.0.1",
+    "tag_object": "bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0"
+  },
+  "published": {
+    "faultline-codes": "5264d08a500db06e13588eef398e3d89a93588d9e2b4ed08897ef8325b6d74cc",
+    "faultline-types": "cad57d092855ffc41feaada58016c5c0d6b4ae62b09bbbf53c36f19ab6bb458a",
+    "faultline-junit": "a27af02b740111d56bdc9a9b2d43b0afb0c661a3e110a532f4406fff97253de9",
+    "faultline-loader": "dba9c88801b17ad020c625e7fbe9221feca13bd7f504c1bec2f3a5331dd43332",
+    "faultline-localization": "86f3dcd7cb3f5ff44a1c1c3de1dc20123f2bdc884aa929a9a766d3ab5266e8b7"
+  },
+  "publish_order": [
+    "faultline-surface",
+    "faultline-ports",
+    "faultline-app",
+    "faultline-git",
+    "faultline-probe-exec",
+    "faultline-store",
+    "faultline-render",
+    "faultline-sarif",
+    "faultline-rs"
+  ],
+  "minimum_publish_interval_seconds": 60
+}

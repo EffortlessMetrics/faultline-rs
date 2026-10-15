@@ -5,7 +5,7 @@
 faultline follows a hexagonal (ports-and-adapters) architecture. Two pure domain crates own all business logic. Four port traits define the outbound boundary. Six infrastructure adapters implement those ports or provide export functionality. One shared infrastructure helper crate (`faultline-loader`) provides report loading for entry-point crates. One application crate orchestrates the use-case lifecycle. One CLI crate provides the operator entry point.
 
 ```text
-faultline-cli (+reproduce, +diff-runs, +export-markdown)
+faultline-rs (+reproduce, +diff-runs, +export-markdown)
     |
     v
 faultline-app  -----------------------------.
@@ -64,7 +64,7 @@ Testing utility:
 
 | Crate | Responsibility |
 |-------|---------------|
-| `faultline-loader` | Report file resolution and loading. Implements the shared `Report_Locator` logic used by both `faultline-cli` and `xtask` to locate and deserialize an `AnalysisReport` from either a directory path or a direct file path. Not a port adapter — a convenience helper at the same dependency tier as adapters, depended on only by entry-point crates (CLI, xtask). |
+| `faultline-loader` | Report file resolution and loading. Implements the shared `Report_Locator` logic used by both `faultline-rs` and `xtask` to locate and deserialize an `AnalysisReport` from either a directory path or a direct file path. Not a port adapter — a convenience helper at the same dependency tier as adapters, depended on only by entry-point crates (CLI, xtask). |
 
 ### Application
 
@@ -76,7 +76,7 @@ Testing utility:
 
 | Crate | Responsibility |
 |-------|---------------|
-| `faultline-cli` | Operator-facing CLI via clap. Parses arguments (including `--retries`, `--stability-threshold`, `--markdown`), constructs adapters, invokes `FaultlineApp::localize`, renders artifacts, prints summary. Subcommands: `reproduce`, `diff-runs`, `export-markdown`. Exit 0 on success, exit 2 on error. |
+| `faultline-rs` | Operator-facing CLI via clap. Parses arguments (including `--retries`, `--stability-threshold`, `--markdown`), constructs adapters, invokes `FaultlineApp::localize`, renders artifacts, prints summary. Subcommands: `reproduce`, `diff-runs`, `export-markdown`. Exit 0 on success, exit 2 on error. |
 
 ### Testing utility
 
@@ -117,12 +117,12 @@ Before unification, CLI commands loaded `report.json` (internal tier) while xtas
 
 | Command | Report Resolution |
 |---------|-------------------|
-| `faultline` (localize) | N/A (generates report) |
-| `faultline reproduce` | Shared Report_Locator |
-| `faultline export-markdown` | Shared Report_Locator |
-| `faultline diff-runs` | Shared Report_Locator (direct file) |
-| `faultline inspect-run` | Direct directory walk |
-| `faultline bundle` | Shared Report_Locator |
+| `faultline-rs` (localize) | N/A (generates report) |
+| `faultline-rs reproduce` | Shared Report_Locator |
+| `faultline-rs export-markdown` | Shared Report_Locator |
+| `faultline-rs diff-runs` | Shared Report_Locator (direct file) |
+| `faultline-rs inspect-run` | Direct directory walk |
+| `faultline-rs bundle` | Shared Report_Locator |
 | `cargo xtask export-markdown` | Shared Report_Locator |
 | `cargo xtask export-sarif` | Shared Report_Locator |
 | `cargo xtask export-junit` | Shared Report_Locator |

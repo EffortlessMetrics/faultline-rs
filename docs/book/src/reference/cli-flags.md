@@ -1,6 +1,6 @@
 # CLI Flags
 
-Reference for all `faultline-cli` command-line flags.
+Reference for all `faultline-rs` command-line flags.
 
 ## Required flags
 
@@ -69,26 +69,26 @@ If none of these are specified, faultline resumes from cached observations by de
 Basic usage with a shell command:
 
 ```bash
-faultline-cli --good v1.0 --bad main --cmd "cargo test"
+faultline-rs --good v1.0 --bad main --cmd "cargo test"
 ```
 
 Direct program execution with arguments:
 
 ```bash
-faultline-cli --good abc123 --bad def456 --program ./test.sh --arg --verbose --arg --fast
+faultline-rs --good abc123 --bad def456 --program ./test.sh --arg --verbose --arg --fast
 ```
 
 Custom probe budget and output directory:
 
 ```bash
-faultline-cli --good v1.0 --bad main --cmd "make test" \
+faultline-rs --good v1.0 --bad main --cmd "make test" \
   --max-probes 20 --output-dir ./results
 ```
 
 With environment variables and explicit shell:
 
 ```bash
-faultline-cli --good v1.0 --bad main \
+faultline-rs --good v1.0 --bad main \
   --cmd "npm test" --shell sh \
   --env CI=true --env NODE_ENV=test
 ```

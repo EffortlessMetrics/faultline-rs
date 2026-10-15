@@ -1,4 +1,4 @@
-# faultline-cli Source
+# faultline-rs Source
 
 Primary executable implementation.
 
@@ -8,6 +8,6 @@ Primary file:
 Focus edits here on argument handling, command dispatch, and request construction.
 
 Validation:
-- `cargo run -p faultline-cli -- --help`
-- `cargo test -p faultline-cli --test smoke`
+- `cargo run -p faultline-rs -- --help`
+- `cargo test -p faultline-rs --test smoke`
 

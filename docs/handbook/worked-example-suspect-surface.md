@@ -9,7 +9,7 @@ Your CI pipeline reports that `cargo test --lib` fails on `main` but passed on t
 ## Step 1: Run faultline
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . \
   --good v0.9.0 \
   --bad main \
@@ -70,7 +70,7 @@ This confirms whether the high-priority file was actually changed in the regress
 Use the Markdown dossier (`--markdown` flag) to paste the suspect surface into a PR comment or incident thread:
 
 ```bash
-faultline-cli \
+faultline-rs \
   --repo . --good v0.9.0 --bad main \
   --cmd "cargo test --lib" \
   --output-dir regression-report \

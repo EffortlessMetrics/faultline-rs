@@ -43,7 +43,7 @@ Run the tests to see which snapshots changed:
 
 ```bash
 cargo test -p faultline-render
-cargo test -p faultline-cli
+cargo test -p faultline-rs
 ```
 
 Review and accept the changes:

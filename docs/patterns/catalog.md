@@ -130,7 +130,7 @@ This catalog defines the 10 named patterns that govern the faultline repository'
 
 **When to use:** When modifying `AnalysisReport` serialization, HTML rendering, or CLI flag definitions. Run `cargo insta test` to detect changes, then `cargo insta review` to accept or reject them.
 
-**Example:** The `golden_analysis_json` test in `faultline-render` snapshots the JSON output of a canonical fixture report. The `golden_cli_help` test in `faultline-cli` snapshots the `--help` text. When these change, CI fails with instructions to run `cargo insta review`.
+**Example:** The `golden_analysis_json` test in `faultline-render` snapshots the JSON output of a canonical fixture report. The `golden_cli_help` test in `faultline-rs` snapshots the `--help` text. When these change, CI fails with instructions to run `cargo insta review`.
 
 **Anti-example:** Deleting or regenerating golden snapshots without reviewing the diff — this defeats the purpose of the contract.
 
