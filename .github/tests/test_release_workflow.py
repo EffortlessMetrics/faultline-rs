@@ -24,6 +24,7 @@ import unittest
 WORKFLOW = Path(os.environ.get(
     "FAULTLINE_RELEASE_WORKFLOW", Path(__file__).parents[1] / "workflows/release.yml"
 )).resolve()
+SCENARIO_INDEX = Path(__file__).parents[2] / "docs/scenarios/scenario_index.md"
 ISOLATE = "Isolate cached package artifacts"
 INSPECT = "Inspect clean archive identity and landing copy"
 SOURCE = "1" * 40
@@ -212,6 +213,11 @@ class ReleaseWorkflowContracts(unittest.TestCase):
         self.assertLess(isolation, package)
         self.assertIn("run: python3 .github/tests/test_release_workflow.py", workflow)
         self.assertIn("            target\n", workflow)
+        # The Rust atlas scanner only discovers Rust tests under crates/.
+        # Keep Python scenarios cataloged and checked by their own suite.
+        scenarios = SCENARIO_INDEX.read_text()
+        for name in unittest.defaultTestLoader.getTestCaseNames(type(self)):
+            self.assertIn("| Python: `" + name + "` |", scenarios)
 
 
 if __name__ == "__main__":
