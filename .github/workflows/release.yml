@@ -4,6 +4,12 @@ on:
   push:
     branches: ["main", "release/**"]
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the pinned v0.0.1 recovery after qualification (otherwise checks only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,7 +22,7 @@ env:
   CARGO_INCREMENTAL: "0"
 
 concurrency:
-  group: release-check-${{ github.ref }}
+  group: release-check-${{ github.event_name == 'workflow_dispatch' && 'refs/tags/v0.0.1' || github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -26,12 +32,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # A SHA-only checkout avoids checkout's annotated-tag fallback rewrite.
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Run the fixed controller's tests before selecting the immutable source.
+      - name: Test release workflow contracts
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_WORKFLOW_SHA"
+          python3 .github/tests/test_release_workflow.py
+          echo "Validated workflow controller $GITHUB_WORKFLOW_SHA"
+
+      - name: Select immutable v0.0.1 recovery source
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/v0.0.1
           fetch-depth: 0
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@1.93.1
 
       - name: Validate release selection and tag
+        id: selection
+        env:
+          RECOVERY_SOURCE_SHA: a2c59ef1cedfee120762a4e7727b62224e57a8e7
+          RECOVERY_SOURCE_TREE: 66deea4bc3e0a490eda8e08f4392dead3f62c177
+          RECOVERY_TAG_OBJECT: bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0
+          RECOVERY_PUBLISH: ${{ inputs.publish }}
         run: |
           python3 - <<'PY'
           import os, pathlib, re, subprocess, tomllib
@@ -52,16 +81,30 @@ jobs:
                   assert package.get('publish', True) in (True, ['crates-io']), package['name']
           def git(*args):
               return subprocess.check_output(['git', *args], text=True).strip()
-          assert git('rev-parse', 'HEAD') == os.environ['GITHUB_SHA']
+          recovery = os.environ['GITHUB_EVENT_NAME'] == 'workflow_dispatch'
+          assert recovery or os.environ['GITHUB_EVENT_NAME'] == 'push'
+          source_sha = os.environ['RECOVERY_SOURCE_SHA'] if recovery else os.environ['GITHUB_SHA']
+          assert git('rev-parse', 'HEAD') == source_sha
           assert not git('status', '--porcelain', '--untracked-files=no')
-          if os.environ['GITHUB_REF_TYPE'] == 'tag':
-              assert os.environ['GITHUB_EVENT_NAME'] == 'push'
-              assert os.environ['GITHUB_REF_NAME'] == 'v' + version
-              ref = 'refs/tags/' + os.environ['GITHUB_REF_NAME']
+          publish = os.environ['GITHUB_REF_TYPE'] == 'tag' and not recovery
+          if recovery:
+              assert os.environ['GITHUB_REF'] == 'refs/heads/main', 'recovery controller must run on main'
+              assert os.environ['GITHUB_WORKFLOW_REF'] == 'EffortlessMetrics/faultline-rs/.github/workflows/release.yml@refs/heads/main'
+              assert os.environ['GITHUB_WORKFLOW_SHA'] == os.environ['GITHUB_SHA']
+              assert git('rev-parse', 'origin/main') == os.environ['GITHUB_SHA'], 'stale recovery controller'
+              assert git('rev-parse', 'HEAD^{tree}') == os.environ['RECOVERY_SOURCE_TREE']
+              assert git('rev-parse', 'refs/tags/v0.0.1') == os.environ['RECOVERY_TAG_OBJECT']
+              assert os.environ['RECOVERY_PUBLISH'] in ('true', 'false')
+              publish = os.environ['RECOVERY_PUBLISH'] == 'true'
+          if recovery or os.environ['GITHUB_REF_TYPE'] == 'tag':
+              ref = 'refs/tags/v0.0.1' if recovery else os.environ['GITHUB_REF']
+              assert ref == 'refs/tags/v' + version
               assert git('cat-file', '-t', ref) == 'tag', 'release tags must be annotated'
-              assert git('rev-parse', ref + '^{commit}') == os.environ['GITHUB_SHA']
+              assert git('rev-parse', ref + '^{commit}') == source_sha
               subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], check=True)
-          print('Validated 14 public packages, two private members, and source identity for', version)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'source_sha={source_sha}\npublish={str(publish).lower()}\n')
+          print('Validated 14 public packages, two private members, and source identity for', version, source_sha)
           PY
 
       - uses: actions/cache@v4
@@ -83,9 +126,6 @@ jobs:
           else
             cargo xtask release-check
           fi
-
-      - name: Test release workflow contracts
-        run: python3 .github/tests/test_release_workflow.py
 
       - name: Isolate cached package artifacts
         run: |
@@ -112,7 +152,7 @@ jobs:
 
       - name: Inspect clean archive identity and landing copy
         env:
-          RELEASE_SOURCE_SHA: ${{ github.sha }}
+          RELEASE_SOURCE_SHA: ${{ steps.selection.outputs.source_sha }}
         run: |
           python3 - <<'PY'
           import hashlib, json, os, pathlib, tarfile, tomllib, zlib
@@ -167,14 +207,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: crates-source-${{ github.sha }}
+          name: crates-source-${{ steps.selection.outputs.source_sha }}
           path: |
             target/package/*.crate
             target/package/release-receipts.json
           if-no-files-found: error
 
       - name: Publish qualified workspace to crates.io
-        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        if: steps.selection.outputs.publish == 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
@@ -184,7 +224,7 @@ jobs:
           cargo publish --workspace --exclude xtask --exclude faultline-fixtures --registry crates-io --locked --jobs 1 --no-verify
 
       - name: Verify published registry identities
-        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        if: steps.selection.outputs.publish == 'true'
         run: |
           python3 - <<'PY'
           import hashlib, json, pathlib, urllib.request
@@ -205,7 +245,7 @@ jobs:
           PY
 
       - name: Verify version-specific registry installation
-        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        if: steps.selection.outputs.publish == 'true'
         run: |
           version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("Cargo.toml").read_text())["workspace"]["package"]["version"])')"
           cargo install faultline-cli --version "=$version" --registry crates-io --locked --jobs 1 --root "$RUNNER_TEMP/faultline-install"
