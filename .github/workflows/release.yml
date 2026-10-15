@@ -84,6 +84,23 @@ jobs:
             cargo xtask release-check
           fi
 
+      - name: Isolate cached package artifacts
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, tempfile
+          target = pathlib.Path.cwd() / 'target'
+          package = target / 'package'
+          if package.exists() or package.is_symlink():
+              assert target.is_dir() and not target.is_symlink()
+              assert package.is_dir() and not package.is_symlink()
+              assert package.stat().st_uid == os.geteuid()
+              # Cargo 1.93 uplifts archives without truncating an existing destination.
+              # Same-filesystem rename preserves the complete cache for recovery.
+              quarantine = pathlib.Path(tempfile.mkdtemp(prefix='package-quarantine-', dir=target)) / 'package'
+              package.rename(quarantine)
+              print('Preserved cached package artifacts at', quarantine)
+          PY
+
       - name: Verify package graph
         run: cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked --jobs 1
 
@@ -95,7 +112,7 @@ jobs:
           RELEASE_SOURCE_SHA: ${{ github.sha }}
         run: |
           python3 - <<'PY'
-          import hashlib, json, os, pathlib, tarfile, tomllib
+          import hashlib, json, os, pathlib, tarfile, tomllib, zlib
           root = pathlib.Path.cwd()
           expected = {'faultline-codes', 'faultline-types', 'faultline-localization', 'faultline-surface', 'faultline-ports', 'faultline-app', 'faultline-git', 'faultline-probe-exec', 'faultline-store', 'faultline-render', 'faultline-junit', 'faultline-loader', 'faultline-sarif', 'faultline-cli'}
           source_sha = os.environ['RELEASE_SOURCE_SHA']
@@ -106,7 +123,13 @@ jobs:
           assert len(archives) == len(expected), 'expected exactly 14 current archives'
           receipts = []
           names = set()
+          lockfiles = {}
           for archive in archives:
+              archive_bytes = archive.read_bytes()
+              gzip = zlib.decompressobj(wbits=31)
+              gzip.decompress(archive_bytes)
+              gzip.flush()
+              assert gzip.eof and not gzip.unused_data, ('incomplete gzip or trailing archive bytes', archive.name)
               with tarfile.open(archive, 'r:gz') as package:
                   prefix = archive.name[:-6] + '/'
                   manifest = tomllib.loads(package.extractfile(prefix + 'Cargo.toml').read().decode())
@@ -123,8 +146,17 @@ jobs:
                   vcs = json.load(package.extractfile(prefix + '.cargo_vcs_info.json'))
                   assert vcs['git']['sha1'] == source_sha
                   assert not vcs['git'].get('dirty', False)
-                  receipts.append({'name': info['name'], 'version': info['version'], 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest(), 'source_sha': source_sha, 'license_bytes': len(license_text), 'readme_bytes': len(readme), 'description': info['description']})
+                  lockfiles[info['name']] = tomllib.loads(package.extractfile(prefix + 'Cargo.lock').read().decode())['package']
+                  receipts.append({'name': info['name'], 'version': info['version'], 'sha256': hashlib.sha256(archive_bytes).hexdigest(), 'source_sha': source_sha, 'license_bytes': len(license_text), 'readme_bytes': len(readme), 'description': info['description']})
           assert names == expected, (names, expected)
+          hashes = {p['name']: p['sha256'] for p in receipts}
+          version = tomllib.loads((root / 'Cargo.toml').read_text())['workspace']['package']['version']
+          for name, dependencies in lockfiles.items():
+              for dependency in dependencies:
+                  if dependency['name'] in expected and dependency['name'] != name:
+                      assert dependency['version'] == version, (name, dependency)
+                      assert dependency['source'] == 'registry+https://github.com/rust-lang/crates.io-index', (name, dependency)
+                      assert dependency['checksum'] == hashes[dependency['name']], ('internal archive checksum mismatch', name, dependency['name'])
           output = root / 'target/package/release-receipts.json'
           output.write_text(json.dumps({'source_sha': source_sha, 'packages': receipts}, indent=2) + '\n')
           print(output.read_text())
