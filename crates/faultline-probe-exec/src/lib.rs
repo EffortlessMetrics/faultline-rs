@@ -4,7 +4,7 @@ use faultline_types::{
     CheckedOutRevision, FaultlineError, ProbeObservation, ProbeSpec, Result, ShellKind,
 };
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -33,6 +33,28 @@ fn read_stream<R: Read>(mut stream: R) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes)?;
     Ok(bytes)
+}
+
+fn spawn_stream_reader<R>(
+    stream: R,
+    stream_name: &'static str,
+) -> Result<thread::JoinHandle<std::io::Result<Vec<u8>>>>
+where
+    R: Read + Send + 'static,
+{
+    thread::Builder::new()
+        .name(format!("faultline-{stream_name}-reader"))
+        .spawn(move || read_stream(stream))
+        .map_err(|err| {
+            FaultlineError::Probe(format!(
+                "failed to start probe {stream_name} reader: {err}"
+            ))
+        })
+}
+
+fn terminate_after_reader_start_failure(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn join_stream_reader(
@@ -84,8 +106,21 @@ impl ExecProbeAdapter {
             .stderr
             .take()
             .ok_or_else(|| FaultlineError::Probe("failed to capture probe stderr".to_string()))?;
-        let stdout_reader = thread::spawn(move || read_stream(stdout));
-        let stderr_reader = thread::spawn(move || read_stream(stderr));
+        let stdout_reader = match spawn_stream_reader(stdout, "stdout") {
+            Ok(reader) => reader,
+            Err(err) => {
+                terminate_after_reader_start_failure(&mut child);
+                return Err(err);
+            }
+        };
+        let stderr_reader = match spawn_stream_reader(stderr, "stderr") {
+            Ok(reader) => reader,
+            Err(err) => {
+                terminate_after_reader_start_failure(&mut child);
+                let _ = join_stream_reader(stdout_reader, "stdout");
+                return Err(err);
+            }
+        };
 
         let mut timed_out = false;
         let status = loop {
