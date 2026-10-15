@@ -84,6 +84,9 @@ jobs:
             cargo xtask release-check
           fi
 
+      - name: Test release workflow contracts
+        run: python3 .github/tests/test_release_workflow.py
+
       - name: Isolate cached package artifacts
         run: |
           python3 - <<'PY'
