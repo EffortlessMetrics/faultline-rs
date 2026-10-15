@@ -3,21 +3,51 @@ use faultline_ports::ProbePort;
 use faultline_types::{
     CheckedOutRevision, FaultlineError, ProbeObservation, ProbeSpec, Result, ShellKind,
 };
+use std::io::Read;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024; // 64 KiB
+const TRUNCATION_MARKER: &str = "[truncated]";
 
-/// Truncate output to `limit` bytes and append `"[truncated]"` if it exceeds the limit.
-/// The probe adapter only truncates in-memory — full log persistence is handled by the store/app layer.
+/// Truncate output to at most `limit` bytes and append a marker when it exceeds the limit.
+/// The truncation point backs up to a UTF-8 boundary rather than splitting a codepoint.
+/// `ProbeObservation` stores this bounded preview; it is not a complete retained process log.
 fn truncate_output(output: &str, limit: usize) -> String {
     if output.len() <= limit {
         return output.to_string();
     }
-    let mut truncated = output[..limit].to_string();
-    truncated.push_str("[truncated]");
+
+    let mut end = limit.min(output.len());
+    while end > 0 && !output.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    let mut truncated = output[..end].to_string();
+    truncated.push_str(TRUNCATION_MARKER);
     truncated
+}
+
+fn read_stream<R: Read>(mut stream: R) -> std::io::Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    stream.read_to_end(&mut bytes)?;
+    Ok(bytes)
+}
+
+fn join_stream_reader(
+    reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+    stream_name: &str,
+) -> Result<Vec<u8>> {
+    match reader.join() {
+        Ok(Ok(bytes)) => Ok(bytes),
+        Ok(Err(err)) => Err(FaultlineError::Probe(format!(
+            "failed to read probe {stream_name}: {err}"
+        ))),
+        Err(_) => Err(FaultlineError::Probe(format!(
+            "probe {stream_name} reader thread panicked"
+        ))),
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -44,40 +74,53 @@ impl ExecProbeAdapter {
             .spawn()
             .map_err(|err| FaultlineError::Probe(err.to_string()))?;
 
+        // Drain both pipes while the child is running. Waiting for the child before
+        // reading can deadlock once either operating-system pipe buffer fills.
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| FaultlineError::Probe("failed to capture probe stdout".to_string()))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| FaultlineError::Probe("failed to capture probe stderr".to_string()))?;
+        let stdout_reader = thread::spawn(move || read_stream(stdout));
+        let stderr_reader = thread::spawn(move || read_stream(stderr));
+
         let mut timed_out = false;
-        loop {
-            if child
+        let status = loop {
+            if let Some(status) = child
                 .try_wait()
                 .map_err(|err| FaultlineError::Probe(err.to_string()))?
-                .is_some()
             {
-                break;
+                break status;
             }
             if started.elapsed() >= timeout {
                 timed_out = true;
                 let _ = child.kill();
-                break;
+                break child
+                    .wait()
+                    .map_err(|err| FaultlineError::Probe(err.to_string()))?;
             }
             thread::sleep(Duration::from_millis(50));
-        }
+        };
 
-        let output = child
-            .wait_with_output()
-            .map_err(|err| FaultlineError::Probe(err.to_string()))?;
-        let exit_code = output.status.code();
+        let stdout_bytes = join_stream_reader(stdout_reader, "stdout")?;
+        let stderr_bytes = join_stream_reader(stderr_reader, "stderr")?;
+        let exit_code = status.code();
 
         #[cfg(unix)]
         let signal_number = {
             use std::os::unix::process::ExitStatusExt;
-            output.status.signal()
+            status.signal()
         };
         #[cfg(not(unix))]
         let signal_number: Option<i32> = None;
 
         let class = classify(exit_code, timed_out, signal_number);
 
-        let raw_stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let raw_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let raw_stdout = String::from_utf8_lossy(&stdout_bytes).into_owned();
+        let raw_stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
 
         Ok(ProbeObservation {
             commit: checkout.commit.clone(),
@@ -372,11 +415,20 @@ mod tests {
     fn truncate_output_over_limit_truncated() {
         let input = "a".repeat(DEFAULT_TRUNCATION_LIMIT + 100);
         let result = truncate_output(&input, DEFAULT_TRUNCATION_LIMIT);
-        assert_eq!(result.len(), DEFAULT_TRUNCATION_LIMIT + "[truncated]".len());
-        assert!(result.ends_with("[truncated]"));
+        assert_eq!(result.len(), DEFAULT_TRUNCATION_LIMIT + TRUNCATION_MARKER.len());
+        assert!(result.ends_with(TRUNCATION_MARKER));
         assert_eq!(
             &result[..DEFAULT_TRUNCATION_LIMIT],
             &"a".repeat(DEFAULT_TRUNCATION_LIMIT)
+        );
+
+        // The byte limit falls inside this four-byte crab emoji. Truncation must
+        // back up to the preceding character boundary instead of panicking.
+        let utf8_input = format!("{}🦀tail", "a".repeat(62));
+        let utf8_result = truncate_output(&utf8_input, 64);
+        assert_eq!(
+            utf8_result,
+            format!("{}{}", "a".repeat(62), TRUNCATION_MARKER)
         );
     }
 
@@ -438,10 +490,10 @@ mod tests {
 
     #[test]
     fn probe_output_exceeding_limit_is_truncated() {
-        // Verify the adapter applies truncation to real probe output.
-        // We use run_with_limit() with a small limit (256 bytes) so the
-        // probe's output easily exceeds it without hitting OS pipe buffer
-        // constraints.
+        // Generate substantially more data than an operating-system pipe can
+        // ordinarily buffer on both stdout and stderr. The adapter must drain
+        // both streams while the child runs rather than false-timeout waiting
+        // for a producer blocked on a full pipe.
         use faultline_codes::ProbeKind;
 
         let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
@@ -450,19 +502,36 @@ mod tests {
             path: tmp_dir.path().to_path_buf(),
         };
 
-        // "echo hello" repeated output is small; use a command that
-        // produces ~1 KiB of output, then truncate at 256 bytes.
+        let stdout_chunk = "A".repeat(1024);
+        let stderr_chunk = "B".repeat(1024);
+        let (shell, script) = if cfg!(windows) {
+            (
+                ShellKind::PowerShell,
+                format!(
+                    "$outChunk='{stdout_chunk}'; $errChunk='{stderr_chunk}'; \
+                     1..2048 | ForEach-Object {{ \
+                     [Console]::Out.Write($outChunk); \
+                     [Console]::Error.Write($errChunk) }}"
+                ),
+            )
+        } else {
+            (
+                ShellKind::PosixSh,
+                format!(
+                    "i=0; while [ \"$i\" -lt 2048 ]; do \
+                     printf '%s' '{stdout_chunk}'; \
+                     printf '%s' '{stderr_chunk}' >&2; \
+                     i=$((i + 1)); done"
+                ),
+            )
+        };
+
         let probe = ProbeSpec::Shell {
             kind: ProbeKind::Custom,
-            shell: ShellKind::Default,
-            script: if cfg!(windows) {
-                // cmd echo produces ~1 line; repeat to get >256 bytes
-                "echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA && echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA && echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA && echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".to_string()
-            } else {
-                "printf '%0.sA' $(seq 1 500)".to_string()
-            },
+            shell,
+            script,
             env: vec![],
-            timeout_seconds: 10,
+            timeout_seconds: 30,
         };
 
         let small_limit: usize = 256;
@@ -471,16 +540,25 @@ mod tests {
             .run_with_limit(&checkout, &probe, small_limit)
             .expect("probe should complete");
 
+        assert!(!obs.timed_out, "large output should not cause a false timeout");
+        assert_eq!(obs.class, ObservationClass::Pass);
         assert!(
-            obs.stdout.ends_with("[truncated]"),
-            "stdout should end with [truncated] when output exceeds limit, got {} bytes ending with: {:?}",
-            obs.stdout.len(),
-            &obs.stdout[obs.stdout.len().saturating_sub(50)..]
+            obs.stdout.ends_with(TRUNCATION_MARKER),
+            "stdout should end with the truncation marker"
+        );
+        assert!(
+            obs.stderr.ends_with(TRUNCATION_MARKER),
+            "stderr should end with the truncation marker"
         );
         assert_eq!(
             obs.stdout.len(),
-            small_limit + "[truncated]".len(),
-            "truncated stdout should be exactly limit + marker length"
+            small_limit + TRUNCATION_MARKER.len(),
+            "stdout preview should be exactly limit + marker length"
+        );
+        assert_eq!(
+            obs.stderr.len(),
+            small_limit + TRUNCATION_MARKER.len(),
+            "stderr preview should be exactly limit + marker length"
         );
     }
 }
