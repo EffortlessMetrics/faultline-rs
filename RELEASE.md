@@ -100,7 +100,15 @@ After the version bump, changelog update, and release check all pass:
    git push origin v0.0.1
    ```
 
-The tag push triggers the release CI workflow (`.github/workflows/release.yml`), which runs `cargo xtask release-check` before building release artifacts.
+The annotated tag must match the workspace version and point to a reviewed commit
+merged into `main`. The tag push triggers `.github/workflows/release.yml`, which
+runs release checks, builds and dry-runs the complete public package graph, and
+inspects clean source-bound archives before publishing to crates.io. Branch
+pushes to `main` and `release/**` run qualification only; they never publish.
+
+Workflow changes are source changes. After merging a release-workflow fix, use
+the resulting reviewed main SHA as the tag target and obtain fresh qualification
+receipts for it. Earlier source-SHA receipts are not reused or relabeled.
 
 ## crates.io Publication
 
@@ -127,20 +135,47 @@ published. Internal runtime dependencies include both a local path and a registr
 version; unversioned development dependencies on fixtures are omitted by Cargo
 when packaging.
 
-The release workflow runs checks only. Use an existing authenticated Cargo
-session for publication after the release checks and independent review pass.
-Cargo 1.93 supports checking the complete graph before uploading any package:
+The release workflow uses the existing repository `CARGO_REGISTRY_TOKEN` secret
+only in its tag-only publication step. It has read-only GitHub contents access;
+checkout does not persist Git credentials. Do not print, copy, or pass the token
+on the command line. Independent review and required checks must pass before
+creating the release tag. Cargo 1.93 supports checking the complete graph before
+uploading any package:
 
 ```bash
 cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked
 cargo publish --dry-run --workspace --exclude xtask --exclude faultline-fixtures --locked
 ```
 
-Publish the reviewed graph with `cargo publish --workspace --exclude xtask
---exclude faultline-fixtures --locked`, or publish individual packages in the
-order above with `cargo publish --locked -p <package>`. Individual dependent
-package checks require the earlier packages to be available in the registry.
-Confirm each new version's repository identity on crates.io.
+On a matching annotated tag, the workflow publishes the reviewed graph with
+`cargo publish --workspace --exclude xtask --exclude faultline-fixtures --registry
+crates-io --locked --jobs 1 --no-verify`. The two complete verification builds
+above run before the token is available; `--no-verify` avoids running dependency
+build scripts again with publishing credentials. Packaging and upload still run.
+The workflow then checks all 14 version-specific registry identities and
+checksums against the qualified archive receipts and verifies the exact-version
+CLI installation in a fresh install directory. These checks do not receive the
+publishing token. A failure is not a completed release; keep the release issue
+open until registry and installation verification succeed.
+
+### Interrupted publication and reruns
+
+Workspace publication is not a transaction and is not an idempotent retry.
+Cargo 1.93 refuses an already-published selected version before starting a new
+workspace upload. A registry confirmation timeout can occur after a successful
+upload. Do not blindly rerun the job, delete or move the release tag, or bump
+versions to conceal a partial result.
+
+First inspect every selected version on crates.io and compare repository,
+checksum, archive source SHA and clean VCS metadata with the same tag's receipts.
+If all 14 are present and match, rerun only read-only registry/install
+verification. If only some match, retain the same reviewed tag/source and
+independently review a recovery plan selecting only the unpublished packages in
+the dependency order above. Use an existing authenticated Cargo session with
+`cargo publish --locked --jobs 1 --registry crates-io -p <unpublished-package>`;
+dependencies must already be available in the registry. Any occupied version
+with different identity or contents blocks recovery and requires maintainer
+investigation. Never treat an existing version as success without verification.
 
 Before publication, confirm that each package archive contains the final README
 and package description. These are the crates.io landing-page copy.

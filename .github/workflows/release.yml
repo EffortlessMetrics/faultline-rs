@@ -5,6 +5,9 @@ on:
     branches: ["main", "release/**"]
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_BUILD_JOBS: "1"
@@ -19,13 +22,47 @@ concurrency:
 jobs:
   release-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@1.93.1
+
+      - name: Validate release selection and tag
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess, tomllib
+          root = pathlib.Path.cwd()
+          workspace = tomllib.loads((root / 'Cargo.toml').read_text())['workspace']
+          version = workspace['package']['version']
+          assert re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', version), version
+          expected = {'faultline-codes', 'faultline-types', 'faultline-localization', 'faultline-surface', 'faultline-ports', 'faultline-app', 'faultline-git', 'faultline-probe-exec', 'faultline-store', 'faultline-render', 'faultline-junit', 'faultline-loader', 'faultline-sarif', 'faultline-cli'}
+          private = {'faultline-fixtures', 'xtask'}
+          packages = [tomllib.loads((root / member / 'Cargo.toml').read_text())['package'] for member in workspace['members']]
+          assert len(packages) == len(expected | private)
+          assert {p['name'] for p in packages} == expected | private
+          for package in packages:
+              assert package['version'] in ({'workspace': True}, version), package['name']
+              if package['name'] in private:
+                  assert package.get('publish') is False, package['name']
+              else:
+                  assert package.get('publish', True) in (True, ['crates-io']), package['name']
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == os.environ['GITHUB_SHA']
+          assert not git('status', '--porcelain', '--untracked-files=no')
+          if os.environ['GITHUB_REF_TYPE'] == 'tag':
+              assert os.environ['GITHUB_EVENT_NAME'] == 'push'
+              assert os.environ['GITHUB_REF_NAME'] == 'v' + version
+              ref = 'refs/tags/' + os.environ['GITHUB_REF_NAME']
+              assert git('cat-file', '-t', ref) == 'tag', 'release tags must be annotated'
+              assert git('rev-parse', ref + '^{commit}') == os.environ['GITHUB_SHA']
+              subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], check=True)
+          print('Validated 14 public packages, two private members, and source identity for', version)
+          PY
 
       - uses: actions/cache@v4
         with:
@@ -66,6 +103,7 @@ jobs:
           license_text = (root / 'LICENSE').read_bytes()
           assert b'END OF TERMS AND CONDITIONS' in license_text
           archives = sorted((root / 'target/package').glob('*.crate'))
+          assert len(archives) == len(expected), 'expected exactly 14 current archives'
           receipts = []
           names = set()
           for archive in archives:
@@ -73,6 +111,7 @@ jobs:
                   prefix = archive.name[:-6] + '/'
                   manifest = tomllib.loads(package.extractfile(prefix + 'Cargo.toml').read().decode())
                   info = manifest['package']
+                  assert info['name'] not in names, 'duplicate archive package'
                   names.add(info['name'])
                   assert info['name'] in expected
                   assert info['version'] == tomllib.loads((root / 'Cargo.toml').read_text())['workspace']['package']['version']
@@ -98,3 +137,41 @@ jobs:
             target/package/*.crate
             target/package/release-receipts.json
           if-no-files-found: error
+
+      - name: Publish qualified workspace to crates.io
+        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          test -n "$CARGO_REGISTRY_TOKEN" || { echo 'CARGO_REGISTRY_TOKEN is not configured'; exit 1; }
+          test -z "$(git status --porcelain --untracked-files=no)"
+          # Both credential-free verification builds above already passed for this source.
+          cargo publish --workspace --exclude xtask --exclude faultline-fixtures --registry crates-io --locked --jobs 1 --no-verify
+
+      - name: Verify published registry identities
+        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, urllib.request
+          root = pathlib.Path.cwd()
+          receipt = json.loads((root / 'target/package/release-receipts.json').read_text())
+          for package in receipt['packages']:
+              name, version = package['name'], package['version']
+              archive = root / 'target/package' / f'{name}-{version}.crate'
+              assert hashlib.sha256(archive.read_bytes()).hexdigest() == package['sha256'], name
+              request = urllib.request.Request(f'https://crates.io/api/v1/crates/{name}/{version}', headers={'User-Agent': 'faultline-rs-release (https://github.com/EffortlessMetrics/faultline-rs)'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  published = json.load(response)['version']
+              assert published['crate'] == name and published['num'] == version, name
+              assert published['repository'] == 'https://github.com/EffortlessMetrics/faultline-rs', name
+              assert published['checksum'] == package['sha256'], name
+              assert not published['yanked'], name
+              print('Verified', name, version, package['sha256'])
+          PY
+
+      - name: Verify version-specific registry installation
+        if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(python3 -c 'import pathlib,tomllib; print(tomllib.loads(pathlib.Path("Cargo.toml").read_text())["workspace"]["package"]["version"])')"
+          cargo install faultline-cli --version "=$version" --registry crates-io --locked --jobs 1 --root "$RUNNER_TEMP/faultline-install"
+          "$RUNNER_TEMP/faultline-install/bin/faultline-cli" --help
