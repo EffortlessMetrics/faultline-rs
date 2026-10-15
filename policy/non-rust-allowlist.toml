@@ -280,3 +280,12 @@ covered_by = [
   "cargo xtask check-no-panic-family",
   "cargo xtask check-file-policy",
 ]
+
+[[allow]]
+path = ".github/tests/test_release_workflow.py"
+kind = "ci_contract_test"
+owner = "release/ci"
+surface = "ci"
+classification = "test"
+reason = "Standard-library generated-fixture tests execute the inline release archive and cache guards without Cargo or network access."
+covered_by = ["python3 .github/tests/test_release_workflow.py", "cargo xtask check-file-policy", ".github/workflows/release.yml"]
