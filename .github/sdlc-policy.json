@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "merge_ready_label": "merge-ready",
+  "evidence_check_name": "Warm evidence",
+  "max_qualification_minutes": 20,
+  "block_unresolved_review_threads": true,
+  "trusted_evidence_app_slugs": []
+}

@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EffortlessMetrics/faultline-rs/schemas/sdlc/evidence-v1.schema.json",
+  "title": "Faultline warm-session evidence manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate",
+    "producer",
+    "tested_snapshot",
+    "executions",
+    "reviews",
+    "limitations",
+    "qualification"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "pull_request", "head_sha", "tree_sha"],
+      "properties": {
+        "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "pull_request": { "type": "integer", "minimum": 1 },
+        "head_sha": { "$ref": "#/$defs/gitSha" },
+        "tree_sha": { "$ref": "#/$defs/gitSha" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["harness", "model", "workflow_version"],
+      "properties": {
+        "harness": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 },
+        "workflow_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "tested_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identifier", "reconciliation"],
+      "properties": {
+        "kind": { "enum": ["git_tree", "working_tree_archive"] },
+        "identifier": { "type": "string", "minLength": 1 },
+        "reconciliation": {
+          "enum": ["matched", "reusable_with_limits", "stale"]
+        }
+      }
+    },
+    "executions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/execution" }
+    },
+    "reviews": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/review" }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_execution_ids",
+        "required_review_kinds",
+        "blocking_limitations"
+      ],
+      "properties": {
+        "required_execution_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "required_review_kinds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "blocking_limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "command",
+        "status",
+        "exit_code",
+        "duration_ms",
+        "required",
+        "establishes",
+        "evidence_urls"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "status": { "enum": ["passed", "failed", "skipped", "error"] },
+        "exit_code": { "type": ["integer", "null"] },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "required": { "type": "boolean" },
+        "establishes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_urls": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "reviewer",
+        "candidate_sha",
+        "result",
+        "independent",
+        "evidence_url"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "reviewer": { "type": "string", "minLength": 1 },
+        "candidate_sha": { "$ref": "#/$defs/gitSha" },
+        "result": { "enum": ["approved", "findings", "failed_to_review"] },
+        "independent": { "type": "boolean" },
+        "evidence_url": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
