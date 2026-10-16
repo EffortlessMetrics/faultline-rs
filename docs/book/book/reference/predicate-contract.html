@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -204,10 +204,10 @@
 <p>When the predicate is noisy (non-deterministic), faultline will reduce confidence and may return a <code>SuspectWindow</code> instead of an exact <code>FirstBad</code> commit.</p>
 <h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
 <p>A simple test predicate:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --cmd "cargo test --lib my_module"
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --cmd "cargo test --lib my_module"
 </code></pre>
 <p>A build predicate:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --cmd "cargo build" --kind build
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --cmd "cargo build" --kind build
 </code></pre>
 <p>A predicate that skips revisions missing a file:</p>
 <pre><code class="language-bash">#!/bin/bash
@@ -217,7 +217,7 @@ if [ ! -f src/feature.rs ]; then
 fi
 cargo test --lib feature_tests
 </code></pre>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --program ./test-with-skip.sh
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --program ./test-with-skip.sh
 </code></pre>
 
                     </main>

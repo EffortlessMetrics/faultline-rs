@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -193,7 +193,7 @@
 </div>
 <h2 id="usage-in-ci"><a class="header" href="#usage-in-ci">Usage in CI</a></h2>
 <p>You can use exit codes to drive CI behavior:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --cmd "cargo test"
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --cmd "cargo test"
 case $? in
   0) echo "Exact regression commit found" ;;
   1) echo "Suspect window identified — manual review needed" ;;

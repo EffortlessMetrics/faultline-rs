@@ -163,6 +163,17 @@ The workflow checks its raw annotated object against the remote, its peeled
 commit and tree against checked-out source, and main ancestry before any upload.
 The SHA-only checkout preserves the annotated ref.
 
+Tag creation is the trusted release operator's signal that the existing release
+authorization, independent source review and artifact qualification have been
+completed. The workflow proves tag/source/version/archive identity; it does not
+independently attest to that approval process. Trusted repository source and
+authorized tag writers are part of this boundary. These code guards do not
+protect against an unauthorized repository writer replacing the workflow.
+
+Tag runs share one publication concurrency group. Branch checks use separate
+ref-keyed groups so a new branch push cannot replace a pending publication run
+in GitHub's default single-pending queue. Running jobs are not canceled.
+
 The obsolete old-source recovery dispatch is removed. The current controller
 rejects old `v0.0.1`, `faultline-cli`, arbitrary source selection and dispatch
 publication. This does not rewrite historical workflow runs: do not rerun the

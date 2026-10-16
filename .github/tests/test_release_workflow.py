@@ -14,6 +14,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -844,6 +845,59 @@ class MixedReleaseContracts(unittest.TestCase):
         self.assertIn("cargo install faultline-rs", workflow)
         self.assertIn("bin/faultline-rs", workflow)
         self.assertNotIn("bin/faultline-cli", workflow)
+
+    def test_branch_check_queue_cannot_displace_publication_tag(self):
+        workflow = (HELPER.parents[1] / "workflows/release.yml").read_text()
+        configured = re.search(r"(?m)^concurrency:\n  group: (.+)\n  cancel-in-progress: false$", workflow)
+        self.assertIsNotNone(configured)
+
+        def simulate(expression):
+            def group(kind, ref):
+                if not expression.startswith("${{"):
+                    return expression
+                conditional = re.fullmatch(r"\$\{\{ github.ref_type == 'tag' && '([^']+)' \|\| format\('([^']+)', github.ref\) \}\}", expression)
+                self.assertIsNotNone(conditional)
+                return conditional[1] if kind == "tag" else conditional[2].format(ref)
+
+            # GitHub's default queue keeps one running and one pending run per
+            # group; later arrivals replace the pending run even with false.
+            running, pending, canceled = {}, {}, []
+            for name, kind, ref in [("main-first", "branch", "refs/heads/main"),
+                                    ("tag-first", "tag", "refs/tags/faultline-rs-v0.0.1"),
+                                    ("main-second", "branch", "refs/heads/main"),
+                                    ("release-branch", "branch", "refs/heads/release/naming"),
+                                    ("tag-second", "tag", "refs/tags/faultline-rs-v0.0.1")]:
+                key = group(kind, ref)
+                if key not in running:
+                    running[key] = name
+                else:
+                    if key in pending:
+                        canceled.append(pending[key])
+                    pending[key] = name
+            return running, pending, canceled
+
+        self.assertIn("tag-first", simulate("release-faultline-rs-0.0.1")[2])
+        running, pending, canceled = simulate(configured[1])
+        self.assertIn("tag-first", running.values())
+        self.assertIn("tag-second", pending.values())
+        self.assertNotIn("tag-first", canceled)
+        self.assertIn("release-branch", running.values())
+        self.assertIn("main-second", pending.values())
+
+    def test_generated_book_uses_current_cli_install_and_command_names(self):
+        book = HELPER.parents[2] / "docs/book/book"
+        tutorial = (book / "tutorials/first-run.html").read_text()
+        self.assertIn("cargo install faultline-rs --version 0.0.1 --locked", tutorial)
+        self.assertIn("faultline-rs --good GOOD_COMMIT --bad HEAD", tutorial)
+        self.assertIn("cargo install faultline-rs --version 0.0.1 --locked", (book / "print.html").read_text())
+        indices = list(book.glob("searchindex-*.js"))
+        self.assertEqual(len(indices), 1)
+        for path in book.rglob("*"):
+            if path.suffix in {".html", ".js"}:
+                text = path.read_text()
+                self.assertNotIn("faultline-cli", text, str(path))
+                for index in re.findall(r'path_to_searchindex_js = "(?:\.\./)*([^"/]+)"', text):
+                    self.assertEqual(index, indices[0].name)
 
     def test_all_mixed_contracts_are_cataloged_and_exact_files_have_policy_receipts(self):
         repository = HELPER.parents[2]

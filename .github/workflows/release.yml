@@ -16,7 +16,7 @@ env:
   CARGO_INCREMENTAL: "0"
 
 concurrency:
-  group: release-faultline-rs-0.0.1
+  group: ${{ github.ref_type == 'tag' && 'release-faultline-rs-0.0.1' || format('release-check-{0}', github.ref) }}
   cancel-in-progress: false
 
 jobs:

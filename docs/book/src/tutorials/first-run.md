@@ -15,7 +15,7 @@ You need Git and Rust 1.93 or newer. Install the initial release:
 cargo install faultline-rs --version 0.0.1 --locked
 ```
 
-If the release is not yet available, [build from source](../../../../BUILDING.md).
+If the release is not yet available, [build from source](https://github.com/EffortlessMetrics/faultline-rs/blob/main/BUILDING.md).
 The executable is named `faultline-rs`.
 
 ## Run the investigation

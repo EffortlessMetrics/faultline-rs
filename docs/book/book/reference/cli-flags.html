@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -175,7 +175,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="cli-flags"><a class="header" href="#cli-flags">CLI Flags</a></h1>
-<p>Reference for all <code>faultline-cli</code> command-line flags.</p>
+<p>Reference for all <code>faultline-rs</code> command-line flags.</p>
 <h2 id="required-flags"><a class="header" href="#required-flags">Required flags</a></h2>
 <div class="table-wrapper">
 <table>
@@ -253,7 +253,9 @@
 </table>
 </div>
 <h2 id="run-mode-flags"><a class="header" href="#run-mode-flags">Run mode flags</a></h2>
-<p>These flags are mutually exclusive:</p>
+<p>These flags are mutually exclusive. The current CLI uses cached observations
+for all three modes. <code>--force</code> and <code>--fresh</code> are accepted and validated, but do
+not currently request fresh checks:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -261,25 +263,25 @@
 </thead>
 <tbody>
 <tr><td><code>--resume</code></td><td>bool</td><td><code>false</code></td><td>Explicitly resume from cached observations (default behavior)</td></tr>
-<tr><td><code>--force</code></td><td>bool</td><td><code>false</code></td><td>Discard cached observations and re-probe all commits</td></tr>
-<tr><td><code>--fresh</code></td><td>bool</td><td><code>false</code></td><td>Delete the entire run directory and start from scratch</td></tr>
+<tr><td><code>--force</code></td><td>bool</td><td><code>false</code></td><td>Currently does not clear cached observations or force re-probing</td></tr>
+<tr><td><code>--fresh</code></td><td>bool</td><td><code>false</code></td><td>Currently does not delete the run directory or start a fresh run</td></tr>
 </tbody>
 </table>
 </div>
 <p>If none of these are specified, faultline resumes from cached observations by default.</p>
 <h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
 <p>Basic usage with a shell command:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --cmd "cargo test"
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --cmd "cargo test"
 </code></pre>
 <p>Direct program execution with arguments:</p>
-<pre><code class="language-bash">faultline-cli --good abc123 --bad def456 --program ./test.sh --arg --verbose --arg --fast
+<pre><code class="language-bash">faultline-rs --good abc123 --bad def456 --program ./test.sh --arg --verbose --arg --fast
 </code></pre>
 <p>Custom probe budget and output directory:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main --cmd "make test" \
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main --cmd "make test" \
   --max-probes 20 --output-dir ./results
 </code></pre>
 <p>With environment variables and explicit shell:</p>
-<pre><code class="language-bash">faultline-cli --good v1.0 --bad main \
+<pre><code class="language-bash">faultline-rs --good v1.0 --bad main \
   --cmd "npm test" --shell sh \
   --env CI=true --env NODE_ENV=test
 </code></pre>
