@@ -4,7 +4,7 @@ expression: help
 ---
 Local-first regression localization for Git repos
 
-Usage: faultline [OPTIONS] [COMMAND]
+Usage: faultline-rs [OPTIONS] [COMMAND]
 
 Commands:
   reproduce        Extract a reproduction capsule from a completed run

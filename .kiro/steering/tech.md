@@ -27,7 +27,7 @@ cargo test
 cargo build
 
 # Run CLI with help
-cargo run -p faultline-cli -- --help
+cargo run -p faultline-rs -- --help
 
 # Run specific crate tests
 cargo test -p faultline-localization

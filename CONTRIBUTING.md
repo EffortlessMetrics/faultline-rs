@@ -1,4 +1,4 @@
-# CONTRIBUTING.md — How to Contribute to faultline
+# CONTRIBUTING.md — How to Contribute to faultline-rs
 
 ## Quick Start
 
@@ -69,13 +69,13 @@ Before requesting review, confirm:
 
 ## Architecture Quick Reference
 
-faultline uses a **hexagonal (ports-and-adapters) architecture** across 15 crates:
+faultline-rs uses a **hexagonal (ports-and-adapters) architecture** across 15 crates:
 
 - **Domain crates** (`faultline-codes`, `faultline-types`, `faultline-localization`, `faultline-surface`) contain pure logic with no I/O.
 - **Port traits** (`faultline-ports`) define outbound interfaces.
 - **Adapter crates** (`faultline-git`, `faultline-probe-exec`, `faultline-store`, `faultline-render`, `faultline-sarif`, `faultline-junit`) implement ports with real infrastructure.
 - **Application** (`faultline-app`) orchestrates domain logic through ports.
-- **Entry** (`faultline-cli`) wires adapters to ports and runs the CLI.
+- **Entry** (`faultline-rs`) wires adapters to ports and runs the CLI.
 
 Dependencies always point inward: adapters depend on ports and types, never the reverse.
 

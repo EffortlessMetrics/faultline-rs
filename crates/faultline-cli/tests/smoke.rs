@@ -4,21 +4,26 @@
 use faultline_fixtures::{FileOp, GitRepoBuilder};
 use std::process::Command;
 
-/// Locate the faultline-cli binary built by cargo.
+/// Use the exact CLI executable Cargo built for this integration test.
 fn cli_binary() -> std::path::PathBuf {
-    let mut path = std::env::current_exe()
-        .expect("current_exe")
-        .parent()
-        .expect("parent of test binary")
-        .parent()
-        .expect("parent of deps dir")
-        .to_path_buf();
-    if cfg!(windows) {
-        path.push("faultline-cli.exe");
-    } else {
-        path.push("faultline-cli");
-    }
-    path
+    std::path::PathBuf::from(env!("CARGO_BIN_EXE_faultline-rs"))
+}
+
+#[test]
+fn smoke_cli_identity_matches_install_name() -> anyhow::Result<()> {
+    let version = Command::new(cli_binary()).arg("--version").output()?;
+    faultline_fixtures::ensure!(version.status.success(), "CLI --version failed");
+    faultline_fixtures::ensure_eq!(
+        String::from_utf8(version.stdout)?,
+        format!("faultline-rs {}\n", env!("CARGO_PKG_VERSION"))
+    );
+    let help = Command::new(cli_binary()).arg("--help").output()?;
+    faultline_fixtures::ensure!(help.status.success(), "CLI --help failed");
+    faultline_fixtures::ensure!(
+        String::from_utf8(help.stdout)?.contains("Usage: faultline-rs "),
+        "CLI --help has the wrong executable name"
+    );
+    Ok(())
 }
 
 #[test]
@@ -65,7 +70,7 @@ fn smoke_cli_produces_artifacts() {
     let bin = cli_binary();
     assert!(
         bin.exists(),
-        "CLI binary not found at {}. Run `cargo build -p faultline-cli` first.",
+        "Cargo-built CLI binary not found at {}.",
         bin.display()
     );
 

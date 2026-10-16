@@ -59,14 +59,14 @@ fn build_fixture_repo() -> Result<(TempDir, String, String)> {
     Ok((dir, good_sha, bad_sha))
 }
 
-/// Locate the faultline-cli binary from a cargo build.
+/// Locate the faultline-rs binary from a cargo build.
 fn find_cli_binary() -> Result<PathBuf> {
     // Build the CLI first
-    println!("=> cargo build -p faultline-cli");
+    println!("=> cargo build -p faultline-rs");
     let status = Command::new("cargo")
-        .args(["build", "-p", "faultline-cli"])
+        .args(["build", "-p", "faultline-rs"])
         .status()
-        .map_err(|e| anyhow::anyhow!("failed to build faultline-cli: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("failed to build faultline-rs: {e}"))?;
     if !status.success() {
         bail!("contract broken: CLI build failed");
     }
@@ -85,9 +85,9 @@ fn find_cli_binary() -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("no target_directory in cargo metadata"))?;
 
     let bin_name = if cfg!(windows) {
-        "faultline-cli.exe"
+        "faultline-rs.exe"
     } else {
-        "faultline-cli"
+        "faultline-rs"
     };
 
     let bin = PathBuf::from(target_dir).join("debug").join(bin_name);

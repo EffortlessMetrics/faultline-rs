@@ -11,5 +11,5 @@ Responsibilities:
 - Treat this folder as contract tests for user-visible CLI behavior.
 
 Validation:
-- `cargo test -p faultline-cli --test smoke`
+- `cargo test -p faultline-rs --test smoke`
 

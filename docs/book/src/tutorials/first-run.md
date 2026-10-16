@@ -1,6 +1,6 @@
 # Find where a regression began
 
-Your test or build passed at an earlier commit and fails now. Use faultline to
+Your test or build passed at an earlier commit and fails now. Use faultline-rs to
 find the smallest window the results support, then inspect those commits.
 
 ## Start with a check you trust
@@ -12,11 +12,11 @@ problem, use that same command throughout the investigation.
 You need Git and Rust 1.93 or newer. Install the initial release:
 
 ```bash
-cargo install faultline-cli --version 0.0.1 --locked
+cargo install faultline-rs --version 0.0.1 --locked
 ```
 
-If the release is not yet available, [build from source](../../../../BUILDING.md).
-The executable is named `faultline-cli`.
+If the release is not yet available, [build from source](https://github.com/EffortlessMetrics/faultline-rs/blob/main/BUILDING.md).
+The executable is named `faultline-rs`.
 
 ## Run the investigation
 
@@ -24,7 +24,7 @@ From your project's directory, replace `GOOD_COMMIT` with a commit where the
 check passes. Use `HEAD` as the bad commit only if the check fails there:
 
 ```bash
-faultline-cli --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
+faultline-rs --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 ```
 
 For a different check, replace `cargo test` with your command. Choose the shell

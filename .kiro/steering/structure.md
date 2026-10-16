@@ -5,7 +5,7 @@
 Hexagonal architecture with two pure domains (localization, surface) and infrastructure adapters.
 
 ```
-faultline-cli
+faultline-rs
     ↓
 faultline-app (orchestration)
     ↓                    ↓
@@ -40,7 +40,7 @@ All crates live under `crates/`:
 
 ### Entry Point
 
-- `faultline-cli` - operator-facing CLI
+- `faultline-rs` - operator-facing CLI
 
 ### Testing
 

@@ -12,7 +12,7 @@ Responsibilities:
 - Return appropriate errors (exit-code-2-compatible) when no loadable report is found.
 
 Dependents:
-- `faultline-cli` — all subcommands that load reports
+- `faultline-rs` — all subcommands that load reports
 - `xtask` — all export commands that load reports
 
 Validation:

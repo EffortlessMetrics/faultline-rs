@@ -1,12 +1,12 @@
-# RELEASE.md — faultline Release Process
+# RELEASE.md — faultline-rs Release Process
 
-This document describes how to prepare, validate, and publish a faultline release.
+This document describes how to prepare, validate, and publish a faultline-rs release.
 
 See [AGENTS.md](AGENTS.md) for the repo overview and [MAINTAINERS.md](MAINTAINERS.md) for who approves releases.
 
 ## Version Bump
 
-faultline uses a single workspace version in the root `Cargo.toml`:
+faultline-rs uses a single workspace version in the root `Cargo.toml`:
 
 ```toml
 [workspace.package]
@@ -80,149 +80,152 @@ Subsequent releases use the default registry baseline by omitting the flag.
 | `cargo audit` | Known vulnerability | Update the affected dependency |
 | `cargo semver-checks` | Breaking API change | Bump the major/minor version or revert the breaking change |
 
-## Tag Creation
+## Corrected 0.0.1 naming and partial publication
 
-After the version bump, changelog update, and release check all pass:
+The public package and executable are both `faultline-rs`. The thirteen
+supporting library package names remain `faultline-*`. Source still lives in
+`crates/faultline-cli`; that directory is not the published package name.
 
-1. Commit the version bump and changelog:
-   ```bash
-   git add Cargo.toml Cargo.lock CHANGELOG.md
-   git commit -m "release: v0.0.1"
-   ```
+The initial upload stopped on a crates.io rate limit after publishing five
+supporting `0.0.1` versions: `faultline-codes`, `faultline-types`, `faultline-junit`,
+`faultline-loader` and `faultline-localization`. Their original checksums and
+source remain immutable. Neither `faultline` nor `faultline-rs` was attempted in
+that run. See the [partial-publication receipt](https://github.com/EffortlessMetrics/faultline-rs/issues/52#issuecomment-6191584145).
+That historical snapshot is not a current registry check or a completed release.
 
-2. Create an annotated tag:
-   ```bash
-   git tag -a v0.0.1 -m "v0.0.1"
-   ```
+The source-controlled [0.0.1 plan](.github/release-0.0.1.json) records those five
+original hashes and source identities, plus the dependency order for the nine
+remaining packages:
 
-3. Push the tag:
-   ```bash
-   git push origin v0.0.1
-   ```
+1. `faultline-surface`
+2. `faultline-ports`
+3. `faultline-app`
+4. `faultline-git`
+5. `faultline-probe-exec`
+6. `faultline-store`
+7. `faultline-render`
+8. `faultline-sarif`
+9. `faultline-rs`
 
-The annotated tag must match the workspace version and point to a reviewed commit
-merged into `main`. The tag push triggers `.github/workflows/release.yml`, which
-runs release checks, builds and dry-runs the complete public package graph, and
-inspects clean source-bound archives before publishing to crates.io. Branch
-pushes to `main` and `release/**` run qualification only; they never publish.
+All remain at `0.0.1`. `faultline-fixtures` and `xtask` are private and must never
+be published. Do not rebuild the five occupied versions and relabel them as
+corrected-source archives. Their embedded README describes the earlier source;
+changing an occupied crate's landing copy requires a new version.
 
-Workflow changes are source changes. After merging a release-workflow fix, use
-the resulting reviewed main SHA as the tag target and obtain fresh qualification
-receipts for it. Earlier source-SHA receipts are not reused or relabeled.
+### Qualification
 
-## crates.io Publication
+The release helper is deliberately scoped to this release. It validates exact
+package sets, unique plan entries, versions, checksum formats and dependency
+order. Branch pushes to `main` and `release/**` qualify without publishing:
 
-The initial registry release targets `0.0.1`. Publish these packages in dependency
-order, all at the workspace version:
+1. Run generated-fixture workflow contracts before tool installation or packaging.
+2. Validate clean checked-out source and preserve the original annotated tag.
+3. Run the existing supply-chain and compatibility checks.
+4. Recoverably quarantine cached `target/package` before Cargo can uplift files
+   without truncating stale destinations.
+5. Check the five original registry identities and retain their exact archives.
+6. Build-verify only the nine selected packages against the actual registry for
+   excluded dependencies, then dry-run the same nine-package graph. Both Cargo
+   operations run without publishing credentials.
+7. Inspect all fourteen archives with separate old/new source, README and
+   manifest provenance. Reject incomplete gzip streams, second members, tails,
+   wrong source bytes and differences between canonical and dry-run archives.
+8. Derive the complete internal lock closure from packaged manifests, including
+   root versioned dev and target dependencies, excluding transitive dev-only
+   dependencies. Require exact records, edges, versions, registry sources and
+   full-archive checksums against the nine fresh plus five original hashes.
+9. Reconcile all version-specific registry identities. Occupied versions must
+   match their exact qualified checksum and repository; absence is allowed only
+   for the nine fresh packages. Upload the mixed-source artifact and receipt.
 
-1. `faultline-codes`
-2. `faultline-types`
-3. `faultline-localization`
-4. `faultline-surface`
-5. `faultline-ports`
-6. `faultline-app`
-7. `faultline-git`
-8. `faultline-probe-exec`
-9. `faultline-store`
-10. `faultline-render`
-11. `faultline-junit`
-12. `faultline-loader`
-13. `faultline-sarif`
-14. `faultline-cli`
+A dry-run warning that a version already exists is not success or proof of
+publishability. The independent archive and registry checks must establish its
+exact identity. Normal package build verification remains enabled; no dry-run
+is accepted as a substitute for tests, lint or compatibility qualification.
 
-`faultline-fixtures` and `xtask` are private workspace tooling and must not be
-published. Internal runtime dependencies include both a local path and a registry
-version; unversioned development dependencies on fixtures are omitted by Cargo
-when packaging.
+Obtain an independent exact-head source review and required checks before
+merging. Then independently qualify the fresh merged-main mixed-source artifact.
+Earlier source receipts must not be reused as proof for a newer source. The
+five original anchors retain their explicitly different provenance.
 
-The release workflow uses the existing repository `CARGO_REGISTRY_TOKEN` secret
-only in its publication step after a matching tag or explicitly enabled recovery. It has read-only GitHub contents access;
-checkout does not persist Git credentials. Do not print, copy, or pass the token
-on the command line. Independent review and required checks must pass before
-creating the release tag. Cargo 1.93 supports checking the complete graph before
-uploading any package:
+### Corrected source tag and publication
+
+The old annotated `v0.0.1` tag remains fixed at object
+`bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0`, source
+`a2c59ef1cedfee120762a4e7727b62224e57a8e7`, tree
+`66deea4bc3e0a490eda8e08f4392dead3f62c177`. Never move or delete it.
+
+After corrected merged-main source and the mixed graph qualify, and publication
+is explicitly authorized, the release operator creates the distinct annotated
+`faultline-rs-v0.0.1` tag on that exact qualified source. Its suffix matches the
+workspace version. Push only that new tag through the normal tag workflow.
+The workflow checks its raw annotated object against the remote, its peeled
+commit and tree against checked-out source, and main ancestry before any upload.
+The SHA-only checkout preserves the annotated ref.
+
+Tag creation is the trusted release operator's signal that the existing release
+authorization, independent source review and artifact qualification have been
+completed. The workflow proves tag/source/version/archive identity; it does not
+independently attest to that approval process. Trusted repository source and
+authorized tag writers are part of this boundary. These code guards do not
+protect against an unauthorized repository writer replacing the workflow.
+
+Tag runs share one publication concurrency group. Branch checks use separate
+ref-keyed groups so a new branch push cannot replace a pending publication run
+in GitHub's default single-pending queue. Running jobs are not canceled.
+
+The obsolete old-source recovery dispatch is removed. The current controller
+rejects old `v0.0.1`, `faultline-cli`, arbitrary source selection and dispatch
+publication. This does not rewrite historical workflow runs: do not rerun the
+old controller, which still contains its old code. The original checkout failure
+and default-off recovery remain historical evidence in
+[release tracking](https://github.com/EffortlessMetrics/faultline-rs/issues/52#issuecomment-6191064907).
+They do not qualify or publish the renamed source.
+
+Tag execution repeats all qualification. The existing repository
+`CARGO_REGISTRY_TOKEN` secret is bound only to the publishing step. The helper
+removes it from inherited environments and gives it only to actual Cargo upload
+subprocesses, never builds, dry-runs, checkout, tools, artifact uploads or registry
+reads. GitHub permissions remain `contents: read`, with checkout credentials not
+persisted. No token appears on a command line or in logs.
+
+The upload loop follows the nine-package dependency order. For an absent version,
+it first dry-runs that single package without credentials after its dependencies
+are confirmed present, compares the complete temporary and canonical archive
+bytes with its qualified receipt, and uploads with `--no-verify`. The earlier
+credential-free verification builds remain authoritative; no dependency build
+script receives publishing credentials. Each successful upload must be confirmed
+by its version-specific registry checksum before the next package can proceed.
+New uploads are separated by at least sixty seconds. This spacing does not
+promise to avoid crates.io limits.
+
+### Partial success, rate limits and resume
+
+Publication is not a transaction. Stop on any upload failure, unknown
+confirmation, identity mismatch or HTTP 429. Report `Retry-After` when available
+and do not loop uploads or blindly rerun at an advertised time. First reconcile
+actual registry state against the immutable mixed-source receipt. A failure or
+partial success is not a completed release.
+
+A reviewed rerun of the same corrected tag repeats qualification and verifies
+all existing versions. The loop skips an already-present version only after its
+repository, non-yanked version and exact qualified checksum match; it never
+silently treats an occupied name as success or attempts to overwrite it. A
+mismatching occupied version blocks further uploads. Never move the tag, yank
+versions or bump versions to conceal a partial result.
+
+After all fourteen registry identities match, a fresh install directory verifies:
 
 ```bash
-cargo package --workspace --exclude xtask --exclude faultline-fixtures --locked
-cargo publish --dry-run --workspace --exclude xtask --exclude faultline-fixtures --locked
+cargo install faultline-rs --version 0.0.1 --locked
+faultline-rs --help
+faultline-rs --version
 ```
 
-On a matching annotated tag, the workflow publishes the reviewed graph with
-`cargo publish --workspace --exclude xtask --exclude faultline-fixtures --registry
-crates-io --locked --jobs 1 --no-verify`. The two complete verification builds
-above run before the token is available; `--no-verify` avoids running dependency
-build scripts again with publishing credentials. Packaging and upload still run.
-The workflow then checks all 14 version-specific registry identities and
-checksums against the qualified archive receipts and verifies the exact-version
-CLI installation in a fresh install directory. These checks do not receive the
-publishing token. A failure is not a completed release; keep the release issue
-open until registry and installation verification succeed.
-
-### Immutable v0.0.1 checkout recovery
-
-The first v0.0.1 tag run failed before packaging or upload because checkout's
-implicit tag-plus-commit fallback replaced only the runner-local annotated tag
-ref with its peeled commit. The remote tag remains immutable. New runs use a
-SHA-only controller checkout, preserving the fetched annotated tag object.
-
-After this workflow repair is reviewed, merged and qualified, the release
-operator can dispatch `release.yml` from `main` with `publish=false` (the default).
-This narrowly pinned recovery checks the existing v0.0.1 object
-`bd1d904ef84f6f0bc6f2b361de9bc6931bc74fa0`, source commit
-`a2c59ef1cedfee120762a4e7727b62224e57a8e7` and tree
-`66deea4bc3e0a490eda8e08f4392dead3f62c177`. There are no arbitrary tag or source
-inputs. The fixed controller's tests run before checkout selects the unchanged
-release source. Validation still comes from the executing fixed workflow.
-Controller SHA and release-source SHA are separate identities; receipts and
-artifact names use the validated release source.
-
-The default dispatch reruns all checks, cache isolation, package verification,
-publication dry-run and archive inspection without publishing. Independently
-compare its 14 archives and complete internal lock graph with the qualified
-merged-main artifact from Release Check run `38725082016`. Recheck that all 14
-registry versions remain absent before the authorized operator dispatches the
-same reviewed main workflow with `publish=true`. This repeats qualification
-before the existing credential-bound upload and registry/install verification.
-A default-off dispatch cannot be treated as publication. If any version is
-already present, follow the partial-publication process below instead.
-
-Do not rerun the old failed tag workflow, move the tag or select a newer package
-source to recover this failure. Dispatch and tag runs share the same release
-concurrency group. Source-workflow maintenance does not itself authorize the
-operator to publish.
-
-### Interrupted publication and reruns
-
-Workspace publication is not a transaction and is not an idempotent retry.
-Cargo 1.93 refuses an already-published selected version before starting a new
-workspace upload. A registry confirmation timeout can occur after a successful
-upload. Do not blindly rerun the job, delete or move the release tag, or bump
-versions to conceal a partial result.
-
-First inspect every selected version on crates.io and compare repository,
-checksum, archive source SHA and clean VCS metadata with the same tag's receipts.
-If all 14 are present and match, rerun only read-only registry/install
-verification. If only some match, retain the same reviewed tag/source and
-independently review a recovery plan selecting only the unpublished packages in
-the dependency order above. Use an existing authenticated Cargo session with
-`cargo publish --locked --jobs 1 --registry crates-io -p <unpublished-package>`;
-dependencies must already be available in the registry. Any occupied version
-with different identity or contents blocks recovery and requires maintainer
-investigation. Never treat an existing version as success without verification.
-
-Before publication, confirm that each package archive contains the final README
-and package description. These are the crates.io landing-page copy.
-
-After publication, verify installation with:
-
-```bash
-cargo install faultline-cli --version 0.0.1 --locked
-faultline-cli --help
-```
-
-The installed executable retains the existing name `faultline-cli`.
-The report schema version is independent of
-the package version and remains unchanged when only release metadata changes.
+The installed executable is named `faultline-rs`. Keep the release issue open
+until registry and installation verification succeed. The report schema,
+`faultline-report` output directory, cache locations and serialized report-format
+identifiers are unchanged by this naming repair.
 
 ## Binary Distribution
 
@@ -231,7 +234,7 @@ The crates.io package installs by compiling Rust source. Prebuilt platform binar
 When binary distribution is adopted:
 - The release CI workflow will build platform binaries (Linux, macOS, Windows).
 - Binaries will be attached to GitHub Releases.
-- `cargo install faultline-cli` will remain the primary install path.
+- `cargo install faultline-rs` will remain the primary install path.
 
 ## Pre-Release Checklist
 

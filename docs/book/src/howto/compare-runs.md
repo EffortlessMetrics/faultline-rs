@@ -15,18 +15,18 @@ Run faultline with different parameters or at different times, saving each to a 
 
 ```bash
 # First run
-faultline-cli --repo . --good v1.0 --bad main \
+faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --output-dir run-1
 
 # Second run (e.g., with more probes)
-faultline-cli --repo . --good v1.0 --bad main \
+faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --max-probes 40 --output-dir run-2
 ```
 
 ## Step 2: Compare the runs
 
 ```bash
-faultline diff-runs --left run-1 --right run-2
+faultline-rs diff-runs --left run-1 --right run-2
 ```
 
 This produces a human-readable summary showing what changed between the two runs.
@@ -49,7 +49,7 @@ The comparison reports:
 For machine consumption, add `--json`:
 
 ```bash
-faultline diff-runs --left run-1 --right run-2 --json
+faultline-rs diff-runs --left run-1 --right run-2 --json
 ```
 
 This outputs the full `RunComparison` struct as JSON, suitable for scripting or CI integration.

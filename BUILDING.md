@@ -1,4 +1,4 @@
-# Build faultline from source
+# Build faultline-rs from source
 
 Use this path when the crates.io release is not yet available or you need the
 current repository changes.
@@ -11,10 +11,10 @@ not installed.
 ```bash
 git clone https://github.com/EffortlessMetrics/faultline-rs.git
 cd faultline-rs
-cargo build --release -p faultline-cli
+cargo build --release -p faultline-rs
 ```
 
-Run `target/release/faultline-cli --help` (`faultline-cli.exe` on Windows).
+Run `target/release/faultline-rs --help` (`faultline-rs.exe` on Windows).
 Then follow the [first-run guide](docs/book/src/tutorials/first-run.md) in the
 repository you want to investigate.
 

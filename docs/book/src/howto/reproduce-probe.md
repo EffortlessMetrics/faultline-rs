@@ -1,6 +1,6 @@
 # How to Use the Reproduce Subcommand
 
-This guide explains how to use `faultline reproduce` to re-run a specific probe from a completed faultline run.
+This guide explains how to use `faultline-rs reproduce` to re-run a specific probe from a completed faultline run.
 
 ## When to use reproduce
 
@@ -12,7 +12,7 @@ Use the reproduce subcommand when:
 ## Step 1: Run faultline and note the output directory
 
 ```bash
-faultline-cli --repo . --good v1.0 --bad main \
+faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --output-dir regression-report
 ```
 
@@ -21,7 +21,7 @@ faultline-cli --repo . --good v1.0 --bad main \
 By default, `reproduce` targets the boundary commits (the last-good and first-bad):
 
 ```bash
-faultline reproduce --run-dir regression-report
+faultline-rs reproduce --run-dir regression-report
 ```
 
 This checks out the boundary commit, sets the environment, and runs the predicate.
@@ -31,7 +31,7 @@ This checks out the boundary commit, sets the environment, and runs the predicat
 To reproduce the probe for a specific commit:
 
 ```bash
-faultline reproduce --run-dir regression-report --commit abc1234
+faultline-rs reproduce --run-dir regression-report --commit abc1234
 ```
 
 ## Step 4: Generate a shell script instead
@@ -39,7 +39,7 @@ faultline reproduce --run-dir regression-report --commit abc1234
 Use `--shell` to emit a POSIX shell script to stdout instead of executing the probe:
 
 ```bash
-faultline reproduce --run-dir regression-report --commit abc1234 --shell
+faultline-rs reproduce --run-dir regression-report --commit abc1234 --shell
 ```
 
 The script includes:
@@ -51,7 +51,7 @@ The script includes:
 You can save this script, share it, or modify it for debugging:
 
 ```bash
-faultline reproduce --run-dir regression-report --commit abc1234 --shell > repro.sh
+faultline-rs reproduce --run-dir regression-report --commit abc1234 --shell > repro.sh
 chmod +x repro.sh
 ./repro.sh
 ```

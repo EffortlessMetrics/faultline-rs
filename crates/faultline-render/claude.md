@@ -11,7 +11,7 @@ Primary files:
 Responsibilities:
 - Keep report schema compatibility in `analysis.json`.
 - Preserve HTML structure expected by consumers and snapshots.
-- Keep Markdown rendering aligned with `faultline-cli` and `xtask export-markdown`.
+- Keep Markdown rendering aligned with `faultline-rs` and `xtask export-markdown`.
 - Snapshot artifacts (`.snap` / `analysis.json` / `index.html`) are part of golden contract.
 
 Validation:

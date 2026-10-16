@@ -1,6 +1,6 @@
-# TESTING.md — faultline Verification Guide
+# TESTING.md — faultline-rs Verification Guide
 
-This document explains how to test the faultline codebase: which techniques apply to which crates, how to run each CI tier locally, and how to add new tests.
+This document explains how to test the faultline-rs codebase: which techniques apply to which crates, how to run each CI tier locally, and how to add new tests.
 
 See [AGENTS.md](AGENTS.md) for the repo overview and [MAINTAINERS.md](MAINTAINERS.md) for review expectations.
 
@@ -37,7 +37,7 @@ Adapter property tests may use `tempfile` for filesystem isolation.
 | Crate | Property | Unit | Golden | Mutation | Smoke |
 |-------|----------|------|--------|----------|-------|
 | `faultline-app` | ✓ | ✓ | — | ✓ | — |
-| `faultline-cli` | ✓ | ✓ | ✓ | — | ✓ |
+| `faultline-rs` | ✓ | ✓ | ✓ | — | ✓ |
 | `xtask` | — | ✓ | — | — | — |
 
 ## Running CI Tiers Locally
@@ -151,7 +151,7 @@ This tier covers:
 
 Requires external tools: `cargo-mutants`, `cargo-deny`, `cargo-audit`, `cargo-semver-checks`. The xtask will tell you what to install if anything is missing.
 
-> **Note on fuzz testing:** faultline supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow (`.github/workflows/ci-extended.yml`) does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration — see [How to Run Fuzz Tests](#how-to-run-fuzz-tests) below.
+> **Note on fuzz testing:** faultline-rs supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow (`.github/workflows/ci-extended.yml`) does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration — see [How to Run Fuzz Tests](#how-to-run-fuzz-tests) below.
 
 ## How to Add a New Property Test
 
@@ -208,7 +208,7 @@ Requires external tools: `cargo-mutants`, `cargo-deny`, `cargo-audit`, `cargo-se
 Golden tests use `insta` snapshots to guard artifact stability. Three artifacts are covered:
 - `analysis.json` — in `faultline-render`
 - `index.html` — in `faultline-render`
-- CLI `--help` text — in `faultline-cli`
+- CLI `--help` text — in `faultline-rs`
 
 When a golden test fails after a code change:
 
@@ -216,7 +216,7 @@ When a golden test fails after a code change:
    ```bash
    cargo test -p faultline-render
    # or
-   cargo test -p faultline-cli
+   cargo test -p faultline-rs
    ```
 
 2. Review the changes interactively:

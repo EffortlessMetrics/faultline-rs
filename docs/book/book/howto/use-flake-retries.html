@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -185,7 +185,7 @@
 </ul>
 <h2 id="step-1-add-retries"><a class="header" href="#step-1-add-retries">Step 1: Add –retries</a></h2>
 <p>The <code>--retries</code> flag sets how many additional probe attempts faultline makes per commit (on top of the initial probe):</p>
-<pre><code class="language-bash">faultline-cli \
+<pre><code class="language-bash">faultline-rs \
   --repo . --good v1.0 --bad main \
   --cmd "cargo test" \
   --retries 3
@@ -193,7 +193,7 @@
 <p>This probes each commit up to 4 times (1 initial + 3 retries). The final classification uses majority vote across all attempts.</p>
 <h2 id="step-2-set-stability-threshold"><a class="header" href="#step-2-set-stability-threshold">Step 2: Set –stability-threshold</a></h2>
 <p>The <code>--stability-threshold</code> flag (0.0–1.0) controls how much agreement is required to consider a result stable:</p>
-<pre><code class="language-bash">faultline-cli \
+<pre><code class="language-bash">faultline-rs \
   --repo . --good v1.0 --bad main \
   --cmd "cargo test" \
   --retries 3 \

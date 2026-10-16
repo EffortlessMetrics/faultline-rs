@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -175,7 +175,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="how-to-use-the-reproduce-subcommand"><a class="header" href="#how-to-use-the-reproduce-subcommand">How to Use the Reproduce Subcommand</a></h1>
-<p>This guide explains how to use <code>faultline reproduce</code> to re-run a specific probe from a completed faultline run.</p>
+<p>This guide explains how to use <code>faultline-rs reproduce</code> to re-run a specific probe from a completed faultline run.</p>
 <h2 id="when-to-use-reproduce"><a class="header" href="#when-to-use-reproduce">When to use reproduce</a></h2>
 <p>Use the reproduce subcommand when:</p>
 <ul>
@@ -184,21 +184,21 @@
 <li>You want to share exact reproduction steps with a colleague</li>
 </ul>
 <h2 id="step-1-run-faultline-and-note-the-output-directory"><a class="header" href="#step-1-run-faultline-and-note-the-output-directory">Step 1: Run faultline and note the output directory</a></h2>
-<pre><code class="language-bash">faultline-cli --repo . --good v1.0 --bad main \
+<pre><code class="language-bash">faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --output-dir regression-report
 </code></pre>
 <h2 id="step-2-reproduce-the-boundary-commits"><a class="header" href="#step-2-reproduce-the-boundary-commits">Step 2: Reproduce the boundary commits</a></h2>
 <p>By default, <code>reproduce</code> targets the boundary commits (the last-good and first-bad):</p>
-<pre><code class="language-bash">faultline reproduce --run-dir regression-report
+<pre><code class="language-bash">faultline-rs reproduce --run-dir regression-report
 </code></pre>
 <p>This checks out the boundary commit, sets the environment, and runs the predicate.</p>
 <h2 id="step-3-reproduce-a-specific-commit"><a class="header" href="#step-3-reproduce-a-specific-commit">Step 3: Reproduce a specific commit</a></h2>
 <p>To reproduce the probe for a specific commit:</p>
-<pre><code class="language-bash">faultline reproduce --run-dir regression-report --commit abc1234
+<pre><code class="language-bash">faultline-rs reproduce --run-dir regression-report --commit abc1234
 </code></pre>
 <h2 id="step-4-generate-a-shell-script-instead"><a class="header" href="#step-4-generate-a-shell-script-instead">Step 4: Generate a shell script instead</a></h2>
 <p>Use <code>--shell</code> to emit a POSIX shell script to stdout instead of executing the probe:</p>
-<pre><code class="language-bash">faultline reproduce --run-dir regression-report --commit abc1234 --shell
+<pre><code class="language-bash">faultline-rs reproduce --run-dir regression-report --commit abc1234 --shell
 </code></pre>
 <p>The script includes:</p>
 <ul>
@@ -208,7 +208,7 @@
 <li>The predicate command with timeout</li>
 </ul>
 <p>You can save this script, share it, or modify it for debugging:</p>
-<pre><code class="language-bash">faultline reproduce --run-dir regression-report --commit abc1234 --shell &gt; repro.sh
+<pre><code class="language-bash">faultline-rs reproduce --run-dir regression-report --commit abc1234 --shell &gt; repro.sh
 chmod +x repro.sh
 ./repro.sh
 </code></pre>

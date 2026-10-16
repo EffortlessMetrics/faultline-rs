@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-4e215114.js";
+            window.path_to_searchindex_js = "../searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9ba5fd36.js"></script>
@@ -186,15 +186,15 @@
 <h2 id="step-1-run-faultline-twice"><a class="header" href="#step-1-run-faultline-twice">Step 1: Run faultline twice</a></h2>
 <p>Run faultline with different parameters or at different times, saving each to a separate output directory:</p>
 <pre><code class="language-bash"># First run
-faultline-cli --repo . --good v1.0 --bad main \
+faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --output-dir run-1
 
 # Second run (e.g., with more probes)
-faultline-cli --repo . --good v1.0 --bad main \
+faultline-rs --repo . --good v1.0 --bad main \
   --cmd "cargo test" --max-probes 40 --output-dir run-2
 </code></pre>
 <h2 id="step-2-compare-the-runs"><a class="header" href="#step-2-compare-the-runs">Step 2: Compare the runs</a></h2>
-<pre><code class="language-bash">faultline diff-runs --left run-1 --right run-2
+<pre><code class="language-bash">faultline-rs diff-runs --left run-1 --right run-2
 </code></pre>
 <p>This produces a human-readable summary showing what changed between the two runs.</p>
 <h2 id="step-3-read-the-comparison-output"><a class="header" href="#step-3-read-the-comparison-output">Step 3: Read the comparison output</a></h2>
@@ -216,7 +216,7 @@ faultline-cli --repo . --good v1.0 --bad main \
 </div>
 <h2 id="step-4-get-json-output"><a class="header" href="#step-4-get-json-output">Step 4: Get JSON output</a></h2>
 <p>For machine consumption, add <code>--json</code>:</p>
-<pre><code class="language-bash">faultline diff-runs --left run-1 --right run-2 --json
+<pre><code class="language-bash">faultline-rs diff-runs --left run-1 --right run-2 --json
 </code></pre>
 <p>This outputs the full <code>RunComparison</code> struct as JSON, suitable for scripting or CI integration.</p>
 <h2 id="tips"><a class="header" href="#tips">Tips</a></h2>

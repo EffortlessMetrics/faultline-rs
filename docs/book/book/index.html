@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-4e215114.js";
+            window.path_to_searchindex_js = "searchindex-c72ba0fe.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-9ba5fd36.js"></script>
@@ -174,103 +174,59 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="your-first-faultline-run"><a class="header" href="#your-first-faultline-run">Your First Faultline Run</a></h1>
-<p>This tutorial walks you through installing faultline, running it against a Git repository, and reading the output artifacts.</p>
-<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
-<ul>
-<li>Rust stable toolchain (install via <a href="https://rustup.rs/">rustup</a>)</li>
-<li>Git installed and on your PATH</li>
-<li>A Git repository with a known regression (a good commit and a bad commit)</li>
-</ul>
-<h2 id="step-1-install-faultline"><a class="header" href="#step-1-install-faultline">Step 1: Install faultline</a></h2>
-<p>Clone the repository and build the CLI:</p>
-<pre><code class="language-bash">git clone https://github.com/your-org/faultline.git
-cd faultline
-cargo build --release
+                        <h1 id="find-where-a-regression-began"><a class="header" href="#find-where-a-regression-began">Find where a regression began</a></h1>
+<p>Your test or build passed at an earlier commit and fails now. Use faultline-rs to
+find the smallest window the results support, then inspect those commits.</p>
+<h2 id="start-with-a-check-you-trust"><a class="header" href="#start-with-a-check-you-trust">Start with a check you trust</a></h2>
+<p>Choose a command you can run repeatedly at older commits. Confirm that it passes
+at your good commit and fails at your bad commit. If <code>cargo test</code> captures the
+problem, use that same command throughout the investigation.</p>
+<p>You need Git and Rust 1.93 or newer. Install the initial release:</p>
+<pre><code class="language-bash">cargo install faultline-rs --version 0.0.1 --locked
 </code></pre>
-<p>The binary is at <code>target/release/faultline-cli</code>. You can add it to your PATH or invoke it directly.</p>
-<h2 id="step-2-identify-your-regression-boundaries"><a class="header" href="#step-2-identify-your-regression-boundaries">Step 2: Identify your regression boundaries</a></h2>
-<p>You need two pieces of information:</p>
-<ol>
-<li>A <strong>good</strong> commit — a revision where your test or build passes</li>
-<li>A <strong>bad</strong> commit — a revision where it fails</li>
-</ol>
-<p>For example, if your tests pass on <code>v1.0.0</code> but fail on <code>main</code>:</p>
-<pre><code class="language-bash">git log --oneline v1.0.0..main
+<p>If the release is not yet available, <a href="https://github.com/EffortlessMetrics/faultline-rs/blob/main/BUILDING.md">build from source</a>.
+The executable is named <code>faultline-rs</code>.</p>
+<h2 id="run-the-investigation"><a class="header" href="#run-the-investigation">Run the investigation</a></h2>
+<p>From your project’s directory, replace <code>GOOD_COMMIT</code> with a commit where the
+check passes. Use <code>HEAD</code> as the bad commit only if the check fails there:</p>
+<pre><code class="language-bash">faultline-rs --good GOOD_COMMIT --bad HEAD --cmd "cargo test"
 </code></pre>
-<h2 id="step-3-write-a-predicate"><a class="header" href="#step-3-write-a-predicate">Step 3: Write a predicate</a></h2>
-<p>A predicate is a command that faultline runs at each candidate revision. It must follow the <a href="../reference/predicate-contract.html">predicate contract</a>:</p>
-<ul>
-<li>Exit <code>0</code> → pass</li>
-<li>Exit <code>125</code> → skip (untestable revision)</li>
-<li>Any other non-zero exit → fail</li>
-<li>Timeout → indeterminate</li>
-</ul>
-<p>For example, to test whether <code>cargo test</code> passes:</p>
-<pre><code class="language-bash"># Using --cmd (shell command)
-faultline-cli --repo . --good v1.0.0 --bad main --cmd "cargo test"
-</code></pre>
-<p>Or using a standalone script:</p>
-<pre><code class="language-bash"># Using --program (direct exec)
-faultline-cli --repo . --good v1.0.0 --bad main --program ./test.sh
-</code></pre>
-<h2 id="step-4-run-faultline"><a class="header" href="#step-4-run-faultline">Step 4: Run faultline</a></h2>
-<p>Run the full command:</p>
-<pre><code class="language-bash">cargo run -p faultline-cli -- \
-  --repo /path/to/your/repo \
-  --good abc1234 \
-  --bad def5678 \
-  --cmd "cargo test --lib" \
-  --output-dir faultline-report
-</code></pre>
-<p>Faultline will:</p>
-<ol>
-<li>Enumerate the commits between <code>--good</code> and <code>--bad</code></li>
-<li>Probe boundary commits first (the good and bad endpoints)</li>
-<li>Use binary narrowing to select the next candidate</li>
-<li>Run your predicate at each candidate revision using a disposable worktree</li>
-<li>Converge on the narrowest credible regression window</li>
-</ol>
-<p>You’ll see output like:</p>
-<pre><code>run-id       a1b2c3d4
-observations 7
-output-dir   faultline-report
-artifacts    faultline-report/analysis.json
-             faultline-report/index.html
-history      ancestry-path
-outcome      FirstBad  last_good=abc1234 first_bad=def5678 confidence=90(high)
-</code></pre>
-<h2 id="step-5-read-the-output-artifacts"><a class="header" href="#step-5-read-the-output-artifacts">Step 5: Read the output artifacts</a></h2>
-<p>Faultline produces two artifacts in the output directory:</p>
-<h3 id="analysisjson"><a class="header" href="#analysisjson">analysis.json</a></h3>
-<p>A machine-readable JSON report containing the full analysis: the request parameters, the revision sequence, all probe observations, the localization outcome, changed paths, and surface summary. This file conforms to the <a href="../reference/artifact-schema.html">artifact schema</a>.</p>
-<pre><code class="language-bash">cat faultline-report/analysis.json | jq '.outcome'
-</code></pre>
-<h3 id="indexhtml"><a class="header" href="#indexhtml">index.html</a></h3>
-<p>A human-readable HTML report you can open in any browser. It shows the same information in a visual layout with the commit timeline, observation results, and outcome summary.</p>
-<pre><code class="language-bash">open faultline-report/index.html
-</code></pre>
-<h2 id="step-6-interpret-the-outcome"><a class="header" href="#step-6-interpret-the-outcome">Step 6: Interpret the outcome</a></h2>
-<p>Faultline produces one of three outcome types:</p>
+<p>For a different check, replace <code>cargo test</code> with your command. Choose the shell
+with <code>--shell</code> when needed. To run a program directly, use <code>--program</code> and supply
+each argument with <code>--arg</code>.
+The <a href="../reference/predicate-contract.html">command contract</a> explains passing,
+failing, skipped and timed-out checks.</p>
+<h2 id="read-the-evidence"><a class="header" href="#read-the-evidence">Read the evidence</a></h2>
+<p>Open <code>faultline-report/index.html</code> in your browser. It shows the checked commits,
+their results and the reported regression window.
+Keep <code>faultline-report/analysis.json</code> when you need to share or automate the run.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Outcome</th><th>Meaning</th></tr>
+<tr><th>Result</th><th>What to do next</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>FirstBad</strong></td><td>Exact regression commit identified with high confidence</td></tr>
-<tr><td><strong>SuspectWindow</strong></td><td>A range of suspect commits, with reasons for ambiguity (skipped revisions, non-monotonic evidence, etc.)</td></tr>
-<tr><td><strong>Inconclusive</strong></td><td>Not enough evidence to narrow the window (missing boundaries, max probes exhausted, etc.)</td></tr>
+<tr><td>FirstBad</td><td>Compare the last passing and first failing commits and investigate the relevant changes.</td></tr>
+<tr><td>SuspectWindow</td><td>Inspect the reported range and the reasons that kept it from narrowing further.</td></tr>
+<tr><td>Inconclusive</td><td>Read the reasons, correct the command or boundaries, and run again.</td></tr>
 </tbody>
 </table>
 </div>
-<p>If you get a <code>SuspectWindow</code> or <code>Inconclusive</code> result, check the <code>reasons</code> field in the JSON output for details on what prevented convergence.</p>
-<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<p>The result points you toward changes to investigate. You still need to establish
+the cause and fix it. A flaky command, a timeout or an untestable commit may leave
+a range rather than one commit.</p>
+<h2 id="improve-or-share-the-run"><a class="header" href="#improve-or-share-the-run">Improve or share the run</a></h2>
 <ul>
-<li>Learn about <a href="../reference/cli-flags.html">CLI flags</a> for advanced options</li>
-<li>Read <a href="../explanations/localization.html">How Localization Works</a> to understand the algorithm</li>
-<li>See <a href="../howto/add-property-test.html">Adding a New Property Test</a> if you’re contributing to faultline</li>
+<li>Use <code>--retries</code> for a command that sometimes changes its result.</li>
+<li>Repeated investigations can reuse previous results. Fresh rechecks are not
+currently available through the command; see the
+<a href="../reference/cli-flags.html#run-mode-flags">rerun limitation</a>.</li>
+<li>Use <code>--output-dir</code> to keep separate investigations in different folders.</li>
+<li>Review reports before sharing them, even though common secret patterns and
+environment values are scrubbed by default.</li>
 </ul>
+<p>See <a href="../reference/cli-flags.html">CLI options</a> for the full command reference.
+For automated consumers, use the <a href="../reference/artifact-schema.html">report reference</a>.</p>
 
                     </main>
 

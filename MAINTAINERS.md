@@ -1,4 +1,4 @@
-# MAINTAINERS.md — faultline Code Ownership and Review
+# MAINTAINERS.md — faultline-rs Code Ownership and Review
 
 This document defines code ownership by crate, review expectations, and escalation paths.
 
@@ -37,7 +37,7 @@ See [AGENTS.md](AGENTS.md) for the repo overview and [TESTING.md](TESTING.md) fo
 
 | Crate | Responsibility | Review Notes |
 |-------|---------------|--------------|
-| `faultline-cli` | Operator-facing CLI | Flag changes are public API. Golden test for `--help` must be updated. |
+| `faultline-rs` | Operator-facing CLI | Flag changes are public API. Golden test for `--help` must be updated. |
 | `faultline-fixtures` | Fixture builders for tests | Changes may affect many test files across the workspace. |
 | `xtask` | Repo operations binary | Changes to CI commands affect the entire development workflow. |
 
@@ -118,7 +118,7 @@ Requires:
 When `cargo deny` or `cargo audit` flags an issue:
 
 1. Check if a patched version of the dependency exists. If so, update.
-2. If no patch exists, evaluate the severity and whether the vulnerability is reachable in faultline's usage.
+2. If no patch exists, evaluate the severity and whether the vulnerability is reachable in faultline-rs's usage.
 3. For critical/high severity with no patch: open an issue, document the risk, and consider removing or replacing the dependency.
 4. License violations require replacing the dependency — do not add non-approved licenses to `deny.toml` without maintainer discussion.
 

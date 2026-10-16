@@ -282,10 +282,37 @@ covered_by = [
 ]
 
 [[allow]]
+path = ".github/scripts/release.py"
+kind = "ci_release_controller"
+owner = "release/ci"
+surface = "ci"
+classification = "production"
+reason = "Scoped mixed-source release qualification and paced per-crate publication controller."
+covered_by = ["python3 .github/tests/test_release_workflow.py", ".github/workflows/release.yml", "cargo xtask check-file-policy"]
+
+[[allow]]
+path = ".github/release-0.0.1.json"
+kind = "ci_release_plan"
+owner = "release/ci"
+surface = "ci"
+classification = "production"
+reason = "Pins five immutable original anchors, nine selected fresh crates, original source identities and distinct corrected release tag."
+covered_by = ["python3 .github/tests/test_release_workflow.py", ".github/workflows/release.yml", "cargo xtask check-file-policy"]
+
+[[allow]]
+path = ".github/tests/release_fixtures.py"
+kind = "ci_contract_fixture"
+owner = "release/ci"
+surface = "ci"
+classification = "test"
+reason = "Builds generated mixed-source hash-linked crate fixtures without Cargo, registry access or real artifact copies."
+covered_by = ["python3 .github/tests/test_release_workflow.py", ".github/workflows/release.yml", "cargo xtask check-file-policy"]
+
+[[allow]]
 path = ".github/tests/test_release_workflow.py"
 kind = "ci_contract_test"
 owner = "release/ci"
 surface = "ci"
 classification = "test"
-reason = "Standard-library generated-fixture tests execute the inline release archive and cache guards without Cargo or network access."
-covered_by = ["python3 .github/tests/test_release_workflow.py", "cargo xtask check-file-policy", ".github/workflows/release.yml"]
+reason = "Standard-library generated-fixture contracts execute actual release helpers and check normal workflow wiring, source/graph identity, cache integrity and safe resumable publication."
+covered_by = ["python3 .github/tests/test_release_workflow.py", ".github/workflows/release.yml", "cargo xtask check-file-policy"]

@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in faultline
+description: Report a bug in faultline-rs
 labels: ["bug"]
 body:
   - type: textarea
@@ -16,7 +16,7 @@ body:
       label: Steps to reproduce
       description: Minimal steps to reproduce the behavior.
       placeholder: |
-        1. Run `faultline-cli ...`
+        1. Run `faultline-rs ...`
         2. ...
     validations:
       required: true
@@ -32,9 +32,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: faultline version
-      description: Output of `faultline-cli --version`.
-      placeholder: "faultline-cli 0.1.0"
+      label: faultline-rs version
+      description: Output of `faultline-rs --version`.
+      placeholder: "faultline-rs 0.0.1"
     validations:
       required: false
 
