@@ -73,6 +73,14 @@ class MixedReleaseContracts(unittest.TestCase):
         self.boundaries.enter_context(mock.patch.object(release.subprocess, "check_output", side_effect=AssertionError("Unexpected subprocess")))
         self.boundaries.enter_context(mock.patch.object(release.urllib.request, "urlopen", side_effect=AssertionError("Unexpected HTTP request")))
         self.boundaries.enter_context(mock.patch.dict(os.environ, {}, clear=True))
+        if getattr(os, "geteuid", None) is None:
+            # Windows has no POSIX ownership identity; explicitly simulate the
+            # owned-cache boundary so offline contracts exercise the same path
+            # production enforces on Linux. Production remains fail-closed via
+            # release._current_euid raising on unsupported platforms.
+            self.boundaries.enter_context(
+                mock.patch.object(release, "_current_euid", return_value=0)
+            )
         self.output = self.boundaries.enter_context(redirect_stdout(io.StringIO()))
 
     def save_plan(self):
@@ -418,11 +426,24 @@ class MixedReleaseContracts(unittest.TestCase):
         elsewhere = other / "untouched"
         elsewhere.mkdir()
         (elsewhere / "marker").write_bytes(b"untouched")
-        (target / "package").symlink_to(elsewhere, target_is_directory=True)
+        try:
+            (target / "package").symlink_to(elsewhere, target_is_directory=True)
+        except OSError as error:
+            self.skipTest(f"symlink privilege unavailable: {error}")
         with self.assertRaises(AssertionError):
             release.isolate_packages(other)
         self.assertTrue((target / "package").is_symlink())
         self.assertEqual((elsewhere / "marker").read_bytes(), b"untouched")
+
+    def test_ownership_boundary_rejects_unowned_cache(self):
+        marker = self.root / "target/package/probe.crate"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_bytes(b"probe")
+        owned = marker.stat().st_uid
+        with mock.patch.object(release, "_current_euid", return_value=owned + 1):
+            with self.assertRaises(AssertionError):
+                release._assert_owned_by_current_user(marker)
+        release._assert_owned_by_current_user(marker)
 
     def test_full_internal_closure_rejects_missing_extra_and_wrong_records(self):
         for mutate in [lambda records: records.pop(1),
@@ -886,15 +907,15 @@ class MixedReleaseContracts(unittest.TestCase):
 
     def test_generated_book_uses_current_cli_install_and_command_names(self):
         book = HELPER.parents[2] / "docs/book/book"
-        tutorial = (book / "tutorials/first-run.html").read_text()
+        tutorial = (book / "tutorials/first-run.html").read_text(encoding="utf-8")
         self.assertIn("cargo install faultline-rs --version 0.0.1 --locked", tutorial)
         self.assertIn("faultline-rs --good GOOD_COMMIT --bad HEAD", tutorial)
-        self.assertIn("cargo install faultline-rs --version 0.0.1 --locked", (book / "print.html").read_text())
+        self.assertIn("cargo install faultline-rs --version 0.0.1 --locked", (book / "print.html").read_text(encoding="utf-8"))
         indices = list(book.glob("searchindex-*.js"))
         self.assertEqual(len(indices), 1)
         for path in book.rglob("*"):
             if path.suffix in {".html", ".js"}:
-                text = path.read_text()
+                text = path.read_text(encoding="utf-8")
                 self.assertNotIn("faultline-cli", text, str(path))
                 for index in re.findall(r'path_to_searchindex_js = "(?:\.\./)*([^"/]+)"', text):
                     self.assertEqual(index, indices[0].name)

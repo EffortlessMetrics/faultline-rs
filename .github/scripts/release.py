@@ -156,13 +156,24 @@ def validate_selection(root, environment):
     return {"source_sha": source, "publish": str(publish).lower()}
 
 
+def _current_euid():
+    geteuid = getattr(os, "geteuid", None)
+    if geteuid is None:
+        raise AssertionError("ownership verification requires POSIX geteuid")
+    return geteuid()
+
+
+def _assert_owned_by_current_user(path):
+    assert path.stat().st_uid == _current_euid(), ("unowned cache path", str(path))
+
+
 def isolate_packages(root):
     target = root / "target"
     package = target / "package"
     if package.exists() or package.is_symlink():
         assert target.is_dir() and not target.is_symlink()
         assert package.is_dir() and not package.is_symlink()
-        assert package.stat().st_uid == os.geteuid()
+        _assert_owned_by_current_user(package)
         # Cargo 1.93's uplift does not truncate old destinations. Preserve cache.
         quarantine = Path(tempfile.mkdtemp(prefix="package-quarantine-", dir=target)) / "package"
         package.rename(quarantine)
@@ -225,7 +236,8 @@ def fetch_published(root):
             assert len(data) <= 16 * 1024 * 1024 and sha256(data) == checksum, name
             single_gzip(data)
             if archive.exists():
-                assert archive.is_file() and archive.stat().st_uid == os.geteuid()
+                assert archive.is_file()
+                _assert_owned_by_current_user(archive)
                 quarantine = Path(tempfile.mkdtemp(prefix="published-anchor-quarantine-", dir=target))
                 archive.rename(quarantine / archive.name)
                 print("Preserved mismatching cached anchor at", quarantine / archive.name)
