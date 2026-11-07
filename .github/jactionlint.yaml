@@ -1,0 +1,4 @@
+# Repository-owned policy; CI and local commands select this file explicitly.
+# Do not inherit developer or runner user-global rule suppressions.
+profile: correctness
+online: false

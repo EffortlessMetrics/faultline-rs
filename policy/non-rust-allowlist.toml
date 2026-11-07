@@ -126,7 +126,16 @@ owner = "release/ci"
 surface = "ci"
 classification = "production"
 reason = "GitHub Actions workflows are platform-required YAML."
-covered_by = ["uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes="]
+covered_by = ["uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes="]
+
+[[allow]]
+path = ".github/jactionlint.yaml"
+kind = "ci_lint_config"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Repository-owned workflow linter policy prevents user-global suppression drift."
+covered_by = ["uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes="]
 
 [[allow]]
 glob = ".github/ISSUE_TEMPLATE/*.yml"
