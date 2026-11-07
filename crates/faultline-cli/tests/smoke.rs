@@ -20,7 +20,10 @@ fn smoke_cli_identity_matches_install_name() -> anyhow::Result<()> {
     let help = Command::new(cli_binary()).arg("--help").output()?;
     faultline_fixtures::ensure!(help.status.success(), "CLI --help failed");
     faultline_fixtures::ensure!(
-        String::from_utf8(help.stdout)?.contains("Usage: faultline-rs "),
+        String::from_utf8(help.stdout)?.contains(&format!(
+            "Usage: faultline-rs{} ",
+            std::env::consts::EXE_SUFFIX
+        )),
         "CLI --help has the wrong executable name"
     );
     Ok(())

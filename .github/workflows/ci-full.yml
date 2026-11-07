@@ -3,12 +3,23 @@ name: CI Full
 on:
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: full-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  CARGO_INSTA_VERSION: "1.46.1"
+  # When bumping RIPR, sync schemas/ripr/*.schema.json to the output shape.
+  RIPR_VERSION: "0.10.0"
 
 jobs:
   ci-full:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,13 +37,27 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - run: cargo install cargo-insta
+      - name: Cache pinned verification tools
+        id: verification-tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-${{ env.CARGO_INSTA_VERSION }}-ripr-${{ env.RIPR_VERSION }}
+
+      - name: Install pinned verification tools
+        if: steps.verification-tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version "$CARGO_INSTA_VERSION"
+          cargo install ripr --locked --version "$RIPR_VERSION"
+
+      - name: Verify verification tool versions
+        run: |
+          test "$(cargo insta --version)" = "cargo-insta $CARGO_INSTA_VERSION"
+          test "$(ripr --version)" = "ripr $RIPR_VERSION"
 
       - run: cargo xtask ci-full
-
-      # Pin ripr so output-contract drift only happens on intentional bumps.
-      # When bumping, sync schemas/ripr/*.schema.json to the new output shape.
-      - run: cargo install ripr --locked --version 0.10.0
 
       - name: RIPR verification evidence
         run: |
