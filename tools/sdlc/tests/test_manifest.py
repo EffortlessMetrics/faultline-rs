@@ -37,12 +37,43 @@ class ManifestTests(unittest.TestCase):
         )
 
     def test_required_execution_failure_blocks_qualification(self) -> None:
+        for status in ("failed", "skipped", "error"):
+            with self.subTest(status=status):
+                value = valid_manifest()
+                value["executions"][0].update(
+                    status=status, exit_code=1, required=True
+                )
+                value["qualification"]["required_execution_ids"] = ["focused-tests"]
+                self.assertEqual([], manifest.validate_manifest(value))
+                self.assertIn(
+                    f"required execution focused-tests is {status}",
+                    manifest.readiness_errors(value),
+                )
+                self.assertEqual("failure", manifest.build_check_payload(value)["conclusion"])
+
+        for status in ("failed", "skipped", "error"):
+            for required, listed in ((True, False), (False, True)):
+                with self.subTest(status=status, required=required, listed=listed):
+                    value = valid_manifest()
+                    value["executions"][0].update(
+                        status=status, exit_code=1, required=required
+                    )
+                    value["qualification"]["required_execution_ids"] = (
+                        ["focused-tests"] if listed else []
+                    )
+                    self.assertIn(
+                        "qualification.required_execution_ids must match executions marked required",
+                        " ".join(manifest.validate_manifest(value)),
+                    )
+                    with self.assertRaises(manifest.EvidenceError):
+                        manifest.build_check_payload(value)
+                    self.assertTrue(manifest.readiness_errors(value))
+
         value = valid_manifest()
-        value["executions"][0]["status"] = "failed"
-        value["executions"][0]["exit_code"] = 1
-        self.assertIn(
-            "required execution focused-tests is failed", manifest.readiness_errors(value)
-        )
+        value["executions"][0].update(status="failed", exit_code=1, required=False)
+        value["qualification"]["required_execution_ids"] = []
+        self.assertEqual([], manifest.readiness_errors(value))
+        self.assertEqual("success", manifest.build_check_payload(value)["conclusion"])
 
     def test_failed_to_review_cannot_publish_success(self) -> None:
         value = valid_manifest()
