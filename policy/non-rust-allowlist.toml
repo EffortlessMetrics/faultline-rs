@@ -116,7 +116,7 @@ reason = "Apache-2.0 license text."
 covered_by = []
 
 # ---------------------------------------------------------------------------
-# CI workflows
+# CI workflows and SDLC pilot tooling
 # ---------------------------------------------------------------------------
 
 [[allow]]
@@ -136,6 +136,24 @@ surface = "community"
 classification = "production"
 reason = "GitHub issue templates are platform-required YAML for structured issue intake."
 covered_by = []
+
+[[allow]]
+path = ".github/sdlc-policy.json"
+kind = "workflow_policy"
+owner = "release/ci"
+surface = "sdlc"
+classification = "production"
+reason = "Machine-readable late-qualification admission policy."
+covered_by = ["python3 -m unittest discover -s tools/sdlc/tests -p 'test_*.py'"]
+
+[[allow]]
+glob = "tools/sdlc/**/*.py"
+kind = "workflow_tooling"
+owner = "release/ci"
+surface = "sdlc"
+classification = "tooling"
+reason = "Standard-library evidence publisher and preflight behavior tests for the late-qualification pilot."
+covered_by = ["python3 -m unittest discover -s tools/sdlc/tests -p 'test_*.py'"]
 
 [[allow]]
 path = "codecov.yml"
@@ -188,6 +206,27 @@ reason = "Portable RIPR PR evidence and review guidance schemas used by xtask wr
 covered_by = [
   "cargo xtask ripr-pr --check",
   "cargo xtask ripr-review-comments --check",
+]
+
+[[allow]]
+glob = "schemas/sdlc/*.schema.json"
+kind = "workflow_contract"
+owner = "release/ci"
+surface = "sdlc"
+classification = "production"
+reason = "Portable candidate-bound evidence schema for warm-session review and late qualification."
+covered_by = ["python3 -m unittest discover -s tools/sdlc/tests -p 'test_*.py'"]
+
+[[allow]]
+glob = "docs/examples/*.json"
+kind = "documentation_fixture"
+owner = "release/ci"
+surface = "sdlc"
+classification = "test"
+reason = "Checked example manifests for the documented SDLC evidence contract."
+covered_by = [
+  "python3 tools/sdlc/evidence.py validate --manifest docs/examples/sdlc-evidence.v1.json --require-ready",
+  "python3 -m unittest discover -s tools/sdlc/tests -p 'test_*.py'",
 ]
 
 [[allow]]

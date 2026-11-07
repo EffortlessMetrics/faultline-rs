@@ -1,0 +1,157 @@
+name: Late Qualification Pilot
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to qualify
+        required: true
+        type: string
+      expected_head_sha:
+        description: Exact reviewed pull request head SHA
+        required: true
+        type: string
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+concurrency:
+  group: late-qualification-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  preflight:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'merge-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      head_sha: ${{ steps.preflight.outputs.head_sha }}
+      pr_number: ${{ steps.context.outputs.pr_number }}
+    steps:
+      - name: Check out trusted preflight tooling
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - name: Resolve requested candidate
+        id: context
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_HEAD_SHA: ${{ inputs.expected_head_sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            pr_number="$INPUT_PR_NUMBER"
+            expected_sha="$INPUT_HEAD_SHA"
+          else
+            pr_number="$EVENT_PR_NUMBER"
+            expected_sha="$EVENT_HEAD_SHA"
+          fi
+          if [[ ! "$pr_number" =~ ^[1-9][0-9]*$ ]]; then
+            echo "invalid pull request number: $pr_number" >&2
+            exit 2
+          fi
+          if [[ ! "$expected_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid expected head SHA: $expected_sha" >&2
+            exit 2
+          fi
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          echo "expected_sha=$expected_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Verify exact-head evidence and review state
+        id: preflight
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.context.outputs.pr_number }}
+          EXPECTED_SHA: ${{ steps.context.outputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          head_sha="$(python3 tools/sdlc/evidence.py preflight \
+            --repository "$GITHUB_REPOSITORY" \
+            --pull-request "$PR_NUMBER" \
+            --expected-sha "$EXPECTED_SHA")"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Late qualification preflight"
+            echo
+            echo "- Pull request: #$PR_NUMBER"
+            echo "- Exact head: \`$head_sha\`"
+            echo "- Warm evidence: exact-head success"
+            echo "- Review threads: resolved"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  qualify:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact qualified candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.head_sha }}
+          fetch-depth: 0
+
+      - name: Verify checkout identity
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ needs.preflight.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain)"
+
+      - name: Install Rust 1.93.1
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.93.1"
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-late-qualification-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install snapshot runner
+        run: cargo install cargo-insta --locked
+
+      - name: Run mandatory repository qualification
+        run: cargo xtask ci-full
+
+      - name: Record qualification result
+        if: always()
+        shell: bash
+        env:
+          HEAD_SHA: ${{ needs.preflight.outputs.head_sha }}
+          PR_NUMBER: ${{ needs.preflight.outputs.pr_number }}
+        run: |
+          {
+            echo "## Late qualification"
+            echo
+            echo "- Pull request: #$PR_NUMBER"
+            echo "- Candidate: \`$HEAD_SHA\`"
+            echo "- Gate: \`cargo xtask ci-full\`"
+            echo "- Job ceiling: 20 minutes"
+            echo
+            echo "Green qualification does not authorize or perform merge."
+          } >> "$GITHUB_STEP_SUMMARY"
