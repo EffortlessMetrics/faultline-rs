@@ -20,6 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check GitHub Actions workflows
+        uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d # v2.5.0
+        with:
+          profile: correctness
+          online: false
+          # Keep the semantic gate identical on developer and hosted machines.
+          args: --shellcheck= --pyflakes=
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

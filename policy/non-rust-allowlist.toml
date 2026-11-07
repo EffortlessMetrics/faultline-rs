@@ -126,7 +126,7 @@ owner = "release/ci"
 surface = "ci"
 classification = "production"
 reason = "GitHub Actions workflows are platform-required YAML."
-covered_by = []
+covered_by = ["uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes="]
 
 [[allow]]
 glob = ".github/ISSUE_TEMPLATE/*.yml"

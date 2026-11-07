@@ -29,8 +29,28 @@ schema review described in the workflow.
 
 ## Verification and rollback
 
-Validate workflow syntax with `actionlint .github/workflows/ci.yml
-.github/workflows/ci-full.yml`; run `cargo xtask ci-full` for the unchanged
-repository contract floor. Hosted runs establish cache restoration, concurrency,
-and Linux execution behavior. Revert these two workflow changes to roll back;
-no persisted application data or artifact schema changes are involved.
+CI Fast checks all workflows with jactionlint 2.5.0 before installing the Rust
+toolchain. It uses the correctness profile with online checks disabled, and
+does not add another workflow, runner allocation, trigger, or required status.
+The action is pinned to the release commit. The embedded ShellCheck and
+Pyflakes integrations are explicitly disabled for this initial semantic gate;
+their availability on a machine must not silently change the check's scope.
+This does not remove any existing shell or Python checks.
+
+Run the same gate locally from the repository root, without adding a project
+Python dependency:
+
+```sh
+uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes=
+```
+
+An existing `uv tool install jactionlint` installation can also run the command
+directly after checking `jactionlint --version`; use the pinned `uvx` command
+for exact CI parity. A generic YAML parser is not a substitute for the workflow
+semantic check. If the command is not on PATH, use the uv invocation rather
+than reporting workflow lint as unavailable.
+
+Run `cargo xtask ci-full` for the unchanged repository contract floor. Hosted
+runs establish cache restoration, concurrency, and Linux execution behavior.
+The jactionlint step can be reverted independently of the Fast/Full cache
+changes; neither changes persisted application data or artifact schemas.
