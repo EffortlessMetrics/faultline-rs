@@ -95,7 +95,19 @@ All repo operations are available through `cargo xtask` subcommands, with ergono
 
 The policy stack is documented in [docs/CLIPPY_POLICY.md](docs/CLIPPY_POLICY.md), [docs/NO_PANIC_POLICY.md](docs/NO_PANIC_POLICY.md), and [docs/FILE_POLICY.md](docs/FILE_POLICY.md). Source-of-truth policy files live under [policy/](policy/).
 
-Tool versions are pinned in [.mise.toml](.mise.toml).
+Local tool versions are configured in [.mise.toml](.mise.toml); the workflow
+linter release is pinned in [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+After editing GitHub Actions workflows, run the pinned workflow-semantic check
+from the repository root:
+
+```sh
+uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes=
+```
+
+CI Fast runs the same jactionlint version and scope before Rust setup. See
+[docs/ci/fast-full.md](docs/ci/fast-full.md) for the scope and local uv usage;
+YAML parsing alone does not replace this check.
 
 ## Artifact Contracts
 
