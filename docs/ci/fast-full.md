@@ -41,8 +41,18 @@ Run the same gate locally from the repository root, without adding a project
 Python dependency:
 
 ```sh
-uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes=
+uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes=
 ```
+
+CI and the local command explicitly select the committed config. This prevents
+user-global rule suppressions from changing the result and fails closed if the
+repository config is missing. Intentional inline repository exceptions still
+apply; the command does not disable ignore handling wholesale.
+
+The `github-script-syntax` check requires Node.js 20 or newer on PATH. Without
+it, jactionlint reports that the check was skipped; report that coverage limit
+rather than claiming embedded JavaScript syntax was checked. No Node runtime
+installation or new runtime-dependent gate is introduced here.
 
 An existing `uv tool install jactionlint` installation can also run the command
 directly after checking `jactionlint --version`; use the pinned `uvx` command

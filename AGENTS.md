@@ -102,10 +102,10 @@ After editing GitHub Actions workflows, run the pinned workflow-semantic check
 from the repository root:
 
 ```sh
-uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes=
+uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes=
 ```
 
-CI Fast runs the same jactionlint version and scope before Rust setup. See
+CI Fast runs the same jactionlint version and repository config before Rust setup. See
 [docs/ci/fast-full.md](docs/ci/fast-full.md) for the scope and local uv usage;
 YAML parsing alone does not replace this check.
 
