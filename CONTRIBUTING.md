@@ -69,9 +69,9 @@ Before requesting review, confirm:
 
 ## Architecture Quick Reference
 
-faultline-rs uses a **hexagonal (ports-and-adapters) architecture** across 15 crates:
+faultline-rs uses a **hexagonal (ports-and-adapters) architecture** across 16 product crates:
 
-- **Domain crates** (`faultline-codes`, `faultline-types`, `faultline-localization`, `faultline-surface`) contain pure logic with no I/O.
+- **Domain crates** (`faultline-codes`, `faultline-types`, `faultline-localization`, `faultline-integration`, `faultline-surface`) contain pure logic with no I/O.
 - **Port traits** (`faultline-ports`) define outbound interfaces.
 - **Adapter crates** (`faultline-git`, `faultline-probe-exec`, `faultline-store`, `faultline-render`, `faultline-sarif`, `faultline-junit`) implement ports with real infrastructure.
 - **Application** (`faultline-app`) orchestrates domain logic through ports.
