@@ -23,10 +23,12 @@ This matrix maps each workspace crate to its applicable verification techniques.
 | `faultline-junit` | adapter | ✓ | ✓ | ✓ | ✓ | ✓ | — |
 | `xtask` | tooling | — | ✓ | — | — | — | — |
 
+The standard-library tooling under `tools/sdlc/` is verified by Python `unittest` behavior contracts. `cargo xtask ci-full` resolves `python3`, `python`, or Windows `py -3` and runs the complete `tools/sdlc/tests/test_*.py` suite.
+
 ## Technique Definitions
 
 - **Property**: `proptest`-based tests that verify invariants across many randomly generated inputs. Minimum 100 cases per property.
-- **BDD/Unit**: `#[test]` functions that verify specific examples, edge cases, and integration flows.
+- **BDD/Unit**: `#[test]` functions that verify specific examples, edge cases, and integration flows, plus standard-library `unittest` contracts for SDLC tooling.
 - **Golden**: `insta` snapshot tests that capture expected artifact output for regression detection.
 - **Fuzz**: `cargo-fuzz` targets that exercise deserialization and parsing paths with arbitrary input.
 - **Mutation**: `cargo-mutants` runs that verify the test suite detects meaningful code changes.
@@ -74,7 +76,7 @@ Fuzz testing is run via `cargo xtask fuzz --duration <seconds>` and is available
 | Tier | Trigger | Techniques | Target Time |
 |------|---------|------------|-------------|
 | `ci-fast` | Every push | fmt + clippy + test + policy gates | < 5 minutes |
-| `ci-full` | Pull requests | ci-fast + golden snapshot verification + JSON Schema drift detection | < 10 minutes |
+| `ci-full` | Pull requests | ci-fast + SDLC behavior contracts + golden snapshots + JSON Schema drift detection + scenario atlas | < 10 minutes |
 | `ci-extended` | Manual / release | mutation testing + supply-chain checks (`cargo-deny`, `cargo-audit`, `cargo-semver-checks`) | Variable |
 
 > **Note on fuzz testing:** faultline supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration.

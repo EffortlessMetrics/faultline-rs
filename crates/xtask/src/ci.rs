@@ -42,6 +42,37 @@ fn run_contract(contract: &str, cmd: &str, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Run the standard-library SDLC behavior tests with a platform-appropriate
+/// Python 3 launcher.
+fn run_sdlc_contracts() -> Result<()> {
+    let common_args = [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tools/sdlc/tests",
+        "-p",
+        "test_*.py",
+    ];
+
+    if has_tool("python3") {
+        return run_contract("SDLC behavior contracts", "python3", &common_args);
+    }
+    if has_tool("python") {
+        return run_contract("SDLC behavior contracts", "python", &common_args);
+    }
+    if has_tool("py") {
+        let mut args = vec!["-3"];
+        args.extend(common_args);
+        return run_contract("SDLC behavior contracts", "py", &args);
+    }
+
+    bail!(
+        "{}",
+        contract_broken_message("SDLC behavior contracts: Python 3 interpreter not found")
+    )
+}
+
 /// ci-fast: fmt + clippy + policy gates + test (with nextest fallback)
 pub fn ci_fast() -> Result<()> {
     println!("=== ci-fast ===\n");
@@ -92,12 +123,15 @@ pub fn ci_fast() -> Result<()> {
     Ok(())
 }
 
-/// ci-full: ci-fast + golden test check + schema check
+/// ci-full: ci-fast + SDLC contracts + golden test check + schema check
 pub fn ci_full() -> Result<()> {
     println!("=== ci-full ===\n");
 
     // Run all ci-fast steps first
     ci_fast()?;
+
+    println!("\n=> SDLC behavior contracts");
+    run_sdlc_contracts()?;
 
     // Golden test check via cargo insta test
     println!("\n=> cargo insta test");
