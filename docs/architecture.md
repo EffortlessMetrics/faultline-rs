@@ -2,7 +2,7 @@
 
 ## High-level shape
 
-faultline follows a hexagonal (ports-and-adapters) architecture. Two pure domain crates own all business logic. Four port traits define the outbound boundary. Six infrastructure adapters implement those ports or provide export functionality. One shared infrastructure helper crate (`faultline-loader`) provides report loading for entry-point crates. One application crate orchestrates the use-case lifecycle. One CLI crate provides the operator entry point.
+faultline follows a hexagonal (ports-and-adapters) architecture. Five pure domain crates own business logic. Four port traits define the outbound boundary. Six infrastructure adapters implement those ports or provide export functionality. One shared infrastructure helper crate (`faultline-loader`) provides report loading for entry-point crates. One application crate orchestrates the use-case lifecycle. One CLI crate provides the operator entry point.
 
 ```text
 faultline-rs (+reproduce, +diff-runs, +export-markdown)
@@ -13,9 +13,10 @@ faultline-app  -----------------------------.
     | uses                                  | calls through ports
     v                                       v
 faultline-localization                HistoryPort (+codeowners, +blame)
-faultline-surface                     CheckoutPort
-faultline-types                       ProbePort
-faultline-codes                       RunStorePort
+faultline-integration                 CheckoutPort
+faultline-surface                     ProbePort
+faultline-types                       RunStorePort
+faultline-codes
 
 Adapters (6):
 - faultline-git        (git CLI: history + checkout + CODEOWNERS + blame)
@@ -32,6 +33,8 @@ Testing utility:
 - faultline-fixtures   (BDD harness + arbitrary generators — not an adapter)
 ```
 
+`faultline-integration` is pure domain logic. It receives already-resolved cumulative states, validates their structure and maps provider-neutral localization boundaries to integration transitions. It does not query providers, construct Git states, execute predicates or publish results.
+
 ## Crate boundaries
 
 ### Domain (pure, no I/O)
@@ -39,8 +42,9 @@ Testing utility:
 | Crate | Responsibility |
 |-------|---------------|
 | `faultline-codes` | Shared diagnostic and ambiguity vocabulary — `ObservationClass`, `ProbeKind`, `AmbiguityReason`, `OperatorCode` enums. No business logic. |
-| `faultline-types` | Pure value objects (`CommitId`, `RevisionSequence`, `ProbeObservation`, `AnalysisReport`, `FlakePolicy`, `FlakeSignal`, `ReproductionCapsule`, `RunComparison`, `SuspectEntry`), error types, serialization contracts, `compare_runs` pure function, and `to_shell_script` capsule generation. The canonical data model for the entire system. |
+| `faultline-types` | Pure value objects (`CommitId`, `RevisionSequence`, `ProbeObservation`, `AnalysisReport`, `FlakePolicy`, `FlakeSignal`, `ReproductionCapsule`, `RunComparison`, `SuspectEntry`), error types, serialization contracts, `compare_runs` pure function, and `to_shell_script` capsule generation. The canonical data model for the existing history-localization surface. |
 | `faultline-localization` | Regression-window search engine. Drives binary narrowing over a `RevisionSequence` using recorded observations. Produces `FirstBad`, `SuspectWindow`, or `Inconclusive` outcomes. Supports flake-aware probing via `FlakePolicy` with confidence degradation for unstable observations. |
+| `faultline-integration` | Ordered integration-sequence domain. Validates cumulative provider states, transition membership and state equivalence; converts `LocalizationOutcome` boundaries into exact, suspect, non-monotonic or inconclusive integration-transition results. |
 | `faultline-surface` | Ranked suspect surface analysis. Groups changed files into subsystem buckets, assigns surface kinds, and ranks paths by investigation priority with execution-surface weighting, rename/delete scoring, and optional owner hints. |
 
 ### Ports (trait definitions)
@@ -70,7 +74,7 @@ Testing utility:
 
 | Crate | Responsibility |
 |-------|---------------|
-| `faultline-app` | Use-case orchestration. Wires port implementations, drives the localization loop (linearize → validate boundaries → binary narrow → produce report) with flake retry support, generates reproduction capsules, populates ranked suspect surface, and enforces policy (max probes, boundary validation). |
+| `faultline-app` | Use-case orchestration. Wires port implementations, drives the localization loop (linearize → validate boundaries → binary narrow → produce report) with flake retry support, generates reproduction capsules, populates ranked suspect surface, and enforces policy (max probes, boundary validation). Issue #80 will add the resolved-sequence seam needed to consume `faultline-integration`. |
 
 ### Entry point
 
@@ -138,20 +142,29 @@ Pure domain model over:
 - search policy (max probes, edge refine threshold)
 - outcome semantics (FirstBad, SuspectWindow, Inconclusive)
 
+### Integration
+Pure domain model over:
+- ordered cumulative provider states
+- transition units and cumulative membership
+- exact commit/tree and weaker state equivalence
+- mapping localization boundaries to integration-transition outcomes
+
+No provider API, Git operation, process execution or artifact publication occurs in this context.
+
 ### Surface
 Ranked suspect surface analysis of the change surface between regression boundary commits.
 Scoring by investigation priority with execution-surface weighting, rename/delete scoring, and owner hints.
 No AST, no semantic ownership model.
 
 ### Application
-Use-case orchestration. Owns lifecycle and policy enforcement, but not localization semantics.
+Use-case orchestration. Owns lifecycle and policy enforcement, but not localization or integration-transition semantics.
 
 ### Infrastructure
-Git history, checkout creation, probe execution, persistence, and artifact rendering.
+Git history, checkout creation, probe execution, persistence, artifact rendering and future provider adapters.
 
 ## Dependency direction
 
-- Adapters depend inward on ports and types
+- Adapters depend inward on ports and domain types
 - Application depends on ports + domain
-- Domain depends only on pure shared types / codes
+- `faultline-integration` depends only on pure `faultline-codes` / `faultline-types` contracts and serialization/error libraries
 - No domain crate imports infrastructure
