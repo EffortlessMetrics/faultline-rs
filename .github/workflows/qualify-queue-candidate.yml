@@ -42,6 +42,12 @@ jobs:
             target
           key: ${{ runner.os }}-queue-candidate-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
+      - name: Start fresh qualification evidence
+        run: |
+          rm -rf target/queue-qualification
+          mkdir -p target/queue-qualification
+          git rev-parse HEAD > target/queue-qualification/input-sha.txt
+          rustc --version --verbose > target/queue-qualification/toolchain.txt
       - name: Register scenarios and architecture, then format
         run: |
           python3 - <<'PY'
@@ -80,7 +86,6 @@ jobs:
           cargo fmt --all
       - name: Prove old mapping fails the regression test
         run: |
-          mkdir -p target/queue-qualification
           cp crates/faultline-integration/src/lib.rs /tmp/integration-fixed.rs
           trap 'cp /tmp/integration-fixed.rs crates/faultline-integration/src/lib.rs' EXIT
           git show 3ab1c6e50c854857e92de0e8d65901c2b4990911:crates/faultline-integration/src/lib.rs > crates/faultline-integration/src/lib.rs
@@ -94,9 +99,9 @@ jobs:
       - name: Qualify native contracts and fix mechanical lint suggestions
         run: |
           cargo test -p faultline-integration -p faultline-queue --all-targets 2>&1 | tee target/queue-qualification/green.log
-          cargo clippy --fix --allow-dirty --allow-staged -p faultline-integration -p faultline-queue --all-targets
+          cargo clippy --no-deps --fix --allow-dirty --allow-staged -p faultline-integration -p faultline-queue --all-targets
           cargo fmt --all
-          cargo clippy -p faultline-integration -p faultline-queue --all-targets -- -D warnings 2>&1 | tee target/queue-qualification/clippy.log
+          cargo clippy --no-deps -p faultline-integration -p faultline-queue --all-targets -- -D warnings 2>&1 | tee target/queue-qualification/clippy.log
           cargo test -p faultline-integration -p faultline-queue --all-targets 2>&1 | tee target/queue-qualification/qualified-tests.log
       - name: Cache pinned verification tools
         id: tools
