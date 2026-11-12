@@ -1,0 +1,101 @@
+{
+  "authentication": {
+    "algorithm": "hmac-sha256",
+    "verified": true
+  },
+  "captured_at": "2026-11-12T07:00:03Z",
+  "event": {
+    "delivery_id": "delivery-checks-requested",
+    "sha256": "c2c0b7aedddf94e835363f2231573d1b55aa90aa3c0e04bdfc92e140274564ac"
+  },
+  "incident_id": "mq-e63f82acac3c4a429fc107000ceb27d7894ce6f4184d77a13d583c06c45bab4e",
+  "lifecycle": [
+    {
+      "action": "checks_requested",
+      "delivery_id": "delivery-checks-requested",
+      "event_sha256": "c2c0b7aedddf94e835363f2231573d1b55aa90aa3c0e04bdfc92e140274564ac",
+      "observed_at": "2026-11-12T07:00:03Z",
+      "reason": null
+    }
+  ],
+  "limitations": [],
+  "merge_group": {
+    "base_ref": "refs/heads/main",
+    "base_sha": "0000000000000000000000000000000000000001",
+    "expanded_head_commit_id": "00000000000000000000000000000000000000ca",
+    "head_ref": "refs/heads/gh-readonly-queue/main/pr-1002-fixture",
+    "head_sha": "00000000000000000000000000000000000000ca",
+    "head_tree_sha": "0000000000000000000000000000000000000384",
+    "repository": "example/repo"
+  },
+  "object_manifest": {
+    "bundle": {
+      "path": "objects/merge-group.bundle",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "size": 1234
+    },
+    "captured_at": "2026-11-12T07:00:01Z",
+    "head_sha": "00000000000000000000000000000000000000ca",
+    "head_tree_sha": "0000000000000000000000000000000000000384",
+    "repository": "example/repo",
+    "schema_version": 1,
+    "verification": {
+      "command": [
+        "git",
+        "bundle",
+        "verify",
+        "objects/merge-group.bundle"
+      ],
+      "completed_at": "2026-11-12T07:00:02Z",
+      "result": "passed"
+    },
+    "verified_commits": [
+      "0000000000000000000000000000000000000001",
+      "0000000000000000000000000000000000000065",
+      "0000000000000000000000000000000000000066",
+      "00000000000000000000000000000000000000c9",
+      "00000000000000000000000000000000000000ca"
+    ]
+  },
+  "object_manifest_sha256": "d62b6b79c8e763c58ea1e02139218dc425364f06070869b0810199331c9a058f",
+  "queue_snapshot": {
+    "base_sha": "0000000000000000000000000000000000000001",
+    "build_concurrency": 20,
+    "captured_at": "2026-11-12T07:00:00Z",
+    "entries": [
+      {
+        "integration_base_sha": "0000000000000000000000000000000000000001",
+        "integration_head_sha": "00000000000000000000000000000000000000c9",
+        "jump": false,
+        "position": 1,
+        "pull_request": 1001,
+        "pull_request_head_sha": "0000000000000000000000000000000000000065",
+        "queue_entry_id": "queue-entry-1",
+        "solo": false,
+        "state": "AWAITING_CHECKS"
+      },
+      {
+        "integration_base_sha": "00000000000000000000000000000000000000c9",
+        "integration_head_sha": "00000000000000000000000000000000000000ca",
+        "jump": false,
+        "position": 2,
+        "pull_request": 1002,
+        "pull_request_head_sha": "0000000000000000000000000000000000000066",
+        "queue_entry_id": "queue-entry-2",
+        "solo": false,
+        "state": "AWAITING_CHECKS"
+      }
+    ],
+    "grouping_strategy": "HEADGREEN",
+    "head_sha": "00000000000000000000000000000000000000ca",
+    "maximum_entries_to_build": 20,
+    "merge_method": "MERGE",
+    "provider": "github",
+    "repository": "example/repo",
+    "schema_version": 1
+  },
+  "queue_snapshot_sha256": "f5ced887a6fb97b567633d5b98b44d966a35e72d9ea3119928e1bc9367a764db",
+  "repository": "example/repo",
+  "schema_version": 1,
+  "status": "captured"
+}
