@@ -144,11 +144,13 @@ fn safe_text(value: &str) -> String {
 
 fn markdown(report: &DiagnosisReport) -> String {
     let mut text = format!(
-        "# Queue diagnosis\n\nStatus: **{:?}**\n\nSnapshot: {}\n\nTarget: {} / {}\n\nRecorded native launches: {}. Remaining launch budget: {}.\n",
+        "# Queue diagnosis\n\nStatus: **{:?}**\n\nSnapshot: {}\n\nTarget: {} / {}\n\nPredicate: {}\n\nContext: {}\n\nRecorded native launches: {}. Remaining launch budget: {}.\n",
         report.status,
         safe_text(&report.snapshot_id),
         safe_text(&report.target.phase),
         safe_text(&report.target.failure_signature),
+        safe_text(&report.target.predicate_id),
+        safe_text(&report.target.context_id),
         report.recorded_launches,
         report.remaining_launches,
     );
@@ -165,15 +167,28 @@ fn markdown(report: &DiagnosisReport) -> String {
                     "\nBoundary: S{} passes; S{} fails. Basis: {:?}.\n",
                     last_passing.ordinal, first_failing.ordinal, basis,
                 ));
-                if let ChangeUnit::PullRequest {
-                    repository, number, ..
-                } = transition
-                {
-                    text.push_str(&format!(
-                        "\nIntroduced PR: {} #{}.\n",
-                        safe_text(repository),
-                        number
-                    ));
+                match transition {
+                    ChangeUnit::PullRequest {
+                        provider,
+                        repository,
+                        number,
+                        head,
+                    } => {
+                        text.push_str(&format!(
+                            "\nIntroduced PR: {} / {} #{} at captured head {}.\n",
+                            safe_text(provider),
+                            safe_text(repository),
+                            number,
+                            safe_text(&head.0)
+                        ));
+                    }
+                    ChangeUnit::Commit { repository, commit } => {
+                        text.push_str(&format!(
+                            "\nIntroduced commit: {} at {}.\n",
+                            safe_text(repository),
+                            safe_text(&commit.0)
+                        ));
+                    }
                 }
             }
             faultline_integration::IntegrationOutcome::SuspectTransitions {
@@ -212,6 +227,16 @@ fn markdown(report: &DiagnosisReport) -> String {
         report.excluded_receipts.len(),
         report.pending_attempts.len()
     ));
+    for attempt in &report.pending_attempts {
+        text.push_str(&format!("\nPending attempt: {}.\n", safe_text(attempt)));
+    }
+    for receipt in &report.excluded_receipts {
+        text.push_str(&format!(
+            "\nExcluded receipt: {}: {}.\n",
+            safe_text(&receipt.attempt_id),
+            safe_text(&receipt.reason)
+        ));
+    }
     for reason in &report.reason_codes {
         text.push_str(&format!("\nReason: {}.\n", safe_text(reason)));
     }

@@ -184,3 +184,18 @@ Without the monotonic-target assumption, a missing earlier prefix still prevents
 a first-transition claim even when probing later states narrows the window.
 When no eligible interior candidate remains, planning stops without spending a
 launch and retains the supported suspect interval.
+
+## Completed but ineligible work
+
+A structurally valid terminal native receipt that matches its charged attempt,
+state, commit and tree settles that launch even when snapshot, phase, predicate,
+context or equivalence makes its evidence unusable. It remains charged and
+listed under excluded receipts, with `launch_receipt_ineligible` in the report.
+It contributes no passing/failing vote. A fresh retry is a new charged attempt,
+not a rewritten receipt. `Missing` remains pending even when excluded. A receipt
+for a different charged state, commit or tree is still an integrity error.
+
+Input and report JSON Schemas constrain `schema_version` to the runtime's exact
+`SCHEMA_VERSION`. Markdown includes the predicate and context, the captured PR
+provider/head or commit identity, and the IDs/reasons for blocked or excluded
+evidence. These identifiers are escaped for markup, not certified secret-free.

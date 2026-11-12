@@ -104,6 +104,7 @@ pub struct LaunchRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DiagnosisInput {
+    #[schemars(schema_with = "schema_version_schema")]
     pub schema_version: String,
     pub sequence: IntegrationSequence,
     pub target: TargetIdentity,
@@ -165,6 +166,7 @@ pub struct ProbePlan {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DiagnosisReport {
+    #[schemars(schema_with = "schema_version_schema")]
     pub schema_version: String,
     pub snapshot_id: String,
     pub target: TargetIdentity,
@@ -181,6 +183,15 @@ pub struct DiagnosisReport {
     pub native_receipts: usize,
     pub reason_codes: Vec<String>,
     pub limitations: Vec<String>,
+}
+
+fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    schemars::schema::SchemaObject {
+        instance_type: Some(schemars::schema::InstanceType::String.into()),
+        const_value: Some(serde_json::Value::String(SCHEMA_VERSION.into())),
+        ..Default::default()
+    }
+    .into()
 }
 
 fn invalid(message: impl Into<String>) -> DiagnosisError {
@@ -292,6 +303,7 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
     }
     let mut eligible: BTreeMap<usize, Vec<&PhaseReceipt>> = BTreeMap::new();
     let mut excluded_receipts = Vec::new();
+    let mut ineligible_native_receipt = false;
     let mut settled = BTreeSet::new();
     let mut provider_receipts = 0;
     let mut native_receipts = 0;
@@ -343,6 +355,14 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
             Some("unknown_state")
         };
         if let Some(reason) = reason {
+            if receipt.source == EvidenceSource::Native {
+                ineligible_native_receipt = true;
+                // Completion and target-evidence eligibility are separate.
+                // Missing output still cannot prove worker termination.
+                if receipt.conclusion != PhaseConclusion::Missing {
+                    settled.insert(receipt.attempt_id.as_str());
+                }
+            }
             excluded_receipts.push(ExcludedReceipt {
                 attempt_id: receipt.attempt_id.clone(),
                 reason: reason.into(),
@@ -369,7 +389,8 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
             )
         })
         .collect();
-    // An incompatible receipt does not settle a launch from this experiment.
+    // A matching terminal attempt may settle while its evidence is ineligible.
+    // Missing receipts remain pending; wrong state/commit/tree is rejected above.
     let pending_attempts = launches
         .keys()
         .filter(|id| !settled.contains(**id))
@@ -390,7 +411,7 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
         remaining_launches: input.policy.max_launches.saturating_sub(launches.len()),
         provider_receipts,
         native_receipts,
-        reason_codes: Vec::new(),
+        reason_codes: if ineligible_native_receipt { vec!["launch_receipt_ineligible".into()] } else { Vec::new() },
         limitations: vec![
             "Offline replay: no predicates executed and no queue mutations performed.".into(),
             "Identity consistency is checked; provider authenticity and object custody are external.".into(),
