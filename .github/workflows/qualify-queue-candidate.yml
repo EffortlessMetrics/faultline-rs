@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: queue-candidate-qualification
   cancel-in-progress: false
