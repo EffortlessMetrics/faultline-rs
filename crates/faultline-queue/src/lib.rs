@@ -652,6 +652,10 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
     if report.status == DiagnosisStatus::Localized {
         return Ok(());
     }
+    let minimum = input
+        .policy
+        .required_equivalence
+        .max(StateEquivalence::ExactTree);
     let candidate = if input.policy.assume_monotonic {
         // The legacy engine's limit counts observations. Disable that limit for
         // this bounded replay; the charged-launch ledger is enforced separately.
@@ -663,10 +667,16 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             },
         )?;
         for summary in &report.states {
-            let class = match summary.evidence {
-                StateEvidence::Passing => ObservationClass::Pass,
-                StateEvidence::TargetFailing => ObservationClass::Fail,
-                StateEvidence::Unobserved | StateEvidence::Incomplete => continue,
+            // An unusable state remains a gap, not a reason to stop probing
+            // other eligible states or to upgrade its equivalence.
+            let class = match (
+                summary.state.equivalence.satisfies(minimum),
+                summary.evidence,
+            ) {
+                (false, _) => ObservationClass::Indeterminate,
+                (true, StateEvidence::Passing) => ObservationClass::Pass,
+                (true, StateEvidence::TargetFailing) => ObservationClass::Fail,
+                (true, StateEvidence::Unobserved | StateEvidence::Incomplete) => continue,
                 _ => ObservationClass::Indeterminate,
             };
             session.record(ProbeObservation {
@@ -694,10 +704,11 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
         })
     } else {
         report.states.iter().take(upper).position(|s| {
-            matches!(
-                s.evidence,
-                StateEvidence::Unobserved | StateEvidence::Incomplete
-            )
+            s.state.equivalence.satisfies(minimum)
+                && matches!(
+                    s.evidence,
+                    StateEvidence::Unobserved | StateEvidence::Incomplete
+                )
         })
     };
     if let Some(ordinal) = candidate {

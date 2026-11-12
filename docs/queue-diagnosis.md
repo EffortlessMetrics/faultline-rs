@@ -174,3 +174,13 @@ JSON and Markdown are local diagnostic projections, not certified secret-free
 exports. HTML/Markdown escaping prevents markup interpretation; it is not secret
 redaction. Keep input identifiers and outputs private until the export path in
 #60 provides the supported redaction and retained-artifact guarantees.
+
+## Unavailable interior states
+
+Probe selection excludes states that cannot meet the predicate equivalence
+requirement. A weak midpoint does not block other eligible states, and skipping
+it does not upgrade its evidence or remove its transition from a suspect window.
+Without the monotonic-target assumption, a missing earlier prefix still prevents
+a first-transition claim even when probing later states narrows the window.
+When no eligible interior candidate remains, planning stops without spending a
+launch and retains the supported suspect interval.
