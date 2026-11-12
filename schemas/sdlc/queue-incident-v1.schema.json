@@ -1,0 +1,244 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/EffortlessMetrics/faultline-rs/schemas/sdlc/queue-incident-v1.schema.json",
+  "title": "Faultline merge-group queue incident",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "incident_id",
+    "repository",
+    "captured_at",
+    "authentication",
+    "merge_group",
+    "event",
+    "queue_snapshot",
+    "queue_snapshot_sha256",
+    "object_manifest",
+    "object_manifest_sha256",
+    "lifecycle",
+    "status",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "incident_id": {
+      "type": "string",
+      "pattern": "^mq-[0-9a-f]{64}$"
+    },
+    "repository": { "$ref": "#/$defs/repository" },
+    "captured_at": { "$ref": "#/$defs/timestamp" },
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "verified"],
+      "properties": {
+        "algorithm": { "const": "hmac-sha256" },
+        "verified": { "const": true }
+      }
+    },
+    "merge_group": { "$ref": "#/$defs/mergeGroup" },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["delivery_id", "sha256"],
+      "properties": {
+        "delivery_id": { "$ref": "#/$defs/nonEmptyString" },
+        "sha256": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "queue_snapshot": { "$ref": "#/$defs/queueSnapshot" },
+    "queue_snapshot_sha256": { "$ref": "#/$defs/digest" },
+    "object_manifest": { "$ref": "#/$defs/objectManifest" },
+    "object_manifest_sha256": { "$ref": "#/$defs/digest" },
+    "lifecycle": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/lifecycleEntry" }
+    },
+    "status": {
+      "enum": ["captured", "merged", "invalidated", "dequeued"]
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmptyString" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "gitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/]+/[^/]+$"
+    },
+    "mergeGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "base_ref",
+        "base_sha",
+        "head_ref",
+        "head_sha",
+        "head_tree_sha",
+        "expanded_head_commit_id"
+      ],
+      "properties": {
+        "repository": { "$ref": "#/$defs/repository" },
+        "base_ref": { "$ref": "#/$defs/nonEmptyString" },
+        "base_sha": { "$ref": "#/$defs/gitSha" },
+        "head_ref": { "$ref": "#/$defs/nonEmptyString" },
+        "head_sha": { "$ref": "#/$defs/gitSha" },
+        "head_tree_sha": { "$ref": "#/$defs/gitSha" },
+        "expanded_head_commit_id": { "$ref": "#/$defs/gitSha" }
+      }
+    },
+    "queueEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "position",
+        "queue_entry_id",
+        "pull_request",
+        "pull_request_head_sha",
+        "integration_base_sha",
+        "integration_head_sha",
+        "state",
+        "jump",
+        "solo"
+      ],
+      "properties": {
+        "position": { "type": "integer", "minimum": 1 },
+        "queue_entry_id": { "$ref": "#/$defs/nonEmptyString" },
+        "pull_request": { "type": "integer", "minimum": 1 },
+        "pull_request_head_sha": { "$ref": "#/$defs/gitSha" },
+        "integration_base_sha": { "$ref": "#/$defs/gitSha" },
+        "integration_head_sha": { "$ref": "#/$defs/gitSha" },
+        "state": { "$ref": "#/$defs/nonEmptyString" },
+        "jump": { "type": "boolean" },
+        "solo": { "type": "boolean" }
+      }
+    },
+    "queueSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "provider",
+        "repository",
+        "captured_at",
+        "base_sha",
+        "head_sha",
+        "merge_method",
+        "grouping_strategy",
+        "build_concurrency",
+        "maximum_entries_to_build",
+        "entries"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "provider": { "const": "github" },
+        "repository": { "$ref": "#/$defs/repository" },
+        "captured_at": { "$ref": "#/$defs/timestamp" },
+        "base_sha": { "$ref": "#/$defs/gitSha" },
+        "head_sha": { "$ref": "#/$defs/gitSha" },
+        "merge_method": { "enum": ["MERGE", "SQUASH", "REBASE"] },
+        "grouping_strategy": { "enum": ["ALLGREEN", "HEADGREEN"] },
+        "build_concurrency": { "type": "integer", "minimum": 1 },
+        "maximum_entries_to_build": { "type": "integer", "minimum": 1 },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/queueEntry" }
+        }
+      }
+    },
+    "objectManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "repository",
+        "captured_at",
+        "head_sha",
+        "head_tree_sha",
+        "bundle",
+        "verified_commits",
+        "verification"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "repository": { "$ref": "#/$defs/repository" },
+        "captured_at": { "$ref": "#/$defs/timestamp" },
+        "head_sha": { "$ref": "#/$defs/gitSha" },
+        "head_tree_sha": { "$ref": "#/$defs/gitSha" },
+        "bundle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "size", "sha256"],
+          "properties": {
+            "path": { "$ref": "#/$defs/nonEmptyString" },
+            "size": { "type": "integer", "minimum": 0 },
+            "sha256": { "$ref": "#/$defs/digest" }
+          }
+        },
+        "verified_commits": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/gitSha" }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["command", "completed_at", "result"],
+          "properties": {
+            "command": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/nonEmptyString" }
+            },
+            "completed_at": { "$ref": "#/$defs/timestamp" },
+            "result": { "const": "passed" }
+          }
+        }
+      }
+    },
+    "lifecycleEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delivery_id",
+        "action",
+        "observed_at",
+        "event_sha256",
+        "reason"
+      ],
+      "properties": {
+        "delivery_id": { "$ref": "#/$defs/nonEmptyString" },
+        "action": { "enum": ["checks_requested", "destroyed"] },
+        "observed_at": { "$ref": "#/$defs/timestamp" },
+        "event_sha256": { "$ref": "#/$defs/digest" },
+        "reason": {
+          "type": ["string", "null"],
+          "enum": [null, "merged", "invalidated", "dequeued"]
+        }
+      }
+    }
+  }
+}
