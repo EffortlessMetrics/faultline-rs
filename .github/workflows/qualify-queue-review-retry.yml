@@ -1,0 +1,176 @@
+name: Qualify corrected external review tests
+
+on:
+  push:
+    branches: [work/queue-review-qualification]
+    paths: [.github/workflows/qualify-queue-review-retry.yml]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: queue-admission-review
+  cancel-in-progress: false
+
+env:
+  INPUT_SHA: 75854e579412cd31463c31a860ea690ecaa5fd40
+  CARGO_TERM_COLOR: never
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d
+        with:
+          config-file: .github/jactionlint.yaml
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-queue-external-review-fixed-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-queue-planning-review-
+            ${{ runner.os }}-queue-admission-review-
+            ${{ runner.os }}-cargo-
+      - name: Extract the exact audited qualification scripts
+        run: |
+          git show 6f649a7a42884bf33042041ce0c2ca51d8017f46:.github/workflows/qualify-queue-review-findings.yml > "$RUNNER_TEMP/queue-recipe.yml"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          root = Path(os.environ['RUNNER_TEMP'])
+          lines = (root / 'queue-recipe.yml').read_text().splitlines()
+          wanted = {
+              'Add independent review regression tests': 'queue-red.sh',
+              'Correct completion classification, schema version and operator output': 'queue-green.sh',
+              'Qualify and package exact candidate': 'queue-full.sh',
+          }
+          found = set()
+          name = None
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if line == '  compatibility:':
+                  break
+              if line.startswith('      - name: '):
+                  name = line.removeprefix('      - name: ')
+              if line == '        run: |' and name in wanted:
+                  index += 1
+                  script = []
+                  while index < len(lines) and (lines[index].startswith('          ') or not lines[index]):
+                      script.append(lines[index][10:] if lines[index] else '')
+                      index += 1
+                  body = '\n'.join(script) + '\n'
+                  if name == 'Add independent review regression tests':
+                      old = '"unexpected CLI failure: {:?}", result'
+                      assert body.count(old) == 1
+                      body = body.replace(old, '"unexpected CLI failure: {result:?}"')
+                      body = body.replace(".write_text('''mod common;", ".write_text(r'''mod common;")
+                  (root / wanted[name]).write_text(body)
+                  found.add(name)
+                  continue
+              index += 1
+          assert found == set(wanted), found
+          PY
+      - name: Reproduce eight failures and qualify all 63 corrected tests
+        run: |
+          bash -e -o pipefail "$RUNNER_TEMP/queue-red.sh"
+          bash -e -o pipefail "$RUNNER_TEMP/queue-green.sh"
+      - uses: actions/cache@v4
+        id: tools
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-1.46.1-ripr-0.10.0
+      - name: Install qualification tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version 1.46.1
+          cargo install ripr --locked --version 0.10.0
+      - name: Qualify complete workspace and package exact source
+        run: bash -e -o pipefail "$RUNNER_TEMP/queue-full.sh"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+          if-no-files-found: error
+          retention-days: 14
+  compatibility:
+    needs: qualify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: '1.93.0'
+          - os: windows-latest
+            toolchain: stable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+      - name: Select qualified source
+        run: |
+          git fetch "$RUNNER_TEMP/queue-external-review/candidate.bundle" refs/heads/qualified-queue-external-review:refs/heads/qualified-queue-external-review
+          git checkout --detach qualified-queue-external-review
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Qualify native contracts
+        run: |
+          rustc --version --verbose
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets
+          git diff --exit-code
+  publish:
+    needs: [qualify, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+      - name: Publish only the qualified fast-forward
+        run: |
+          git fetch "$RUNNER_TEMP/queue-external-review/candidate.bundle" refs/heads/qualified-queue-external-review:refs/heads/qualified-queue-external-review
+          test "$(git rev-parse qualified-queue-external-review^)" = "$INPUT_SHA"
+          python3 - <<'PY'
+          import os, subprocess
+          allowed = {'crates/faultline-queue/src/lib.rs', 'crates/faultline-queue/src/main.rs', 'crates/faultline-queue/tests/review_contract.rs', 'docs/queue-diagnosis.md', 'docs/scenarios/scenario_index.md', 'badges/ripr.json'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', os.environ['INPUT_SHA'], 'qualified-queue-external-review']).decode().splitlines())
+          assert changed <= allowed, changed
+          PY
+          current=$(git ls-remote origin refs/heads/feat/queue-evidence-diagnosis | cut -f1)
+          test "$current" = "$INPUT_SHA"
+          git push origin qualified-queue-external-review:refs/heads/feat/queue-evidence-diagnosis
