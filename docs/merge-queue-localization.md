@@ -197,6 +197,10 @@ For reconstruction, record:
 - generated commit and tree;
 - final comparison to the retained provider head.
 
+A final-tree match validates the reconstruction algorithm only at the final cumulative state. It does not prove that any intermediate prefix matched the provider, because a later pull request can overwrite an earlier difference.
+
+A reconstructed prefix earns `ExactTree` only when that prefix's generated tree matches an observed provider tree for the same prefix and queue snapshot. A prefix without that same-prefix witness remains `PatchEquivalent` or `Unverified` according to the evidence available. A predicate requiring `ExactTree` cannot use such a prefix as an exact pass or fail boundary.
+
 If the reconstructed final tree differs from the provider tree, the reconstructed sequence cannot support exact queue attribution.
 
 A conflict, missing object or dependency-constrained state becomes skipped or unsupported. It is not silently removed from the sequence.
@@ -290,16 +294,18 @@ S13 pass
 S14 fail
 ```
 
-The result is exact only when:
+The adjacent `S13 pass -> S14 fail` observations establish a boundary in the sampled evidence. Calling it the exact first failing transition additionally assumes that the target failure is monotonic over this sequence: once present, it persists at every later state.
+
+Under that monotonicity assumption, the result is exact only when:
 
 - the pass and fail states are adjacent;
 - both observations are eligible and stable;
 - the target failure signature agrees;
 - state equivalence meets the predicate requirement;
 - the sequence maps the transition to exactly one change unit;
-- no relevant skip, indeterminate or non-monotonic evidence remains.
+- no relevant skip, indeterminate or observed non-monotonic evidence remains.
 
-Otherwise Faultline returns the narrowest supported suspect set or an inconclusive result.
+Otherwise Faultline returns the narrowest supported suspect set or an inconclusive result. Reports state the monotonicity assumption rather than representing unsampled states as directly observed.
 
 ## Non-monotonic evidence
 
@@ -359,7 +365,7 @@ The existing `LocalizationOutcome` remains the underlying search result. Integra
 
 ## Trigger versus attribution
 
-An adjacent transition establishes a trigger in this ordering.
+An adjacent transition establishes a trigger in this ordering under the stated monotonicity assumption.
 
 Stronger attribution requires counterfactual evidence:
 
@@ -440,7 +446,9 @@ The first version does not automatically mutate the queue or pull requests.
 ## Safety
 
 - The control plane validates events and captures evidence; it does not run untrusted code.
-- The worker receives no GitHub App or publication credentials.
+- The worker receives no GitHub App, publication or production credentials.
+- Predicate commands from candidate commits run in a disposable isolated environment. Filesystem access is limited to the worker's owned checkout, attempt sinks and explicit read-only inputs. Network access is denied by default and enabled only for endpoints declared by the predicate contract.
+- Process-tree termination and worktree cleanup are lifecycle controls, not substitutes for containment.
 - Repository locks, worktrees and recovery use the ownership model from #61.
 - Timeout and cancellation terminate the complete owned process tree under #59.
 - Immutable attempts and honest retry aggregation use #62.

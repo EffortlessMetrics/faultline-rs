@@ -278,6 +278,9 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
             return Err(invalid("conflicting duplicate launch identity"));
         }
     }
+    if launches.len() > input.policy.max_launches {
+        return Err(invalid("native launch ledger exceeds total launch budget"));
+    }
     let mut receipts = BTreeMap::new();
     for receipt in &input.receipts {
         validate_receipt(receipt)?;
@@ -345,7 +348,10 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
                 reason: reason.into(),
             });
         } else if let Some(state) = state {
-            settled.insert(receipt.attempt_id.as_str());
+            // Missing output does not prove that the owned worker has terminated.
+            if receipt.conclusion != PhaseConclusion::Missing {
+                settled.insert(receipt.attempt_id.as_str());
+            }
             eligible.entry(state.ordinal).or_default().push(receipt);
         }
     }
@@ -525,6 +531,13 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             return Ok(());
         }
         StateEvidence::Unobserved | StateEvidence::Incomplete => {
+            // A requested failure signature is not evidence of a red group.
+            if head.target_failures == 0 {
+                report
+                    .reason_codes
+                    .push("target_failure_not_established_at_head".into());
+                return Ok(());
+            }
             return propose(report, last, "reproduce_target_at_group_head");
         }
         StateEvidence::TargetFailing => {}

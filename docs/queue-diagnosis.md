@@ -114,8 +114,9 @@ Do not let two workers independently execute the same plan.
 
 Provider evidence costs no new native launches. Every native ledger entry does,
 including retries and missing receipts. The legacy search engine's count of
-cached observations is deliberately not used as the launch budget. A completed
-result may be replayed at budget zero. A budget-limited result retains its supported
+cached observations is deliberately not used as the launch budget. Provider-only completed evidence can be replayed at budget zero. A result
+with native attempts retains its original total budget when replayed; zero new
+launches does not mean zero historical launches. A budget-limited result retains its supported
 suspect window instead of discarding it or naming one PR.
 
 For 20 deterministic transitions with eligible provider endpoints, one matching
@@ -148,3 +149,28 @@ The following obligations remain open and must not be inferred from this CLI:
 
 Neither a schema-valid packet, the synthetic test suite, nor a repository badge
 closes these obligations. There is no automatic dequeue, requeue, merge or PR edit.
+
+## Admission and incomplete evidence
+
+A target-signature string is not proof that the group went red. No new probe is
+proposed until the exact group head has an eligible target-failure sample. Empty
+evidence, incompatible failure evidence, and a partial set of passing samples
+return an inconclusive result without authorizing work. An eligible failing sample
+can request further confirmation under the configured minimum-attempt policy.
+
+A native `Missing` result remains pending and charged even when provider evidence
+would otherwise establish an adjacent boundary. Missing output is not proof of
+worker termination. Terminal cancellation or operational termination can settle
+an attempt without contributing a code vote. The durable reconciler in #91 must
+retain nonterminal events separately from immutable terminal receipts; it must
+not drop a charged launch, relabel missing evidence as cancellation, or rewrite a
+terminal result merely to unblock replay.
+
+`max_launches` is the total investigation limit, not an additional-launch allowance.
+After identical records are deduplicated, a ledger exceeding that total is invalid.
+A completed diagnosis at exactly the total limit remains valid.
+
+JSON and Markdown are local diagnostic projections, not certified secret-free
+exports. HTML/Markdown escaping prevents markup interpretation; it is not secret
+redaction. Keep input identifiers and outputs private until the export path in
+#60 provides the supported redaction and retained-artifact guarantees.
