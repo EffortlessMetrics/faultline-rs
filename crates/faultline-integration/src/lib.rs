@@ -336,6 +336,7 @@ impl IntegrationSequence {
                         lower_bound_exclusive: None,
                         upper_bound_inclusive: None,
                         transitions: Vec::new(),
+                        reversals: Vec::new(),
                         confidence: None,
                         reasons: mapped,
                     }
@@ -379,6 +380,7 @@ impl IntegrationSequence {
                 lower_bound_exclusive: Some(lower_state.into()),
                 upper_bound_inclusive: Some(upper_state.into()),
                 transitions,
+                reversals: Vec::new(),
                 confidence: Some(confidence.clone()),
                 reasons,
             });
@@ -457,6 +459,15 @@ pub enum IntegrationAmbiguityReason {
     },
 }
 
+/// Contrary samples at distinct ordered states, not proof of stable recovery.
+/// Every transition in the intervening interval is retained without blame.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct IntegrationReversal {
+    pub failing_state: IntegrationStateRef,
+    pub later_passing_state: IntegrationStateRef,
+    pub transitions: Vec<ChangeUnit>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum IntegrationOutcome {
     FirstFailingTransition {
@@ -478,6 +489,8 @@ pub enum IntegrationOutcome {
         lower_bound_exclusive: Option<IntegrationStateRef>,
         upper_bound_inclusive: Option<IntegrationStateRef>,
         transitions: Vec<ChangeUnit>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        reversals: Vec<IntegrationReversal>,
         confidence: Option<Confidence>,
         reasons: Vec<IntegrationAmbiguityReason>,
     },

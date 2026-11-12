@@ -9,8 +9,8 @@
 
 use faultline_codes::{AmbiguityReason, ObservationClass, ProbeKind};
 use faultline_integration::{
-    IntegrationOutcome, IntegrationSequence, IntegrationStateRef, LocalizationBasis,
-    StateEquivalence,
+    IntegrationOutcome, IntegrationReversal, IntegrationSequence, IntegrationStateRef,
+    LocalizationBasis, StateEquivalence,
 };
 use faultline_localization::LocalizationSession;
 use faultline_types::{Confidence, LocalizationOutcome, ProbeObservation, SearchPolicy};
@@ -506,6 +506,36 @@ fn propose(report: &mut DiagnosisReport, ordinal: usize, reason: &str) -> Result
     Ok(())
 }
 
+fn observed_reversals(input: &DiagnosisInput, states: &[StateSummary]) -> Vec<IntegrationReversal> {
+    let mut reversals = Vec::new();
+    let mut previous_failure: Option<&StateSummary> = None;
+    for summary in states {
+        // Process passing samples first: one flaky state is not its own reversal.
+        if summary.passing_attempts > 0
+            && let Some(failing) = previous_failure.take()
+        {
+            reversals.push(IntegrationReversal {
+                failing_state: failing.state.clone(),
+                later_passing_state: summary.state.clone(),
+                transitions: input
+                    .sequence
+                    .states
+                    .iter()
+                    .filter(|state| {
+                        state.ordinal > failing.state.ordinal
+                            && state.ordinal <= summary.state.ordinal
+                    })
+                    .filter_map(|state| state.transition.clone())
+                    .collect(),
+            });
+        }
+        if summary.target_failures > 0 {
+            previous_failure = Some(summary);
+        }
+    }
+    reversals
+}
+
 fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
     if !report.pending_attempts.is_empty() {
         report.status = DiagnosisStatus::AwaitingEvidence;
@@ -527,12 +557,27 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
         && failure < pass
     {
         report.status = DiagnosisStatus::NonMonotonic;
-        report.outcome = Some(input.sequence.map_localization_outcome(
-            &LocalizationOutcome::Inconclusive {
+        let failing = report
+            .states
+            .get(failure)
+            .ok_or_else(|| invalid("missing contrary failure state"))?;
+        let passing = report
+            .states
+            .get(pass)
+            .ok_or_else(|| invalid("missing contrary passing state"))?;
+        let mut outcome = input.sequence.map_localization_outcome(
+            &LocalizationOutcome::SuspectWindow {
+                lower_bound_exclusive: failing.state.commit.clone(),
+                upper_bound_inclusive: passing.state.commit.clone(),
+                confidence: Confidence::low(),
                 reasons: vec![AmbiguityReason::NonMonotonicEvidence],
             },
             input.policy.required_equivalence,
-        )?);
+        )?;
+        if let IntegrationOutcome::NonMonotonic { reversals, .. } = &mut outcome {
+            *reversals = observed_reversals(input, &report.states);
+        }
+        report.outcome = Some(outcome);
         report
             .reason_codes
             .push("non_monotonic_target_evidence".into());
@@ -590,16 +635,29 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
         .iter()
         .any(|s| s.evidence == StateEvidence::Unstable);
     if has_unstable {
+        // Only the declared monotonic policy can exclude an unobserved
+        // earlier prefix from a first-failure suspect interval.
+        let lower = if input.policy.assume_monotonic {
+            last_pass.unwrap_or(0)
+        } else {
+            report
+                .states
+                .iter()
+                .take_while(|s| s.evidence == StateEvidence::Passing)
+                .count()
+                .saturating_sub(1)
+        };
+        let upper = first_failure.ok_or_else(|| invalid("missing stable failing bound"))?;
         let base = input
             .sequence
             .states
-            .first()
-            .ok_or_else(|| invalid("missing base"))?;
+            .get(lower)
+            .ok_or_else(|| invalid("missing stable passing bound"))?;
         let head = input
             .sequence
             .states
-            .last()
-            .ok_or_else(|| invalid("missing head"))?;
+            .get(upper)
+            .ok_or_else(|| invalid("missing stable failing bound"))?;
         report.status = DiagnosisStatus::Suspect;
         report.outcome = Some(input.sequence.map_localization_outcome(
             &LocalizationOutcome::SuspectWindow {

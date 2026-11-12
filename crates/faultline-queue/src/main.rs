@@ -200,6 +200,18 @@ fn markdown(report: &DiagnosisReport) -> String {
                 lower_bound_exclusive.ordinal.saturating_add(1),
                 upper_bound_inclusive.ordinal,
             )),
+            faultline_integration::IntegrationOutcome::NonMonotonic { reversals, .. } => {
+                text.push_str("\nNo supported first-transition attribution.\n");
+                for reversal in reversals {
+                    text.push_str(&format!(
+                        "\nObserved reversal: target failure at S{}; passing sample at S{}; {} transitions between them.\n",
+                        reversal.failing_state.ordinal,
+                        reversal.later_passing_state.ordinal,
+                        reversal.transitions.len(),
+                    ));
+                }
+                text.push_str("\nThese contrary samples do not prove stable recovery or an independently defective PR.\n");
+            }
             _ => text.push_str("\nNo supported first-transition attribution.\n"),
         }
     }

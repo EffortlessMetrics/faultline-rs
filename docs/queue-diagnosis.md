@@ -199,3 +199,21 @@ Input and report JSON Schemas constrain `schema_version` to the runtime's exact
 `SCHEMA_VERSION`. Markdown includes the predicate and context, the captured PR
 provider/head or commit identity, and the IDs/reasons for blocked or excluded
 evidence. These identifiers are escaped for markup, not certified secret-free.
+
+## Ambiguous evidence remains actionable
+
+Non-monotonic output retains the observed contrary-state interval and its
+transitions. Its `reversals` list separately records each observed failing-state
+to later-passing-state segment and the changes between them. Repeated failing
+samples use the most recent failing state before the next passing state; multiple
+segments remain distinct. These are eligible samples, not claims of stable
+recovery, a single first failure, or independent blame. Incomplete repeated-sample
+sets can still contain contrary evidence. Markdown displays the reversal segments.
+
+An unstable interior state does not erase stable bounds. Under the explicit
+monotonic policy, the nearest supported stable pass/fail bounds define the suspect
+window. Without that assumption, the lower bound advances only through a complete
+observed passing prefix. Missing earlier states remain suspects; weak/ineligible
+receipts cannot tighten the window. Conflicts stay conflicts and launch no new
+probe in this policy. Multiple cross-state reversals produce the non-monotonic
+representation rather than a misleading single first-transition claim.
