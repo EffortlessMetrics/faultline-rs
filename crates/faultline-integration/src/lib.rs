@@ -126,16 +126,7 @@ pub enum ChangeUnit {
 /// Declaration order is weakest to strongest so ordinary ordering operations
 /// can compare whether an actual state satisfies a required minimum.
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Serialize,
-    Deserialize,
-    JsonSchema,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 pub enum StateEquivalence {
     /// No provider equivalence has been established.
@@ -293,11 +284,13 @@ impl IntegrationSequence {
                     }
                 }
                 Some(previous_state) => {
-                    let transition = state.transition.as_ref().ok_or(
-                        IntegrationError::MissingTransition {
-                            ordinal: state.ordinal,
-                        },
-                    )?;
+                    let transition =
+                        state
+                            .transition
+                            .as_ref()
+                            .ok_or(IntegrationError::MissingTransition {
+                                ordinal: state.ordinal,
+                            })?;
                     if previous_state.included_changes.contains(transition) {
                         return Err(IntegrationError::RepeatedTransition {
                             ordinal: state.ordinal,
@@ -358,12 +351,7 @@ impl IntegrationSequence {
                 last_good,
                 first_bad,
                 confidence,
-            } => self.map_first_bad(
-                last_good,
-                first_bad,
-                confidence,
-                required_equivalence,
-            ),
+            } => self.map_first_bad(last_good, first_bad, confidence, required_equivalence),
             LocalizationOutcome::SuspectWindow {
                 lower_bound_exclusive,
                 upper_bound_inclusive,
@@ -423,11 +411,7 @@ impl IntegrationSequence {
         let transitions = self.transitions_between(lower_index, upper_index)?;
         let boundary_equivalence = lower_state.equivalence.min(upper_state.equivalence);
 
-        let mut reasons = self.equivalence_reasons(
-            lower_index,
-            upper_index,
-            required_equivalence,
-        );
+        let mut reasons = self.equivalence_reasons(lower_index, upper_index, required_equivalence);
         if upper_index != lower_index + 1 {
             reasons.push(IntegrationAmbiguityReason::NonAdjacentBoundary {
                 lower_ordinal: lower_state.ordinal,
@@ -436,11 +420,13 @@ impl IntegrationSequence {
         }
 
         if reasons.is_empty() {
-            let transition = upper_state.transition.clone().ok_or(
-                IntegrationError::MissingTransition {
-                    ordinal: upper_state.ordinal,
-                },
-            )?;
+            let transition =
+                upper_state
+                    .transition
+                    .clone()
+                    .ok_or(IntegrationError::MissingTransition {
+                        ordinal: upper_state.ordinal,
+                    })?;
             return Ok(IntegrationOutcome::FirstFailingTransition {
                 last_passing: lower_state.into(),
                 first_failing: upper_state.into(),
@@ -475,11 +461,7 @@ impl IntegrationSequence {
             .cloned()
             .map(IntegrationAmbiguityReason::Localization)
             .collect::<Vec<_>>();
-        reasons.extend(self.equivalence_reasons(
-            lower_index,
-            upper_index,
-            required_equivalence,
-        ));
+        reasons.extend(self.equivalence_reasons(lower_index, upper_index, required_equivalence));
 
         if Self::contains_non_monotonic(core_reasons) {
             return Ok(IntegrationOutcome::NonMonotonic {
@@ -505,16 +487,16 @@ impl IntegrationSequence {
         lower: &CommitId,
         upper: &CommitId,
     ) -> Result<(usize, usize, &'a IntegrationState, &'a IntegrationState)> {
-        let lower_index = self.index_of_commit(lower).ok_or_else(|| {
-            IntegrationError::UnknownBoundaryCommit {
-                commit: lower.0.clone(),
-            }
-        })?;
-        let upper_index = self.index_of_commit(upper).ok_or_else(|| {
-            IntegrationError::UnknownBoundaryCommit {
-                commit: upper.0.clone(),
-            }
-        })?;
+        let lower_index =
+            self.index_of_commit(lower)
+                .ok_or_else(|| IntegrationError::UnknownBoundaryCommit {
+                    commit: lower.0.clone(),
+                })?;
+        let upper_index =
+            self.index_of_commit(upper)
+                .ok_or_else(|| IntegrationError::UnknownBoundaryCommit {
+                    commit: upper.0.clone(),
+                })?;
         if upper_index <= lower_index {
             return Err(IntegrationError::InvalidBoundaryOrder {
                 lower_ordinal: lower_index,
@@ -522,26 +504,30 @@ impl IntegrationSequence {
             });
         }
 
-        let lower_state = self.states.get(lower_index).ok_or(
-            IntegrationError::MissingStateAtOrdinal {
-                ordinal: lower_index,
-            },
-        )?;
-        let upper_state = self.states.get(upper_index).ok_or(
-            IntegrationError::MissingStateAtOrdinal {
-                ordinal: upper_index,
-            },
-        )?;
+        let lower_state =
+            self.states
+                .get(lower_index)
+                .ok_or(IntegrationError::MissingStateAtOrdinal {
+                    ordinal: lower_index,
+                })?;
+        let upper_state =
+            self.states
+                .get(upper_index)
+                .ok_or(IntegrationError::MissingStateAtOrdinal {
+                    ordinal: upper_index,
+                })?;
         Ok((lower_index, upper_index, lower_state, upper_state))
     }
 
     fn index_of_commit(&self, commit: &CommitId) -> Option<usize> {
-        self.states
-            .iter()
-            .position(|state| state.commit == *commit)
+        self.states.iter().position(|state| state.commit == *commit)
     }
 
-    fn transitions_between(&self, lower_index: usize, upper_index: usize) -> Result<Vec<ChangeUnit>> {
+    fn transitions_between(
+        &self,
+        lower_index: usize,
+        upper_index: usize,
+    ) -> Result<Vec<ChangeUnit>> {
         let width = upper_index.saturating_sub(lower_index);
         let transitions = self
             .states
@@ -566,19 +552,19 @@ impl IntegrationSequence {
         upper_index: usize,
         required: StateEquivalence,
     ) -> Vec<IntegrationAmbiguityReason> {
-        let width = upper_index
-            .saturating_sub(lower_index)
-            .saturating_add(1);
+        let width = upper_index.saturating_sub(lower_index).saturating_add(1);
         self.states
             .iter()
             .skip(lower_index)
             .take(width)
             .filter(|state| !state.equivalence.satisfies(required))
-            .map(|state| IntegrationAmbiguityReason::InsufficientStateEquivalence {
-                ordinal: state.ordinal,
-                actual: state.equivalence,
-                required,
-            })
+            .map(
+                |state| IntegrationAmbiguityReason::InsufficientStateEquivalence {
+                    ordinal: state.ordinal,
+                    actual: state.equivalence,
+                    required,
+                },
+            )
             .collect()
     }
 
