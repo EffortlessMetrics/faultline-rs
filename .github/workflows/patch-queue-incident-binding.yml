@@ -1,0 +1,120 @@
+name: Apply queue incident binding patch
+
+on:
+  push:
+    branches:
+      - feat/merge-group-incident-contract
+    paths:
+      - .github/workflows/patch-queue-incident-binding.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/merge-group-incident-contract
+          fetch-depth: 0
+
+      - name: Bind parsed payloads to authenticated raw bytes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          source = Path("tools/sdlc/queue_incident.py")
+          text = source.read_text(encoding="utf-8")
+
+          def insert_at_body(function_name: str, insertion: str) -> None:
+              global text
+              start = text.index(f"def {function_name}(")
+              body = text.index(") -> dict[str, Any]:\n", start) + len(") -> dict[str, Any]:\n")
+              if insertion.strip() not in text[start:body + len(insertion) + 32]:
+                  text = text[:body] + insertion + text[body:]
+
+          binding = (
+              '    parsed_raw_event = load_json_bytes(raw_event, "raw event")\n'
+              '    if parsed_raw_event != event_payload:\n'
+              '        raise QueueIncidentError("event payload does not match raw event body")\n'
+          )
+          insert_at_body("build_incident", binding)
+          insert_at_body("append_destroyed", binding)
+
+          lifecycle_marker = '    first = require_object(lifecycle[0], "incident.lifecycle[0]")\n'
+          lifecycle_check = (
+              '    if first.get("event_sha256") != event.get("sha256"):\n'
+              '        raise QueueIncidentError(\n'
+              '            "incident initial lifecycle digest does not match event digest"\n'
+              '        )\n'
+          )
+          if lifecycle_check.strip() not in text:
+              text = text.replace(
+                  lifecycle_marker,
+                  lifecycle_marker + lifecycle_check,
+                  1,
+              )
+          source.write_text(text, encoding="utf-8")
+
+          tests = Path("tools/sdlc/tests/test_queue_incident.py")
+          test_text = tests.read_text(encoding="utf-8")
+          test_case = '''
+              def test_build_and_destroyed_reject_payload_not_parsed_from_raw_body(self) -> None:
+                  payload = event_payload()
+                  snapshot = queue_snapshot()
+                  different_raw = raw_event({**payload, "action": "destroyed", "reason": "dequeued"})
+                  with self.assertRaisesRegex(
+                      queue_incident.QueueIncidentError,
+                      "payload does not match raw event body",
+                  ):
+                      queue_incident.build_incident(
+                          event_payload=payload,
+                          raw_event=different_raw,
+                          queue_snapshot=snapshot,
+                          object_manifest=object_manifest(snapshot),
+                          delivery_id="delivery-mismatch",
+                          captured_at="2026-11-12T07:00:03Z",
+                          signature_verified=True,
+                      )
+
+                  incident = build_valid_incident()
+                  destroyed = event_payload("destroyed", "dequeued")
+                  with self.assertRaisesRegex(
+                      queue_incident.QueueIncidentError,
+                      "payload does not match raw event body",
+                  ):
+                      queue_incident.append_destroyed(
+                          incident=incident,
+                          event_payload=destroyed,
+                          raw_event=raw_event(event_payload("destroyed", "merged")),
+                          delivery_id="destroyed-mismatch",
+                          observed_at="2026-11-12T08:00:00Z",
+                          signature_verified=True,
+                      )
+
+              def test_initial_lifecycle_digest_must_match_event_digest(self) -> None:
+                  incident = build_valid_incident()
+                  incident["lifecycle"][0]["event_sha256"] = "b" * 64
+                  with self.assertRaisesRegex(
+                      queue_incident.QueueIncidentError,
+                      "initial lifecycle digest does not match",
+                  ):
+                      queue_incident.validate_incident(incident)
+          '''.replace("\n              ", "\n    ").lstrip("\n")
+          marker = '\n\nif __name__ == "__main__":\n'
+          if "test_build_and_destroyed_reject_payload_not_parsed_from_raw_body" not in test_text:
+              test_text = test_text.replace(marker, "\n" + test_case + marker, 1)
+          tests.write_text(test_text, encoding="utf-8")
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          git add tools/sdlc/queue_incident.py tools/sdlc/tests/test_queue_incident.py
+          git diff --cached --check
+          git commit -m "fix(queue): bind incident payloads to authenticated bytes"
+          git push origin HEAD:feat/merge-group-incident-contract
