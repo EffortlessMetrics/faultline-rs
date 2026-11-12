@@ -372,31 +372,34 @@ class QueueIncidentTests(unittest.TestCase):
             self.assertEqual(2, rejected.returncode)
             self.assertIn("signature verification failed", rejected.stderr)
 
-    def test_raw_event_digest_cannot_be_rebound_to_different_payload(self) -> None:
+    def test_event_digest_cannot_diverge_from_initial_lifecycle(self) -> None:
         incident = build_valid_incident()
         tampered = copy.deepcopy(incident)
         tampered["event"]["sha256"] = "b" * 64
-        queue_incident.validate_incident(tampered)
-        self.assertNotEqual(incident["event"]["sha256"], tampered["event"]["sha256"])
-        # Raw events are retained separately. The incident validates their digest
-        # shape, while the capture path binds parsed content to the exact raw body.
+        with self.assertRaisesRegex(
+            queue_incident.QueueIncidentError,
+            "initial lifecycle digest does not match",
+        ):
+            queue_incident.validate_incident(tampered)
 
     def test_build_and_destroyed_reject_payload_not_parsed_from_raw_body(self) -> None:
         payload = event_payload()
         snapshot = queue_snapshot()
-        different_raw = raw_event({**payload, "action": "destroyed", "reason": "dequeued"})
+        different_raw = raw_event(
+            {**payload, "action": "destroyed", "reason": "dequeued"}
+        )
         with self.assertRaisesRegex(
             queue_incident.QueueIncidentError,
             "payload does not match raw event body",
         ):
             queue_incident.build_incident(
-      event_payload=payload,
-      raw_event=different_raw,
-      queue_snapshot=snapshot,
-      object_manifest=object_manifest(snapshot),
-      delivery_id="delivery-mismatch",
-      captured_at="2026-11-12T07:00:03Z",
-      signature_verified=True,
+                event_payload=payload,
+                raw_event=different_raw,
+                queue_snapshot=snapshot,
+                object_manifest=object_manifest(snapshot),
+                delivery_id="delivery-mismatch",
+                captured_at="2026-11-12T07:00:03Z",
+                signature_verified=True,
             )
 
         incident = build_valid_incident()
@@ -406,12 +409,12 @@ class QueueIncidentTests(unittest.TestCase):
             "payload does not match raw event body",
         ):
             queue_incident.append_destroyed(
-      incident=incident,
-      event_payload=destroyed,
-      raw_event=raw_event(event_payload("destroyed", "merged")),
-      delivery_id="destroyed-mismatch",
-      observed_at="2026-11-12T08:00:00Z",
-      signature_verified=True,
+                incident=incident,
+                event_payload=destroyed,
+                raw_event=raw_event(event_payload("destroyed", "merged")),
+                delivery_id="destroyed-mismatch",
+                observed_at="2026-11-12T08:00:00Z",
+                signature_verified=True,
             )
 
     def test_initial_lifecycle_digest_must_match_event_digest(self) -> None:
