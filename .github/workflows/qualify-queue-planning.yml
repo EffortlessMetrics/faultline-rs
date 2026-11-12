@@ -1,0 +1,309 @@
+name: Qualify equivalence-aware queue planning
+
+on:
+  push:
+    branches: [work/queue-review-qualification]
+    paths: [.github/workflows/qualify-queue-planning.yml]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: queue-admission-review
+  cancel-in-progress: false
+
+env:
+  INPUT_SHA: 2b28416ed9d5501a110260432d98681103c622a0
+  CARGO_TERM_COLOR: never
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d
+        with:
+          config-file: .github/jactionlint.yaml
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-queue-planning-review-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-queue-admission-review-
+            ${{ runner.os }}-queue-candidate-
+            ${{ runner.os }}-cargo-
+      - name: Add targeted planner regressions to the exact source
+        run: |
+          git checkout --detach "$INPUT_SHA"
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          mkdir -p "$RUNNER_TEMP/queue-planning"
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-planning/input-sha.txt"
+          rustc --version --verbose > "$RUNNER_TEMP/queue-planning/toolchain.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          Path('crates/faultline-queue/tests/equivalence_planning.rs').write_text('''mod common;
+
+          use common::{add, endpoints, packet};
+          use faultline_integration::{IntegrationOutcome, StateEquivalence};
+          use faultline_queue::{DiagnosisStatus, EvidenceSource, diagnose};
+
+          type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+          #[test]
+          fn weak_midpoint_does_not_block_eligible_probes() -> TestResult {
+              let mut input = packet(20)?;
+              input.sequence.states.get_mut(10).ok_or("midpoint")?.equivalence = StateEquivalence::PatchEquivalent;
+              endpoints(&mut input)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::NeedsEvidence, "an unusable midpoint must not block usable candidates");
+              let plan = report.next_probe.ok_or("eligible next probe")?;
+              assert_ne!(plan.state.ordinal, 10);
+              assert!(plan.state.equivalence.satisfies(input.policy.required_equivalence));
+              Ok(())
+          }
+
+          #[test]
+          fn conservative_scan_skips_weak_states_without_proving_the_prefix() -> TestResult {
+              let mut input = packet(4)?;
+              input.policy.assume_monotonic = false;
+              input.sequence.states.get_mut(1).ok_or("prefix")?.equivalence = StateEquivalence::PatchEquivalent;
+              endpoints(&mut input)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.next_probe.ok_or("skip weak prefix and probe eligible state")?.state.ordinal, 2);
+              add(&mut input, 2, "earlier-failure", false, EvidenceSource::Provider)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::Suspect);
+              assert!(report.next_probe.is_none());
+              match report.outcome {
+                  Some(IntegrationOutcome::SuspectTransitions { lower_bound_exclusive, upper_bound_inclusive, transitions, .. }) => {
+                      assert_eq!(lower_bound_exclusive.ordinal, 0);
+                      assert_eq!(upper_bound_inclusive.ordinal, 2);
+                      assert_eq!(transitions.len(), 2);
+                  }
+                  _ => return Err("missing prefix must remain a suspect interval".into()),
+              }
+              Ok(())
+          }
+
+          #[test]
+          fn eligible_boundary_can_localize_despite_a_weak_earlier_midpoint() -> TestResult {
+              let mut input = packet(20)?;
+              input.sequence.states.get_mut(10).ok_or("midpoint")?.equivalence = StateEquivalence::PatchEquivalent;
+              endpoints(&mut input)?;
+              for attempt in 0..=5 {
+                  let report = diagnose(&input)?;
+                  if let Some(plan) = report.next_probe {
+                      assert!(attempt < 5, "planner exceeded its native-launch budget");
+                      assert_ne!(plan.state.ordinal, 10);
+                      add(&mut input, plan.state.ordinal, &format!("native-{attempt}"), plan.state.ordinal < 14, EvidenceSource::Native)?;
+                  } else {
+                      assert_eq!(report.status, DiagnosisStatus::Localized, "weak earlier state must not block a supported later boundary");
+                      match report.outcome {
+                          Some(IntegrationOutcome::FirstFailingTransition { first_failing, .. }) => assert_eq!(first_failing.ordinal, 14),
+                          _ => return Err("missing supported transition".into()),
+                      }
+                      return Ok(());
+                  }
+              }
+              Err("planner did not converge".into())
+          }
+
+          #[test]
+          fn unavailable_interior_retains_a_window_without_spending_budget() -> TestResult {
+              let mut input = packet(3)?;
+              for state in input.sequence.states.iter_mut().skip(1).take(2) {
+                  state.equivalence = StateEquivalence::Unverified;
+              }
+              endpoints(&mut input)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::Suspect);
+              assert!(report.next_probe.is_none());
+              assert_eq!(report.recorded_launches, 0);
+              assert_eq!(report.remaining_launches, input.policy.max_launches);
+              match report.outcome {
+                  Some(IntegrationOutcome::SuspectTransitions { transitions, .. }) => assert_eq!(transitions.len(), 3),
+                  _ => return Err("unavailable states must remain in the suspect window".into()),
+              }
+              Ok(())
+          }
+          ''', encoding='utf-8')
+          PY
+          cargo fmt --all
+          set +e
+          cargo test --locked -p faultline-queue --test equivalence_planning > "$RUNNER_TEMP/queue-planning/red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/queue-planning/red.log"
+          test "$code" -eq 101
+          for name in weak_midpoint_does_not_block_eligible_probes conservative_scan_skips_weak_states_without_proving_the_prefix eligible_boundary_can_localize_despite_a_weak_earlier_midpoint; do
+            grep -F "test $name ... FAILED" "$RUNNER_TEMP/queue-planning/red.log"
+          done
+          grep -F '1 passed; 3 failed;' "$RUNNER_TEMP/queue-planning/red.log"
+      - name: Fix candidate eligibility without upgrading evidence
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('crates/faultline-queue/src/lib.rs')
+          text = path.read_text()
+          old = '    let candidate = if input.policy.assume_monotonic {'
+          assert text.count(old) == 1
+          text = text.replace(old, '    let minimum = input.policy.required_equivalence.max(StateEquivalence::ExactTree);\n' + old)
+          old = '''            let class = match summary.evidence {
+                          StateEvidence::Passing => ObservationClass::Pass,
+                          StateEvidence::TargetFailing => ObservationClass::Fail,
+                          StateEvidence::Unobserved | StateEvidence::Incomplete => continue,
+                          _ => ObservationClass::Indeterminate,
+                      };'''
+          # Build the literal independently of YAML/Python indentation.
+          old = '\n'.join([
+              '            let class = match summary.evidence {',
+              '                StateEvidence::Passing => ObservationClass::Pass,',
+              '                StateEvidence::TargetFailing => ObservationClass::Fail,',
+              '                StateEvidence::Unobserved | StateEvidence::Incomplete => continue,',
+              '                _ => ObservationClass::Indeterminate,',
+              '            };',
+          ])
+          new = '\n'.join([
+              '            // An unusable state remains a gap, not a reason to stop probing',
+              '            // other eligible states or to upgrade its equivalence.',
+              '            let class = match (summary.state.equivalence.satisfies(minimum), summary.evidence) {',
+              '                (false, _) => ObservationClass::Indeterminate,',
+              '                (true, StateEvidence::Passing) => ObservationClass::Pass,',
+              '                (true, StateEvidence::TargetFailing) => ObservationClass::Fail,',
+              '                (true, StateEvidence::Unobserved | StateEvidence::Incomplete) => continue,',
+              '                _ => ObservationClass::Indeterminate,',
+              '            };',
+          ])
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          old = '        report.states.iter().take(upper).position(|s| {\n            matches!('
+          new = '        report.states.iter().take(upper).position(|s| {\n            s.state.equivalence.satisfies(minimum) && matches!('
+          assert text.count(old) == 1
+          path.write_text(text.replace(old, new))
+          path = Path('docs/queue-diagnosis.md')
+          path.write_text(path.read_text() + '\n## Unavailable interior states\n\nProbe selection excludes states that cannot meet the predicate equivalence\nrequirement. A weak midpoint does not block other eligible states, and skipping\nit does not upgrade its evidence or remove its transition from a suspect window.\nWithout the monotonic-target assumption, a missing earlier prefix still prevents\na first-transition claim even when probing later states narrows the window.\nWhen no eligible interior candidate remains, planning stops without spending a\nlaunch and retains the supported suspect interval.\n')
+          path = Path('docs/scenarios/scenario_index.md')
+          text = path.read_text()
+          names = re.findall(r'#\[test\]\s*fn\s+(\w+)', Path('crates/faultline-queue/tests/equivalence_planning.rs').read_text())
+          rows = [f'| `{name}` | {name.replace("_", " ")} | Partial-equivalence sequence | faultline-queue | Native contract | Eligible probing and honest missing-prefix bounds | #84 #85 #92 | app | queue-localization | diagnosis v0.1 | faultline-queue | P0 | faultline-queue | no |' for name in names]
+          path.write_text(text.rstrip() + '\n\n## Equivalence-aware probe selection\n\n| Test | Problem | Fixture | Crate | Artifact | Invariant | References | Tier | Requirement | Contract | Mutation surface | Priority | Owner | Human review |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n' + '\n'.join(rows) + '\n')
+          PY
+          cargo fmt --all
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets 2>&1 | tee "$RUNNER_TEMP/queue-planning/green.log"
+          cargo clippy --no-deps --locked -p faultline-integration -p faultline-queue --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/queue-planning/clippy.log"
+      - uses: actions/cache@v4
+        id: tools
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-1.46.1-ripr-0.10.0
+      - name: Install qualification tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version 1.46.1
+          cargo install ripr --locked --version 0.10.0
+      - name: Qualify and package exact candidate
+        run: |
+          test "$(cargo insta --version)" = 'cargo-insta 1.46.1'
+          test "$(ripr --version)" = 'ripr 0.10.0'
+          cargo xtask ci-full 2>&1 | tee "$RUNNER_TEMP/queue-planning/full.log"
+          cargo xtask badges
+          cargo xtask badges --check
+          cargo fmt --all -- --check
+          git diff --check
+          git add crates/faultline-queue/src/lib.rs crates/faultline-queue/tests/equivalence_planning.rs docs/queue-diagnosis.md docs/scenarios/scenario_index.md badges/ripr.json
+          git commit -m 'fix(queue): skip ineligible probe candidates without hiding prefix gaps'
+          test "$(git rev-parse HEAD^)" = "$INPUT_SHA"
+          test -z "$(git status --porcelain)"
+          git branch qualified-queue-planning
+          git bundle create "$RUNNER_TEMP/queue-planning/candidate.bundle" "$INPUT_SHA"..qualified-queue-planning
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-planning/qualified-sha.txt"
+          git diff "$INPUT_SHA" HEAD > "$RUNNER_TEMP/queue-planning/reviewed.patch"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/queue-planning/source.tar"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: queue-planning-review
+          path: ${{ runner.temp }}/queue-planning
+          if-no-files-found: error
+          retention-days: 14
+  compatibility:
+    needs: qualify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: '1.93.0'
+          - os: windows-latest
+            toolchain: stable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-planning-review
+          path: ${{ runner.temp }}/queue-planning
+      - name: Select qualified source
+        run: |
+          git fetch "$RUNNER_TEMP/queue-planning/candidate.bundle" refs/heads/qualified-queue-planning:refs/heads/qualified-queue-planning
+          git checkout --detach qualified-queue-planning
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Qualify native contracts
+        run: |
+          rustc --version --verbose
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets
+          git diff --exit-code
+  publish:
+    needs: [qualify, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-planning-review
+          path: ${{ runner.temp }}/queue-planning
+      - name: Publish only the qualified fast-forward
+        run: |
+          git fetch "$RUNNER_TEMP/queue-planning/candidate.bundle" refs/heads/qualified-queue-planning:refs/heads/qualified-queue-planning
+          test "$(git rev-parse qualified-queue-planning^)" = "$INPUT_SHA"
+          python3 - <<'PY'
+          import os, subprocess
+          allowed = {'crates/faultline-queue/src/lib.rs', 'crates/faultline-queue/tests/equivalence_planning.rs', 'docs/queue-diagnosis.md', 'docs/scenarios/scenario_index.md', 'badges/ripr.json'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', os.environ['INPUT_SHA'], 'qualified-queue-planning']).decode().splitlines())
+          assert changed <= allowed, changed
+          PY
+          current=$(git ls-remote origin refs/heads/feat/queue-evidence-diagnosis | cut -f1)
+          test "$current" = "$INPUT_SHA"
+          git push origin qualified-queue-planning:refs/heads/feat/queue-evidence-diagnosis
