@@ -1,0 +1,337 @@
+name: Qualify queue admission review
+
+on:
+  push:
+    branches: [work/queue-review-qualification]
+    paths: [.github/workflows/qualify-queue-review.yml]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: queue-admission-review
+  cancel-in-progress: false
+
+env:
+  INPUT_SHA: fe7d93308268279c26f4874a05ae481893af3bd1
+  CONTRACT_SHA: 42d99cad3e6e80d837ad12d16fcd618cc8f2b755
+  CARGO_TERM_COLOR: never
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d
+        with:
+          config-file: .github/jactionlint.yaml
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-queue-admission-review-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-queue-candidate-
+            ${{ runner.os }}-cargo-
+      - name: Select exact source and add falsification tests
+        run: |
+          git checkout --detach "$INPUT_SHA"
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          mkdir -p "$RUNNER_TEMP/queue-review"
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-review/input-sha.txt"
+          rustc --version --verbose > "$RUNNER_TEMP/queue-review/toolchain.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          Path('crates/faultline-queue/tests/admission.rs').write_text('''mod common;
+
+          use common::{add, endpoints, packet};
+          use faultline_queue::{DiagnosisStatus, EvidenceSource, PhaseConclusion, diagnose};
+
+          type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+          #[test]
+          fn no_evidence_never_proposes_a_launch() -> TestResult {
+              let report = diagnose(&packet(20)?)?;
+              assert!(report.next_probe.is_none(), "empty evidence must not launch a predicate");
+              assert_eq!(report.status, DiagnosisStatus::Inconclusive);
+              assert!(report.reason_codes.contains(&"target_failure_not_established_at_head".into()));
+              Ok(())
+          }
+
+          #[test]
+          fn partial_pass_at_head_does_not_start_diagnosis() -> TestResult {
+              let mut input = packet(20)?;
+              input.policy.minimum_attempts = 2;
+              add(&mut input, 20, "one-pass", true, EvidenceSource::Provider)?;
+              let report = diagnose(&input)?;
+              assert!(report.next_probe.is_none(), "a partial pass is not a red-queue trigger");
+              assert_eq!(report.status, DiagnosisStatus::Inconclusive);
+              Ok(())
+          }
+
+          #[test]
+          fn incompatible_head_failure_does_not_authorize_a_launch() -> TestResult {
+              let mut input = packet(20)?;
+              endpoints(&mut input)?;
+              input.receipts.last_mut().ok_or("head receipt")?.context_id = "different-context".into();
+              let report = diagnose(&input)?;
+              assert_eq!(report.excluded_receipts.len(), 1);
+              assert!(report.next_probe.is_none(), "excluded failure evidence cannot admit work");
+              Ok(())
+          }
+
+          #[test]
+          fn partial_target_failure_at_head_can_request_confirmation() -> TestResult {
+              let mut input = packet(20)?;
+              input.policy.minimum_attempts = 2;
+              add(&mut input, 20, "one-failure", false, EvidenceSource::Provider)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::NeedsEvidence);
+              assert_eq!(report.next_probe.ok_or("confirmation probe")?.state.ordinal, 20);
+              assert_eq!(report.recorded_launches, 0);
+              Ok(())
+          }
+
+          #[test]
+          fn missing_native_receipt_cannot_finalize() -> TestResult {
+              let mut input = packet(1)?;
+              endpoints(&mut input)?;
+              add(&mut input, 1, "unfinished", false, EvidenceSource::Native)?;
+              let receipt = input.receipts.last_mut().ok_or("native receipt")?;
+              receipt.conclusion = PhaseConclusion::Missing;
+              receipt.exit_code = None;
+              receipt.failure_signature = None;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::AwaitingEvidence, "missing is not terminal evidence");
+              assert_eq!(report.pending_attempts, vec!["unfinished"]);
+              assert_eq!(report.recorded_launches, 1);
+              assert!(report.outcome.is_none());
+              assert!(report.next_probe.is_none());
+              Ok(())
+          }
+
+          #[test]
+          fn terminal_operational_receipt_settles_without_code_vote() -> TestResult {
+              for conclusion in [PhaseConclusion::Operational, PhaseConclusion::Cancelled] {
+                  let mut input = packet(1)?;
+                  endpoints(&mut input)?;
+                  add(&mut input, 1, "terminated", false, EvidenceSource::Native)?;
+                  let receipt = input.receipts.last_mut().ok_or("native receipt")?;
+                  receipt.conclusion = conclusion;
+                  receipt.exit_code = None;
+                  receipt.failure_signature = None;
+                  let report = diagnose(&input)?;
+                  assert_eq!(report.status, DiagnosisStatus::Localized);
+                  assert!(report.pending_attempts.is_empty());
+                  assert_eq!(report.recorded_launches, 1);
+                  assert_eq!(report.states.get(1).ok_or("head")?.target_failures, 1);
+                  assert_eq!(report.states.get(1).ok_or("head")?.operational_attempts, 1);
+              }
+              Ok(())
+          }
+
+          #[test]
+          fn over_budget_ledger_is_rejected() -> TestResult {
+              let mut input = packet(1)?;
+              input.policy.max_launches = 0;
+              add(&mut input, 0, "base", true, EvidenceSource::Provider)?;
+              add(&mut input, 1, "overspent", false, EvidenceSource::Native)?;
+              assert!(diagnose(&input).is_err(), "an overspent ledger must not finalize successfully");
+              Ok(())
+          }
+
+          #[test]
+          fn provider_only_complete_evidence_needs_no_launch_budget() -> TestResult {
+              let mut input = packet(1)?;
+              input.policy.max_launches = 0;
+              endpoints(&mut input)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::Localized);
+              assert_eq!(report.recorded_launches, 0);
+              assert!(report.next_probe.is_none());
+              Ok(())
+          }
+
+          #[test]
+          fn at_budget_completed_native_result_is_valid() -> TestResult {
+              let mut input = packet(1)?;
+              input.policy.max_launches = 1;
+              add(&mut input, 0, "base", true, EvidenceSource::Provider)?;
+              add(&mut input, 1, "native-head", false, EvidenceSource::Native)?;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::Localized);
+              assert_eq!(report.recorded_launches, 1);
+              assert_eq!(report.remaining_launches, 0);
+              Ok(())
+          }
+          ''', encoding='utf-8')
+          PY
+          cargo fmt --all
+      - name: Require the five specific old-code regression failures
+        run: |
+          set +e
+          cargo test --locked -p faultline-queue --test admission > "$RUNNER_TEMP/queue-review/red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/queue-review/red.log"
+          test "$code" -eq 101
+          for name in no_evidence_never_proposes_a_launch partial_pass_at_head_does_not_start_diagnosis incompatible_head_failure_does_not_authorize_a_launch missing_native_receipt_cannot_finalize over_budget_ledger_is_rejected; do
+            grep -F "test $name ... FAILED" "$RUNNER_TEMP/queue-review/red.log"
+          done
+          grep -F '4 passed; 5 failed;' "$RUNNER_TEMP/queue-review/red.log"
+      - name: Apply reviewed corrections and current governing contract
+        run: |
+          git merge --no-ff --no-commit "$CONTRACT_SHA"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('crates/faultline-queue/src/lib.rs')
+          text = path.read_text()
+          changes = [
+              ('    let mut receipts = BTreeMap::new();', '    if launches.len() > input.policy.max_launches {\n        return Err(invalid("native launch ledger exceeds total launch budget"));\n    }\n    let mut receipts = BTreeMap::new();'),
+              ('            settled.insert(receipt.attempt_id.as_str());', '            // Missing output does not prove that the owned worker has terminated.\n            if receipt.conclusion != PhaseConclusion::Missing {\n                settled.insert(receipt.attempt_id.as_str());\n            }'),
+              ('        StateEvidence::Unobserved | StateEvidence::Incomplete => {\n            return propose(report, last, "reproduce_target_at_group_head");\n        }', '        StateEvidence::Unobserved | StateEvidence::Incomplete => {\n            // A requested failure signature is not evidence of a red group.\n            if head.target_failures == 0 {\n                report.reason_codes.push("target_failure_not_established_at_head".into());\n                return Ok(());\n            }\n            return propose(report, last, "reproduce_target_at_group_head");\n        }'),
+          ]
+          for old, new in changes:
+              assert text.count(old) == 1, old
+              text = text.replace(old, new)
+          path.write_text(text)
+          path = Path('docs/queue-diagnosis.md')
+          text = path.read_text()
+          old = 'A completed\nresult may be replayed at budget zero.'
+          assert old in text
+          text = text.replace(old, 'Provider-only completed evidence can be replayed at budget zero. A result\nwith native attempts retains its original total budget when replayed; zero new\nlaunches does not mean zero historical launches.')
+          text += '''\n## Admission and incomplete evidence\n\nA target-signature string is not proof that the group went red. No new probe is\nproposed until the exact group head has an eligible target-failure sample. Empty\nevidence, incompatible failure evidence, and a partial set of passing samples\nreturn an inconclusive result without authorizing work. An eligible failing sample\ncan request further confirmation under the configured minimum-attempt policy.\n\nA native `Missing` result remains pending and charged even when provider evidence\nwould otherwise establish an adjacent boundary. Missing output is not proof of\nworker termination. Terminal cancellation or operational termination can settle\nan attempt without contributing a code vote. The durable reconciler in #91 must\nretain nonterminal events separately from immutable terminal receipts; it must\nnot drop a charged launch, relabel missing evidence as cancellation, or rewrite a\nterminal result merely to unblock replay.\n\n`max_launches` is the total investigation limit, not an additional-launch allowance.\nAfter identical records are deduplicated, a ledger exceeding that total is invalid.\nA completed diagnosis at exactly the total limit remains valid.\n\nJSON and Markdown are local diagnostic projections, not certified secret-free\nexports. HTML/Markdown escaping prevents markup interpretation; it is not secret\nredaction. Keep input identifiers and outputs private until the export path in\n#60 provides the supported redaction and retained-artifact guarantees.\n'''
+          path.write_text(text)
+          path = Path('docs/scenarios/scenario_index.md')
+          text = path.read_text()
+          names = re.findall(r'#\[test\]\s*fn\s+(\w+)', Path('crates/faultline-queue/tests/admission.rs').read_text())
+          rows = [f'| `{name}` | {name.replace("_", " ")} | Queue admission packet | faultline-queue | Native contract | Admission, pending evidence and total launch budget | #64 #85 #91 #92 | app | queue-localization | diagnosis v0.1 | faultline-queue | P0 | faultline-queue | no |' for name in names]
+          path.write_text(text.rstrip() + '\n\n## Queue admission review regressions\n\n| Test | Problem | Fixture | Crate | Artifact | Invariant | References | Tier | Requirement | Contract | Mutation surface | Priority | Owner | Human review |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n' + '\n'.join(rows) + '\n')
+          PY
+          cargo fmt --all
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets 2>&1 | tee "$RUNNER_TEMP/queue-review/green.log"
+          cargo clippy --no-deps --locked -p faultline-integration -p faultline-queue --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/queue-review/clippy.log"
+      - name: Cache qualification tools
+        id: tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-1.46.1-ripr-0.10.0
+      - name: Install qualification tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version 1.46.1
+          cargo install ripr --locked --version 0.10.0
+      - name: Qualify complete candidate and package exact source
+        run: |
+          test "$(cargo insta --version)" = 'cargo-insta 1.46.1'
+          test "$(ripr --version)" = 'ripr 0.10.0'
+          cargo xtask ci-full 2>&1 | tee "$RUNNER_TEMP/queue-review/full.log"
+          cargo xtask badges
+          cargo xtask badges --check
+          cargo fmt --all -- --check
+          git diff --check
+          git add crates/faultline-queue/src/lib.rs crates/faultline-queue/tests/admission.rs docs/queue-diagnosis.md docs/merge-queue-localization.md docs/scenarios/scenario_index.md badges/ripr.json
+          git commit -m 'fix(queue): fail closed on missing evidence and overspent launch ledgers'
+          test "$(git rev-parse HEAD^1)" = "$INPUT_SHA"
+          test "$(git rev-parse HEAD^2)" = "$CONTRACT_SHA"
+          test -z "$(git status --porcelain)"
+          git branch qualified-queue-review
+          git bundle create "$RUNNER_TEMP/queue-review/candidate.bundle" "$INPUT_SHA"..qualified-queue-review
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-review/qualified-sha.txt"
+          git diff "$INPUT_SHA" HEAD > "$RUNNER_TEMP/queue-review/reviewed.patch"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/queue-review/source.tar"
+          cargo run --locked -p faultline-queue -- demo > "$RUNNER_TEMP/queue-review/demo.json"
+          set +e
+          cargo run --locked -p faultline-queue -- diagnose --input "$RUNNER_TEMP/queue-review/demo.json" > "$RUNNER_TEMP/queue-review/plan.json"
+          code=$?
+          set -e
+          test "$code" -eq 2
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: queue-admission-review
+          path: ${{ runner.temp }}/queue-review
+          if-no-files-found: error
+          retention-days: 14
+  compatibility:
+    needs: qualify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: '1.93.0'
+          - os: windows-latest
+            toolchain: stable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-admission-review
+          path: ${{ runner.temp }}/queue-review
+      - name: Select qualified source
+        run: |
+          git fetch "$RUNNER_TEMP/queue-review/candidate.bundle" refs/heads/qualified-queue-review:refs/heads/qualified-queue-review
+          git checkout --detach qualified-queue-review
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Check declared compiler and Windows native contracts
+        run: |
+          rustc --version --verbose
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets
+          git diff --exit-code
+  publish:
+    needs: [qualify, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-admission-review
+          path: ${{ runner.temp }}/queue-review
+      - name: Publish only the qualified fast-forward
+        run: |
+          git fetch "$RUNNER_TEMP/queue-review/candidate.bundle" refs/heads/qualified-queue-review:refs/heads/qualified-queue-review
+          test "$(git rev-parse qualified-queue-review^1)" = "$INPUT_SHA"
+          test "$(git rev-parse qualified-queue-review^2)" = "$CONTRACT_SHA"
+          python3 - <<'PY'
+          import os, subprocess
+          allowed = {'crates/faultline-queue/src/lib.rs', 'crates/faultline-queue/tests/admission.rs', 'docs/queue-diagnosis.md', 'docs/merge-queue-localization.md', 'docs/scenarios/scenario_index.md', 'badges/ripr.json'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', os.environ['INPUT_SHA'], 'qualified-queue-review']).decode().splitlines())
+          assert changed <= allowed, changed
+          PY
+          current=$(git ls-remote origin refs/heads/feat/queue-evidence-diagnosis | cut -f1)
+          test "$current" = "$INPUT_SHA"
+          git push origin qualified-queue-review:refs/heads/feat/queue-evidence-diagnosis
