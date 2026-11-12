@@ -7,8 +7,8 @@ The candidate is PR #92. It targets the reviewed contract in #88 directly;
 correctness fixes are retained together in #92. Nothing is merged or deployed
 by this receipt.
 
-Latest qualified runtime source: **`efe01ef2b2849a436fd68ada0b87797987cb9413`**.
-The native integration/queue/CLI suite has **63 passing tests, zero failures**.
+Latest qualified runtime source: **`61a33a9f477abd919436646745bef886ad3ea685`**.
+The native integration/queue/CLI suite has **72 passing tests, zero failures**.
 The same suite passed Windows stable and Linux Rust 1.93.0. Normal PR checks,
 review-thread disposition and integration remain separate from this receipt.
 
@@ -19,12 +19,13 @@ review-thread disposition and integration remain separate from this receipt.
 | Admission and pending evidence | `fe7d93308268279c26f4874a05ae481893af3bd1` | `2b28416ed9d5501a110260432d98681103c622a0` | [43191632848](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43191632848) |
 | Equivalence-aware planning | `2b28416ed9d5501a110260432d98681103c622a0` | `95d93ab7b8f75afc0ca2ea96660e22c0f259d6eb` | [43192482101](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43192482101) |
 | External review contracts | `75854e579412cd31463c31a860ea690ecaa5fd40` | `efe01ef2b2849a436fd68ada0b87797987cb9413` | [43194725033](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43194725033) |
+| Ambiguous evidence reports | `d9da273fd69a81e97e6e11818443798e0dcd7549` | `61a33a9f477abd919436646745bef886ad3ea685` | [43197446532](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43197446532) |
 
 The first qualified commit also incorporates the reviewed #88 contract at
 `42d99cad3e6e80d837ad12d16fcd618cc8f2b755`. It preserves that commit as a merge
-parent rather than copying the document without its ancestry. The difference
-between the second qualified source and the third input is this receipt's
-previous documentation revision, not an unqualified runtime change.
+parent rather than copying the document without its ancestry. The gaps between
+later qualified sources and the next inputs are documentation-only revisions
+of this receipt, not unqualified runtime changes.
 
 ## Reproduced defects and corrections
 
@@ -62,6 +63,16 @@ previous documentation revision, not an unqualified runtime change.
 9. Markdown showed pending/excluded counts but not the attempt IDs and exclusion
    reasons needed to act on them. Those identifiers and reasons are now visible
    and escaped; the existing counts remain.
+10. Non-monotonic output discarded known contrary-state bounds and transitions.
+    It now retains the observed interval and distinct failing-to-later-passing
+    `reversals`, each with its intervening changes. Multiple segments and incomplete
+    sample sets retain their evidence; Markdown exposes the segments. These are
+    samples, not claims of stable recovery or independent blame.
+11. An unstable interior state widened the suspect set to the whole sequence.
+    Under the declared monotonic policy, tighter eligible stable bounds now define
+    the window. Without that assumption, the lower bound advances only through a
+    complete passing prefix. Missing earlier states remain suspects, and weak
+    evidence cannot tighten the interval. Conflict never becomes exact attribution.
 
 ## Red/green evidence
 
@@ -75,29 +86,38 @@ correction. The tests exercise both monotonic binary planning and conservative
 prefix scanning, including a 20-transition case that still reaches the supported
 PR-14 boundary despite a weak earlier midpoint.
 
-The external review suite compiled against its exact pre-fix code and reported
-**eight specific failing regressions and two passing controls**. All ten pass with
-the corrections. The controls retain excluded-Missing blocking and reject a
-receipt for another charged state. The terminal-ineligible tests exercise
+The first external review suite compiled against its exact pre-fix code and
+reported **eight specific failing regressions and two passing controls**. All ten
+pass with the corrections. The controls retain excluded-Missing blocking and
+reject a receipt for another charged state. The terminal-ineligible tests cover
 context, phase, snapshot and equivalence exclusion without treating them as votes.
-The rendering and CLI schema tests execute the native binary, not a renderer mock.
+Rendering and CLI schema tests execute the native binary, not a renderer mock.
 
-Across this follow-up, **23 tests were added: 16 demonstrated pre-fix failures
-and seven passing controls**. The final suite's 63 tests comprise 13 integration
+The ambiguity suite compiled against its exact pre-fix code and reported **eight
+specific failing regressions and one passing control**. All nine pass with the
+corrections. Coverage includes multiple reversal segments, incomplete samples,
+actual CLI rendering, tighter conflict windows, conservative incomplete/complete
+prefixes and weak-equivalence exclusions. The control forbids exact attribution
+from conflicting attempts.
+
+Across this follow-up, **32 tests were added: 24 demonstrated pre-fix failures
+and eight passing controls**. The final suite's 72 tests comprise 13 integration
 contracts, one original monotonicity regression, nine admission contracts, five
-CLI contracts, 21 diagnosis contracts, four planning contracts and ten external
-review contracts. The exhaustive 20-position test and both 128-case property tests
-remain in that suite; none was weakened or suppressed.
+CLI contracts, 21 diagnosis contracts, four planning contracts, ten first external
+review contracts and nine ambiguity contracts. The exhaustive 20-position test
+and both 128-case property tests remain; none was weakened or suppressed.
 
-The first external qualification attempt, run 43194278329, reproduced the eight
-failures and passed the corrected tests, then stopped on a test-helper formatting
-lint. Run 43194725033 corrected that formatting and reran the complete red/green,
-strict lint, workspace and compatibility qualification. The failed attempt is
-not represented as final green qualification.
+The first external qualification attempt, run 43194278329, reproduced its failures
+and passed the corrected tests, then stopped on a test-helper formatting lint.
+Run 43194725033 corrected that formatting and reran the complete qualification.
+The first ambiguity attempt, run 43197053062, similarly stopped on a collapsible
+conditional after its tests passed. Run 43197446532 applied the mechanical lint
+fix and repeated red/green, strict lint, workspace and compatibility checks. The
+failed attempts are not represented as final green qualification.
 
 ## Executed qualification
 
-All three successful runs passed:
+All four successful runs passed:
 
 ```sh
 cargo test --locked -p faultline-integration -p faultline-queue --all-targets
@@ -135,12 +155,13 @@ actual patches were inspected before the review checkpoint was recorded.
 | `queue-admission-review` | `13931521458` | `21d834ae52da5f324bcf9dcbda5869c1b65bec1be2f22d4948e48f1d34774a16` |
 | `queue-planning-review` | `13931681750` | `a3e2c5571561fd83d447e25c953b7bc0f6fd0ee0717219ca10d015fb1f625599` |
 | `queue-external-review` | `13932716290` | `5ad1368d460ec0e2011c5899cca93beb9fc8ca2f405c44587264897ab797fb9d` |
+| `queue-ambiguity-review` | `13933163581` | `dc010c6c0380478cf098db98a5c794fbe2ed0d026749093851f6d0d7fdf06fd4` |
 
 Qualification executed with repository-read permissions. Separate publishers
 checked expected parent(s), allowed file paths and branch-head leases before
-fast-forwarding the existing candidate branch. All four temporary qualification
-workflows were removed from the temporary branch at
-`6dd7df7c3ba5f71d8c9e860deb6628cf3726196f`; they were never part of this candidate.
+fast-forwarding the existing candidate branch. All six temporary qualification
+workflows were removed from the temporary branch, with final cleanup at
+`62b3a61ad3e65988e35d3fd7de130a0cbb058c81`; they were never part of this candidate.
 Artifact retention is finite; rerun qualification for later code rather than
 reusing this receipt as current. Review replies and resolved threads are not
 substitutes for an independently recorded approval.
