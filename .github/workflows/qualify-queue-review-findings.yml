@@ -1,0 +1,443 @@
+name: Qualify external queue review findings
+
+on:
+  push:
+    branches: [work/queue-review-qualification]
+    paths: [.github/workflows/qualify-queue-review-findings.yml]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: queue-admission-review
+  cancel-in-progress: false
+
+env:
+  INPUT_SHA: 75854e579412cd31463c31a860ea690ecaa5fd40
+  CARGO_TERM_COLOR: never
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d
+        with:
+          config-file: .github/jactionlint.yaml
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-queue-external-review-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-queue-planning-review-
+            ${{ runner.os }}-queue-admission-review-
+            ${{ runner.os }}-cargo-
+      - name: Add independent review regression tests
+        run: |
+          git checkout --detach "$INPUT_SHA"
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          mkdir -p "$RUNNER_TEMP/queue-external-review"
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-external-review/input-sha.txt"
+          rustc --version --verbose > "$RUNNER_TEMP/queue-external-review/toolchain.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          Path('crates/faultline-queue/tests/review_contract.rs').write_text('''mod common;
+
+          use common::{add, endpoints, packet};
+          use faultline_integration::{ChangeUnit, StateEquivalence};
+          use faultline_queue::{DiagnosisInput, DiagnosisReport, DiagnosisStatus, EvidenceSource, PhaseConclusion, SCHEMA_VERSION, diagnose};
+          use faultline_types::CommitId;
+          use std::fs;
+          use std::path::PathBuf;
+          use std::process::Command;
+          use std::sync::atomic::{AtomicU64, Ordering};
+
+          type TestResult = Result<(), Box<dyn std::error::Error>>;
+          static NEXT: AtomicU64 = AtomicU64::new(0);
+
+          struct Scratch(PathBuf);
+          impl Scratch {
+              fn new() -> Result<Self, Box<dyn std::error::Error>> {
+                  let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+                  let path = std::env::temp_dir().join(format!("faultline-review-{}-{timestamp}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+                  fs::create_dir(&path)?;
+                  Ok(Self(path))
+              }
+          }
+          impl Drop for Scratch {
+              fn drop(&mut self) {
+                  if let Err(error) = fs::remove_dir_all(&self.0) {
+                      eprintln!("review fixture cleanup failed: {error}");
+                  }
+              }
+          }
+          fn render(input: &DiagnosisInput) -> Result<String, Box<dyn std::error::Error>> {
+              let scratch = Scratch::new()?;
+              let path = scratch.0.join("input.json");
+              fs::write(&path, serde_json::to_vec(input)?)?;
+              let result = Command::new(env!("CARGO_BIN_EXE_faultline-queue"))
+                  .args(["diagnose", "--input"]).arg(path).args(["--format", "markdown"]).output()?;
+              assert!(matches!(result.status.code(), Some(0 | 2)), "unexpected CLI failure: {:?}", result);
+              Ok(String::from_utf8(result.stdout)?)
+          }
+
+          #[test]
+          fn terminal_ineligible_native_receipt_does_not_block_replanning() -> TestResult {
+              for field in ["context", "phase", "snapshot", "equivalence"] {
+                  let mut input = packet(20)?;
+                  endpoints(&mut input)?;
+                  add(&mut input, 10, "ineligible", true, EvidenceSource::Native)?;
+                  let receipt = input.receipts.last_mut().ok_or("receipt")?;
+                  match field {
+                      "context" => receipt.context_id = "wrong-context".into(),
+                      "phase" => receipt.phase = "wrong-phase".into(),
+                      "snapshot" => receipt.snapshot_id = "wrong-snapshot".into(),
+                      _ => input.sequence.states.get_mut(10).ok_or("state")?.equivalence = StateEquivalence::PatchEquivalent,
+                  }
+                  let report = diagnose(&input)?;
+                  assert!(report.pending_attempts.is_empty(), "terminal but excluded is not pending");
+                  assert_eq!(report.excluded_receipts.len(), 1);
+                  assert_eq!(report.recorded_launches, 1);
+                  assert_eq!(report.remaining_launches, 4);
+                  assert_eq!(report.states.get(10).ok_or("state")?.passing_attempts, 0);
+                  assert!(report.reason_codes.contains(&"launch_receipt_ineligible".into()));
+                  assert_eq!(report.status, DiagnosisStatus::NeedsEvidence);
+                  assert!(report.next_probe.is_some());
+              }
+              Ok(())
+          }
+
+          #[test]
+          fn completed_ineligible_receipt_does_not_block_supported_boundary() -> TestResult {
+              let mut input = packet(1)?;
+              endpoints(&mut input)?;
+              add(&mut input, 1, "wrong-context", true, EvidenceSource::Native)?;
+              input.receipts.last_mut().ok_or("receipt")?.context_id = "other-context".into();
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::Localized, "completed excluded work must not deadlock replay");
+              assert!(report.pending_attempts.is_empty());
+              assert_eq!(report.recorded_launches, 1);
+              assert_eq!(report.excluded_receipts.len(), 1);
+              assert_eq!(report.states.get(1).ok_or("head")?.passing_attempts, 0);
+              Ok(())
+          }
+
+          #[test]
+          fn excluded_missing_receipt_remains_pending() -> TestResult {
+              let mut input = packet(1)?;
+              endpoints(&mut input)?;
+              add(&mut input, 1, "still-running", false, EvidenceSource::Native)?;
+              let receipt = input.receipts.last_mut().ok_or("receipt")?;
+              receipt.context_id = "other-context".into();
+              receipt.conclusion = PhaseConclusion::Missing;
+              receipt.exit_code = None;
+              receipt.failure_signature = None;
+              let report = diagnose(&input)?;
+              assert_eq!(report.status, DiagnosisStatus::AwaitingEvidence);
+              assert_eq!(report.pending_attempts, vec!["still-running"]);
+              assert_eq!(report.recorded_launches, 1);
+              assert!(report.next_probe.is_none());
+              Ok(())
+          }
+
+          #[test]
+          fn version_schema_constrains_input_and_report() -> TestResult {
+              for schema in [schemars::schema_for!(DiagnosisInput), schemars::schema_for!(DiagnosisReport)] {
+                  let value = serde_json::to_value(schema)?;
+                  assert_eq!(value.pointer("/properties/schema_version/const"), Some(&serde_json::json!(SCHEMA_VERSION)), "library schema must match the runtime version");
+              }
+              Ok(())
+          }
+
+          #[test]
+          fn cli_schemas_enforce_the_runtime_version() -> TestResult {
+              for kind in ["input", "report"] {
+                  let output = Command::new(env!("CARGO_BIN_EXE_faultline-queue")).args(["schema", kind]).output()?;
+                  assert!(output.status.success());
+                  let value: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+                  assert_eq!(value.pointer("/properties/schema_version/const"), Some(&serde_json::json!(SCHEMA_VERSION)), "CLI schema must reject an unsupported version");
+              }
+              Ok(())
+          }
+
+          #[test]
+          fn markdown_names_predicate_and_context() -> TestResult {
+              let mut input = packet(1)?;
+              input.target.predicate_id = "<predicate-v1>".into();
+              input.target.context_id = "<context-v1>".into();
+              endpoints(&mut input)?;
+              let text = render(&input)?;
+              assert!(text.contains("Predicate: &lt;predicate-v1&gt;"), "missing exact predicate");
+              assert!(text.contains("Context: &lt;context-v1&gt;"), "missing exact context");
+              assert!(!text.contains("<predicate-v1>"));
+              assert!(!text.contains("<context-v1>"));
+              Ok(())
+          }
+
+          #[test]
+          fn markdown_names_captured_pull_request_identity() -> TestResult {
+              let mut input = packet(1)?;
+              endpoints(&mut input)?;
+              let text = render(&input)?;
+              assert!(text.contains("Introduced PR: synthetic / fixture/queue #1 at captured head 0000000000000000000000000000000000000065."), "missing captured PR identity");
+              Ok(())
+          }
+
+          #[test]
+          fn markdown_names_commit_transition() -> TestResult {
+              let mut input = packet(1)?;
+              let change = ChangeUnit::Commit { repository: "fixture/queue".into(), commit: CommitId("captured-commit-identity".into()) };
+              let state = input.sequence.states.get_mut(1).ok_or("state")?;
+              state.transition = Some(change.clone());
+              state.included_changes = vec![change];
+              endpoints(&mut input)?;
+              let text = render(&input)?;
+              assert!(text.contains("Introduced commit: fixture/queue at captured-commit-identity."), "commit transition identity is missing");
+              Ok(())
+          }
+
+          #[test]
+          fn markdown_lists_pending_and_excluded_receipts() -> TestResult {
+              let mut input = packet(20)?;
+              endpoints(&mut input)?;
+              add(&mut input, 10, "<pending>", false, EvidenceSource::Native)?;
+              let receipt = input.receipts.last_mut().ok_or("pending")?;
+              receipt.conclusion = PhaseConclusion::Missing;
+              receipt.exit_code = None;
+              receipt.failure_signature = None;
+              add(&mut input, 5, "<excluded>", false, EvidenceSource::Provider)?;
+              input.receipts.last_mut().ok_or("excluded")?.context_id = "other-context".into();
+              let text = render(&input)?;
+              assert!(text.contains("Pending attempt: &lt;pending&gt;."), "pending attempt identity is missing");
+              assert!(text.contains("Excluded receipt: &lt;excluded&gt;"), "excluded receipt identity is missing");
+              assert!(text.contains(r"context\_mismatch"));
+              assert!(!text.contains("<pending>"));
+              assert!(!text.contains("<excluded>"));
+              Ok(())
+          }
+
+          #[test]
+          fn native_receipt_cannot_settle_another_state() -> TestResult {
+              let mut input = packet(20)?;
+              endpoints(&mut input)?;
+              add(&mut input, 10, "native", true, EvidenceSource::Native)?;
+              input.receipts.last_mut().ok_or("receipt")?.commit = "not-the-charged-commit".into();
+              assert!(diagnose(&input).is_err());
+              Ok(())
+          }
+          ''', encoding='utf-8')
+          PY
+          cargo fmt --all
+          set +e
+          cargo test --locked -p faultline-queue --test review_contract > "$RUNNER_TEMP/queue-external-review/red.log" 2>&1
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/queue-external-review/red.log"
+          test "$code" -eq 101
+          for name in terminal_ineligible_native_receipt_does_not_block_replanning completed_ineligible_receipt_does_not_block_supported_boundary version_schema_constrains_input_and_report cli_schemas_enforce_the_runtime_version markdown_names_predicate_and_context markdown_names_captured_pull_request_identity markdown_names_commit_transition markdown_lists_pending_and_excluded_receipts; do
+            grep -F "test $name ... FAILED" "$RUNNER_TEMP/queue-external-review/red.log"
+          done
+          grep -F '2 passed; 8 failed;' "$RUNNER_TEMP/queue-external-review/red.log"
+      - name: Correct completion classification, schema version and operator output
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path('crates/faultline-queue/src/lib.rs')
+          text = path.read_text()
+          def replace_once(text, old, new):
+              assert text.count(old) == 1, old
+              return text.replace(old, new)
+          old = '    pub schema_version: String,'
+          assert text.count(old) == 2
+          text = text.replace(old, '    #[schemars(schema_with = "schema_version_schema")]\n' + old)
+          text = replace_once(text, 'fn invalid(message: impl Into<String>) -> DiagnosisError {', '''fn schema_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+              schemars::schema::SchemaObject {
+                  instance_type: Some(schemars::schema::InstanceType::String.into()),
+                  const_value: Some(serde_json::Value::String(SCHEMA_VERSION.into())),
+                  ..Default::default()
+              }.into()
+          }
+
+          fn invalid(message: impl Into<String>) -> DiagnosisError {''')
+          text = replace_once(text, '    let mut excluded_receipts = Vec::new();', '    let mut excluded_receipts = Vec::new();\n    let mut ineligible_native_receipt = false;')
+          text = replace_once(text, '        if let Some(reason) = reason {\n            excluded_receipts.push(', '''        if let Some(reason) = reason {
+                      if receipt.source == EvidenceSource::Native {
+                          ineligible_native_receipt = true;
+                          // Completion and target-evidence eligibility are separate.
+                          // Missing output still cannot prove worker termination.
+                          if receipt.conclusion != PhaseConclusion::Missing {
+                              settled.insert(receipt.attempt_id.as_str());
+                          }
+                      }
+                      excluded_receipts.push(''')
+          text = replace_once(text, '    // An incompatible receipt does not settle a launch from this experiment.', '    // A matching terminal attempt may settle while its evidence is ineligible.\n    // Missing receipts remain pending; wrong state/commit/tree is rejected above.')
+          text = replace_once(text, '        reason_codes: Vec::new(),', '        reason_codes: if ineligible_native_receipt { vec!["launch_receipt_ineligible".into()] } else { Vec::new() },')
+          path.write_text(text)
+          path = Path('crates/faultline-queue/src/main.rs')
+          text = path.read_text()
+          text = replace_once(text, 'Target: {} / {}\\n\\nRecorded native launches:', 'Target: {} / {}\\n\\nPredicate: {}\\n\\nContext: {}\\n\\nRecorded native launches:')
+          text = replace_once(text, '        safe_text(&report.target.failure_signature),', '        safe_text(&report.target.failure_signature),\n        safe_text(&report.target.predicate_id),\n        safe_text(&report.target.context_id),')
+          old = '''                if let ChangeUnit::PullRequest {
+                              repository, number, ..
+                          } = transition
+                          {
+                              text.push_str(&format!(
+                                  "\\nIntroduced PR: {} #{}.\\n",
+                                  safe_text(repository),
+                                  number
+                              ));
+                          }'''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines())
+          # Match the exact formatted source rather than accepting an ambiguous replacement.
+          start = text.index('                if let ChangeUnit::PullRequest {')
+          end = text.index('\n            }\n            faultline_integration::IntegrationOutcome::SuspectTransitions', start)
+          old = text[start:end]
+          new = '''                match transition {
+                              ChangeUnit::PullRequest { provider, repository, number, head } => {
+                                  text.push_str(&format!(
+                                      "\\nIntroduced PR: {} / {} #{} at captured head {}.\\n",
+                                      safe_text(provider), safe_text(repository), number, safe_text(&head.0)
+                                  ));
+                              }
+                              ChangeUnit::Commit { repository, commit } => {
+                                  text.push_str(&format!(
+                                      "\\nIntroduced commit: {} at {}.\\n", safe_text(repository), safe_text(&commit.0)
+                                  ));
+                              }
+                          }'''
+          text = replace_once(text, old, new)
+          text = replace_once(text, '    for reason in &report.reason_codes {', '''    for attempt in &report.pending_attempts {
+                  text.push_str(&format!("\\nPending attempt: {}.\\n", safe_text(attempt)));
+              }
+              for receipt in &report.excluded_receipts {
+                  text.push_str(&format!("\\nExcluded receipt: {}: {}.\\n", safe_text(&receipt.attempt_id), safe_text(&receipt.reason)));
+              }
+              for reason in &report.reason_codes {''')
+          path.write_text(text)
+          path = Path('docs/queue-diagnosis.md')
+          path.write_text(path.read_text() + '''\n## Completed but ineligible work\n\nA structurally valid terminal native receipt that matches its charged attempt,\nstate, commit and tree settles that launch even when snapshot, phase, predicate,\ncontext or equivalence makes its evidence unusable. It remains charged and\nlisted under excluded receipts, with `launch_receipt_ineligible` in the report.\nIt contributes no passing/failing vote. A fresh retry is a new charged attempt,\nnot a rewritten receipt. `Missing` remains pending even when excluded. A receipt\nfor a different charged state, commit or tree is still an integrity error.\n\nInput and report JSON Schemas constrain `schema_version` to the runtime's exact\n`SCHEMA_VERSION`. Markdown includes the predicate and context, the captured PR\nprovider/head or commit identity, and the IDs/reasons for blocked or excluded\nevidence. These identifiers are escaped for markup, not certified secret-free.\n''')
+          path = Path('docs/scenarios/scenario_index.md')
+          text = path.read_text()
+          names = re.findall(r'#\[test\]\s*fn\s+(\w+)', Path('crates/faultline-queue/tests/review_contract.rs').read_text())
+          rows = [f'| `{name}` | {name.replace("_", " ")} | External review counterexample | faultline-queue | Native and CLI contract | Completion, version and exact operator identity | #64 #85 #91 #92 | app | queue-localization | diagnosis v0.1 | faultline-queue | P0 | faultline-queue | no |' for name in names]
+          path.write_text(text.rstrip() + '\n\n## External queue review contracts\n\n| Test | Problem | Fixture | Crate | Artifact | Invariant | References | Tier | Requirement | Contract | Mutation surface | Priority | Owner | Human review |\n|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n' + '\n'.join(rows) + '\n')
+          PY
+          cargo fmt --all
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets 2>&1 | tee "$RUNNER_TEMP/queue-external-review/green.log"
+          cargo clippy --no-deps --locked -p faultline-integration -p faultline-queue --all-targets -- -D warnings 2>&1 | tee "$RUNNER_TEMP/queue-external-review/clippy.log"
+      - uses: actions/cache@v4
+        id: tools
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-1.46.1-ripr-0.10.0
+      - name: Install qualification tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version 1.46.1
+          cargo install ripr --locked --version 0.10.0
+      - name: Qualify and package exact candidate
+        run: |
+          test "$(cargo insta --version)" = 'cargo-insta 1.46.1'
+          test "$(ripr --version)" = 'ripr 0.10.0'
+          cargo xtask ci-full 2>&1 | tee "$RUNNER_TEMP/queue-external-review/full.log"
+          cargo xtask badges
+          cargo xtask badges --check
+          cargo fmt --all -- --check
+          git diff --check
+          git add crates/faultline-queue/src/lib.rs crates/faultline-queue/src/main.rs crates/faultline-queue/tests/review_contract.rs docs/queue-diagnosis.md docs/scenarios/scenario_index.md badges/ripr.json
+          git commit -m 'fix(queue): reconcile terminal evidence and complete operator contracts'
+          test "$(git rev-parse HEAD^)" = "$INPUT_SHA"
+          test -z "$(git status --porcelain)"
+          git branch qualified-queue-external-review
+          git bundle create "$RUNNER_TEMP/queue-external-review/candidate.bundle" "$INPUT_SHA"..qualified-queue-external-review
+          git rev-parse HEAD > "$RUNNER_TEMP/queue-external-review/qualified-sha.txt"
+          git diff "$INPUT_SHA" HEAD > "$RUNNER_TEMP/queue-external-review/reviewed.patch"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/queue-external-review/source.tar"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+          if-no-files-found: error
+          retention-days: 14
+  compatibility:
+    needs: qualify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: '1.93.0'
+          - os: windows-latest
+            toolchain: stable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+      - name: Select qualified source
+        run: |
+          git fetch "$RUNNER_TEMP/queue-external-review/candidate.bundle" refs/heads/qualified-queue-external-review:refs/heads/qualified-queue-external-review
+          git checkout --detach qualified-queue-external-review
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Qualify native contracts
+        run: |
+          rustc --version --verbose
+          cargo test --locked -p faultline-integration -p faultline-queue --all-targets
+          git diff --exit-code
+  publish:
+    needs: [qualify, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: queue-external-review
+          path: ${{ runner.temp }}/queue-external-review
+      - name: Publish only the qualified fast-forward
+        run: |
+          git fetch "$RUNNER_TEMP/queue-external-review/candidate.bundle" refs/heads/qualified-queue-external-review:refs/heads/qualified-queue-external-review
+          test "$(git rev-parse qualified-queue-external-review^)" = "$INPUT_SHA"
+          python3 - <<'PY'
+          import os, subprocess
+          allowed = {'crates/faultline-queue/src/lib.rs', 'crates/faultline-queue/src/main.rs', 'crates/faultline-queue/tests/review_contract.rs', 'docs/queue-diagnosis.md', 'docs/scenarios/scenario_index.md', 'badges/ripr.json'}
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only', os.environ['INPUT_SHA'], 'qualified-queue-external-review']).decode().splitlines())
+          assert changed <= allowed, changed
+          PY
+          current=$(git ls-remote origin refs/heads/feat/queue-evidence-diagnosis | cut -f1)
+          test "$current" = "$INPUT_SHA"
+          git push origin qualified-queue-external-review:refs/heads/feat/queue-evidence-diagnosis
