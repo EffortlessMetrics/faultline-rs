@@ -283,7 +283,11 @@ impl IntegrationSequence {
     pub fn revision_sequence(&self) -> Result<RevisionSequence> {
         self.validate()?;
         Ok(RevisionSequence {
-            revisions: self.states.iter().map(|state| state.commit.clone()).collect(),
+            revisions: self
+                .states
+                .iter()
+                .map(|state| state.commit.clone())
+                .collect(),
         })
     }
 
@@ -357,9 +361,11 @@ impl IntegrationSequence {
         let mut reasons = Self::map_reasons(core_reasons);
         // A weak predicate minimum does not authorize an exact provider-bound claim.
         let minimum = required_equivalence.max(StateEquivalence::ExactTree);
-        for state in self.states.iter().filter(|s| {
-            s.ordinal >= lower_state.ordinal && s.ordinal <= upper_state.ordinal
-        }) {
+        for state in self
+            .states
+            .iter()
+            .filter(|s| s.ordinal >= lower_state.ordinal && s.ordinal <= upper_state.ordinal)
+        {
             if !state.equivalence.satisfies(minimum) {
                 reasons.push(IntegrationAmbiguityReason::InsufficientStateEquivalence {
                     ordinal: state.ordinal,
@@ -388,12 +394,13 @@ impl IntegrationSequence {
                 });
             }
             if reasons.is_empty() {
-                let transition = upper_state
-                    .transition
-                    .clone()
-                    .ok_or(IntegrationError::MissingTransition {
-                        ordinal: upper_state.ordinal,
-                    })?;
+                let transition =
+                    upper_state
+                        .transition
+                        .clone()
+                        .ok_or(IntegrationError::MissingTransition {
+                            ordinal: upper_state.ordinal,
+                        })?;
                 return Ok(IntegrationOutcome::FirstFailingTransition {
                     last_passing: lower_state.into(),
                     first_failing: upper_state.into(),

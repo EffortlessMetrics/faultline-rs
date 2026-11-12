@@ -200,3 +200,7 @@ cargo insta review
 | Verification Matrix | [docs/verification-matrix.md](docs/verification-matrix.md) | Per-crate verification techniques |
 | Architecture | [docs/architecture.md](docs/architecture.md) | Hexagonal architecture and crate boundaries |
 | Architecture Handbook | [docs/handbook/README.md](docs/handbook/README.md) | Entry point for architecture understanding |
+
+## Native queue diagnosis
+
+See [docs/queue-diagnosis.md](docs/queue-diagnosis.md). `faultline-queue` is an offline evidence application, not a predicate executor or queue controller. Verify its contracts with `cargo test -p faultline-integration -p faultline-queue --all-targets`; use `cargo run -p faultline-queue -- demo` for explicitly synthetic input. Unresolved diagnosis exits 2, not success.

@@ -4,6 +4,7 @@ members = [
   "crates/faultline-types",
   "crates/faultline-localization",
   "crates/faultline-integration",
+  "crates/faultline-queue",
   "crates/faultline-surface",
   "crates/faultline-ports",
   "crates/faultline-app",

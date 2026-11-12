@@ -189,7 +189,9 @@ fn invalid(message: impl Into<String>) -> DiagnosisError {
 
 fn identifier(value: &str, field: &str) -> Result<()> {
     if value.trim().is_empty() || value.len() > 1024 || value.chars().any(char::is_control) {
-        return Err(invalid(format!("{field} must be a nonempty bounded identifier")));
+        return Err(invalid(format!(
+            "{field} must be a nonempty bounded identifier"
+        )));
     }
     Ok(())
 }
@@ -222,7 +224,11 @@ fn validate_receipt(receipt: &PhaseReceipt) -> Result<()> {
         }
         PhaseConclusion::Operational | PhaseConclusion::Cancelled | PhaseConclusion::Missing
             if receipt.failure_signature.is_none() => {}
-        _ => return Err(invalid("phase conclusion contradicts its exit code or signature")),
+        _ => {
+            return Err(invalid(
+                "phase conclusion contradicts its exit code or signature",
+            ));
+        }
     }
     Ok(())
 }
@@ -286,7 +292,10 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
     let mut settled = BTreeSet::new();
     let mut provider_receipts = 0;
     let mut native_receipts = 0;
-    let minimum = input.policy.required_equivalence.max(StateEquivalence::ExactTree);
+    let minimum = input
+        .policy
+        .required_equivalence
+        .max(StateEquivalence::ExactTree);
     for receipt in receipts.values() {
         match receipt.source {
             EvidenceSource::Native => {
@@ -303,7 +312,9 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
             }
             EvidenceSource::Provider => {
                 if launches.contains_key(receipt.attempt_id.as_str()) {
-                    return Err(invalid("native launch cannot be relabeled as provider evidence"));
+                    return Err(invalid(
+                        "native launch cannot be relabeled as provider evidence",
+                    ));
                 }
                 provider_receipts += 1;
             }
@@ -344,7 +355,12 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
         .iter()
         .map(|state| {
             let attempts = eligible.get(&state.ordinal).cloned().unwrap_or_default();
-            summarize(state.into(), &attempts, &input.target, input.policy.minimum_attempts)
+            summarize(
+                state.into(),
+                &attempts,
+                &input.target,
+                input.policy.minimum_attempts,
+            )
         })
         .collect();
     // An incompatible receipt does not settle a launch from this experiment.
@@ -376,7 +392,9 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
         ],
     };
     if input.sequence.provider == "synthetic" {
-        report.limitations.push("Synthetic demonstration input, not live queue evidence.".into());
+        report
+            .limitations
+            .push("Synthetic demonstration input, not live queue evidence.".into());
     }
     plan(input, &mut report)?;
     Ok(report)
@@ -402,7 +420,8 @@ fn summarize(
         match receipt.conclusion {
             PhaseConclusion::Passed => summary.passing_attempts += 1,
             PhaseConclusion::Failed
-                if receipt.failure_signature.as_deref() == Some(target.failure_signature.as_str()) =>
+                if receipt.failure_signature.as_deref()
+                    == Some(target.failure_signature.as_str()) =>
             {
                 summary.target_failures += 1;
             }
@@ -433,9 +452,14 @@ fn propose(report: &mut DiagnosisReport, ordinal: usize, reason: &str) -> Result
         .states
         .get(ordinal)
         .ok_or_else(|| invalid("probe plan ordinal is out of bounds"))?;
-    let minimum = report.policy.required_equivalence.max(StateEquivalence::ExactTree);
+    let minimum = report
+        .policy
+        .required_equivalence
+        .max(StateEquivalence::ExactTree);
     if !state.state.equivalence.satisfies(minimum) {
-        report.reason_codes.push("insufficient_state_equivalence".into());
+        report
+            .reason_codes
+            .push("insufficient_state_equivalence".into());
     } else if !report.pending_attempts.is_empty() {
         report.status = DiagnosisStatus::AwaitingEvidence;
         report.reason_codes.push("pending_launch_receipts".into());
@@ -482,7 +506,9 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             },
             input.policy.required_equivalence,
         )?);
-        report.reason_codes.push("non_monotonic_target_evidence".into());
+        report
+            .reason_codes
+            .push("non_monotonic_target_evidence".into());
         return Ok(());
     }
     let last = report.states.len().saturating_sub(1);
@@ -493,7 +519,9 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
     match head.evidence {
         StateEvidence::Passing => {
             report.status = DiagnosisStatus::NoTargetFailure;
-            report.reason_codes.push("target_not_reproduced_at_head".into());
+            report
+                .reason_codes
+                .push("target_not_reproduced_at_head".into());
             return Ok(());
         }
         StateEvidence::Unobserved | StateEvidence::Incomplete => {
@@ -505,7 +533,10 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             return Ok(());
         }
     }
-    let base = report.states.first().ok_or_else(|| invalid("missing base"))?;
+    let base = report
+        .states
+        .first()
+        .ok_or_else(|| invalid("missing base"))?;
     match base.evidence {
         StateEvidence::Passing => {}
         StateEvidence::Unobserved | StateEvidence::Incomplete => {
@@ -520,10 +551,21 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             return Ok(());
         }
     }
-    let has_unstable = report.states.iter().any(|s| s.evidence == StateEvidence::Unstable);
+    let has_unstable = report
+        .states
+        .iter()
+        .any(|s| s.evidence == StateEvidence::Unstable);
     if has_unstable {
-        let base = input.sequence.states.first().ok_or_else(|| invalid("missing base"))?;
-        let head = input.sequence.states.last().ok_or_else(|| invalid("missing head"))?;
+        let base = input
+            .sequence
+            .states
+            .first()
+            .ok_or_else(|| invalid("missing base"))?;
+        let head = input
+            .sequence
+            .states
+            .last()
+            .ok_or_else(|| invalid("missing head"))?;
         report.status = DiagnosisStatus::Suspect;
         report.outcome = Some(input.sequence.map_localization_outcome(
             &LocalizationOutcome::SuspectWindow {
@@ -556,8 +598,16 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
     } else {
         LocalizationBasis::Unspecified
     };
-    let low_state = input.sequence.states.get(lower).ok_or_else(|| invalid("missing lower state"))?;
-    let high_state = input.sequence.states.get(upper).ok_or_else(|| invalid("missing upper state"))?;
+    let low_state = input
+        .sequence
+        .states
+        .get(lower)
+        .ok_or_else(|| invalid("missing lower state"))?;
+    let high_state = input
+        .sequence
+        .states
+        .get(upper)
+        .ok_or_else(|| invalid("missing upper state"))?;
     let clean_adjacent = upper == lower + 1;
     let outcome = if clean_adjacent {
         LocalizationOutcome::FirstBad {
@@ -578,7 +628,10 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
         input.policy.required_equivalence,
         basis,
     )?);
-    report.status = if matches!(report.outcome, Some(IntegrationOutcome::FirstFailingTransition { .. })) {
+    report.status = if matches!(
+        report.outcome,
+        Some(IntegrationOutcome::FirstFailingTransition { .. })
+    ) {
         DiagnosisStatus::Localized
     } else {
         DiagnosisStatus::Suspect
@@ -620,17 +673,26 @@ fn plan(input: &DiagnosisInput, report: &mut DiagnosisReport) -> Result<()> {
             })?;
         }
         session.next_probe().and_then(|commit| {
-            input.sequence.states.iter().position(|state| state.commit == commit)
+            input
+                .sequence
+                .states
+                .iter()
+                .position(|state| state.commit == commit)
         })
     } else {
         report.states.iter().take(upper).position(|s| {
-            matches!(s.evidence, StateEvidence::Unobserved | StateEvidence::Incomplete)
+            matches!(
+                s.evidence,
+                StateEvidence::Unobserved | StateEvidence::Incomplete
+            )
         })
     };
     if let Some(ordinal) = candidate {
         propose(report, ordinal, "narrow_target_transition")?;
     } else {
-        report.reason_codes.push("interior_evidence_ineligible".into());
+        report
+            .reason_codes
+            .push("interior_evidence_ineligible".into());
     }
     Ok(())
 }

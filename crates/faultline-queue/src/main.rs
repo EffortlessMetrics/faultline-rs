@@ -18,7 +18,10 @@ use std::process::ExitCode;
 const MAX_INPUT_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Parser)]
-#[command(version, about = "Replay captured queue evidence; plan, never execute, probes")]
+#[command(
+    version,
+    about = "Replay captured queue evidence; plan, never execute, probes"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -69,7 +72,11 @@ fn main() -> ExitCode {
 
 fn run() -> Result<u8, Box<dyn std::error::Error>> {
     match Cli::parse().command {
-        Command::Diagnose { input, output, format } => {
+        Command::Diagnose {
+            input,
+            output,
+            format,
+        } => {
             let file = File::open(input)?;
             let mut bytes = Vec::new();
             file.take(MAX_INPUT_BYTES + 1).read_to_end(&mut bytes)?;
@@ -99,11 +106,19 @@ fn run() -> Result<u8, Box<dyn std::error::Error>> {
                 SchemaKind::Input => schemars::schema_for!(DiagnosisInput),
                 SchemaKind::Report => schemars::schema_for!(DiagnosisReport),
             };
-            writeln!(io::stdout().lock(), "{}", serde_json::to_string_pretty(&schema)?)?;
+            writeln!(
+                io::stdout().lock(),
+                "{}",
+                serde_json::to_string_pretty(&schema)?
+            )?;
             Ok(0)
         }
         Command::Demo => {
-            writeln!(io::stdout().lock(), "{}", serde_json::to_string_pretty(&demo()?)?)?;
+            writeln!(
+                io::stdout().lock(),
+                "{}",
+                serde_json::to_string_pretty(&demo()?)?
+            )?;
             Ok(0)
         }
     }
@@ -140,21 +155,35 @@ fn markdown(report: &DiagnosisReport) -> String {
     if let Some(outcome) = &report.outcome {
         match outcome {
             faultline_integration::IntegrationOutcome::FirstFailingTransition {
-                last_passing, first_failing, transition, basis, ..
+                last_passing,
+                first_failing,
+                transition,
+                basis,
+                ..
             } => {
                 text.push_str(&format!(
                     "\nBoundary: S{} passes; S{} fails. Basis: {:?}.\n",
                     last_passing.ordinal, first_failing.ordinal, basis,
                 ));
-                if let ChangeUnit::PullRequest { repository, number, .. } = transition {
-                    text.push_str(&format!("\nIntroduced PR: {} #{}.\n", safe_text(repository), number));
+                if let ChangeUnit::PullRequest {
+                    repository, number, ..
+                } = transition
+                {
+                    text.push_str(&format!(
+                        "\nIntroduced PR: {} #{}.\n",
+                        safe_text(repository),
+                        number
+                    ));
                 }
             }
             faultline_integration::IntegrationOutcome::SuspectTransitions {
-                lower_bound_exclusive, upper_bound_inclusive, ..
+                lower_bound_exclusive,
+                upper_bound_inclusive,
+                ..
             } => text.push_str(&format!(
                 "\nSuspect transitions: S{} through S{}. No single-PR attribution.\n",
-                lower_bound_exclusive.ordinal.saturating_add(1), upper_bound_inclusive.ordinal,
+                lower_bound_exclusive.ordinal.saturating_add(1),
+                upper_bound_inclusive.ordinal,
             )),
             _ => text.push_str("\nNo supported first-transition attribution.\n"),
         }
@@ -162,14 +191,27 @@ fn markdown(report: &DiagnosisReport) -> String {
     if let Some(plan) = &report.next_probe {
         text.push_str(&format!(
             "\nNext proposed probe: S{}, commit {}, tree {}. This command did not launch it.\n",
-            plan.state.ordinal, safe_text(&plan.state.commit.0), safe_text(&plan.state.tree.0),
+            plan.state.ordinal,
+            safe_text(&plan.state.commit.0),
+            safe_text(&plan.state.tree.0),
         ));
     }
-    text.push_str("\n## Evidence\n\n| State | Classification | Retained attempts |\n|---|---|---:|\n");
+    text.push_str(
+        "\n## Evidence\n\n| State | Classification | Retained attempts |\n|---|---|---:|\n",
+    );
     for state in &report.states {
-        text.push_str(&format!("| S{} | {:?} | {} |\n", state.state.ordinal, state.evidence, state.receipt_ids.len()));
+        text.push_str(&format!(
+            "| S{} | {:?} | {} |\n",
+            state.state.ordinal,
+            state.evidence,
+            state.receipt_ids.len()
+        ));
     }
-    text.push_str(&format!("\nExcluded receipts: {}. Pending launch receipts: {}.\n", report.excluded_receipts.len(), report.pending_attempts.len()));
+    text.push_str(&format!(
+        "\nExcluded receipts: {}. Pending launch receipts: {}.\n",
+        report.excluded_receipts.len(),
+        report.pending_attempts.len()
+    ));
     for reason in &report.reason_codes {
         text.push_str(&format!("\nReason: {}.\n", safe_text(reason)));
     }
@@ -207,7 +249,8 @@ fn demo() -> Result<DiagnosisInput, Box<dyn std::error::Error>> {
             transition,
             equivalence: StateEquivalence::ExactCommit,
             provenance: StateProvenance::Provider {
-                provider: "synthetic".into(), snapshot: snapshot.clone(),
+                provider: "synthetic".into(),
+                snapshot: snapshot.clone(),
             },
         });
     }
@@ -219,26 +262,47 @@ fn demo() -> Result<DiagnosisInput, Box<dyn std::error::Error>> {
         context_id: "synthetic-context-v1".into(),
     };
     let mut receipts = Vec::new();
-    for state in sequence.states.iter().filter(|s| s.ordinal == 0 || s.ordinal == 20) {
+    for state in sequence
+        .states
+        .iter()
+        .filter(|s| s.ordinal == 0 || s.ordinal == 20)
+    {
         let passing = state.ordinal == 0;
         receipts.push(PhaseReceipt {
             attempt_id: format!("synthetic-provider-{}", state.ordinal),
             snapshot_id: sequence.snapshot_id.0.clone(),
-            state_id: state.id.0.clone(), commit: state.commit.0.clone(), tree: state.tree.0.clone(),
-            phase: target.phase.clone(), predicate_id: target.predicate_id.clone(), context_id: target.context_id.clone(),
+            state_id: state.id.0.clone(),
+            commit: state.commit.0.clone(),
+            tree: state.tree.0.clone(),
+            phase: target.phase.clone(),
+            predicate_id: target.predicate_id.clone(),
+            context_id: target.context_id.clone(),
             source: EvidenceSource::Provider,
-            conclusion: if passing { PhaseConclusion::Passed } else { PhaseConclusion::Failed },
+            conclusion: if passing {
+                PhaseConclusion::Passed
+            } else {
+                PhaseConclusion::Failed
+            },
             exit_code: Some(if passing { 0 } else { 1 }),
-            failure_signature: if passing { None } else { Some(target.failure_signature.clone()) },
+            failure_signature: if passing {
+                None
+            } else {
+                Some(target.failure_signature.clone())
+            },
             log_id: "synthetic-no-real-log".into(),
         });
     }
     Ok(DiagnosisInput {
-        schema_version: SCHEMA_VERSION.into(), sequence, target,
+        schema_version: SCHEMA_VERSION.into(),
+        sequence,
+        target,
         policy: DiagnosisPolicy {
-            max_launches: 5, minimum_attempts: 1, assume_monotonic: true,
+            max_launches: 5,
+            minimum_attempts: 1,
+            assume_monotonic: true,
             required_equivalence: StateEquivalence::ExactCommit,
         },
-        launches: Vec::new(), receipts,
+        launches: Vec::new(),
+        receipts,
     })
 }

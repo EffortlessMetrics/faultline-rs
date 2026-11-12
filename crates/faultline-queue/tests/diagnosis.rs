@@ -2,7 +2,9 @@ mod common;
 
 use common::{add, endpoints, packet, receipt};
 use faultline_integration::{IntegrationOutcome, LocalizationBasis, StateEquivalence};
-use faultline_queue::{DiagnosisStatus, EvidenceSource, LaunchRecord, PhaseConclusion, StateEvidence, diagnose};
+use faultline_queue::{
+    DiagnosisStatus, EvidenceSource, LaunchRecord, PhaseConclusion, StateEvidence, diagnose,
+};
 use proptest::prelude::*;
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -19,11 +21,19 @@ fn every_twenty_pr_boundary_needs_at_most_five_midpoint_launches() -> TestResult
                 assert_eq!(plan.maximum_new_launches, 1);
                 assert!(count < 5, "budget exceeded for boundary {failure_at}");
                 count += 1;
-                add(&mut input, plan.state.ordinal, &format!("native-{count}"), plan.state.ordinal < failure_at, EvidenceSource::Native)?;
+                add(
+                    &mut input,
+                    plan.state.ordinal,
+                    &format!("native-{count}"),
+                    plan.state.ordinal < failure_at,
+                    EvidenceSource::Native,
+                )?;
             } else {
                 assert_eq!(report.status, DiagnosisStatus::Localized);
                 match report.outcome {
-                    Some(IntegrationOutcome::FirstFailingTransition { first_failing, .. }) => assert_eq!(first_failing.ordinal, failure_at),
+                    Some(IntegrationOutcome::FirstFailingTransition { first_failing, .. }) => {
+                        assert_eq!(first_failing.ordinal, failure_at)
+                    }
                     other => return Err(format!("wrong outcome: {other:?}").into()),
                 }
                 assert_eq!(report.recorded_launches, count);
@@ -40,13 +50,25 @@ fn all_compatible_prefix_evidence_requires_no_launches() -> TestResult {
     let mut input = packet(20)?;
     input.policy.max_launches = 0;
     for ordinal in 0..=20 {
-        add(&mut input, ordinal, &format!("provider-{ordinal}"), ordinal < 14, EvidenceSource::Provider)?;
+        add(
+            &mut input,
+            ordinal,
+            &format!("provider-{ordinal}"),
+            ordinal < 14,
+            EvidenceSource::Provider,
+        )?;
     }
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::Localized);
     assert_eq!(report.recorded_launches, 0);
     assert!(report.next_probe.is_none());
-    assert!(matches!(report.outcome, Some(IntegrationOutcome::FirstFailingTransition { basis: LocalizationBasis::CompletePrefixObserved, .. })));
+    assert!(matches!(
+        report.outcome,
+        Some(IntegrationOutcome::FirstFailingTransition {
+            basis: LocalizationBasis::CompletePrefixObserved,
+            ..
+        })
+    ));
     Ok(())
 }
 
@@ -60,13 +82,28 @@ fn no_assumption_requires_the_whole_earlier_prefix() -> TestResult {
     add(&mut input, 14, "sample14", false, EvidenceSource::Provider)?;
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::NeedsEvidence);
-    assert_eq!(report.next_probe.ok_or("missing next probe")?.state.ordinal, 1);
+    assert_eq!(
+        report.next_probe.ok_or("missing next probe")?.state.ordinal,
+        1
+    );
     for ordinal in 1..13 {
-        add(&mut input, ordinal, &format!("sample{ordinal}"), true, EvidenceSource::Provider)?;
+        add(
+            &mut input,
+            ordinal,
+            &format!("sample{ordinal}"),
+            true,
+            EvidenceSource::Provider,
+        )?;
     }
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::Localized);
-    assert!(matches!(report.outcome, Some(IntegrationOutcome::FirstFailingTransition { basis: LocalizationBasis::CompletePrefixObserved, .. })));
+    assert!(matches!(
+        report.outcome,
+        Some(IntegrationOutcome::FirstFailingTransition {
+            basis: LocalizationBasis::CompletePrefixObserved,
+            ..
+        })
+    ));
     Ok(())
 }
 
@@ -110,7 +147,15 @@ fn conflicting_attempts_are_not_overwritten_or_majority_voted() -> TestResult {
 
 #[test]
 fn foreign_context_and_target_failures_never_become_boundaries() -> TestResult {
-    for field in ["snapshot", "phase", "predicate", "context", "commit", "tree", "state"] {
+    for field in [
+        "snapshot",
+        "phase",
+        "predicate",
+        "context",
+        "commit",
+        "tree",
+        "state",
+    ] {
         let mut input = packet(20)?;
         endpoints(&mut input)?;
         let mut bad = receipt(&input, 1, "foreign", false, EvidenceSource::Provider)?;
@@ -134,7 +179,10 @@ fn foreign_context_and_target_failures_never_become_boundaries() -> TestResult {
     other.failure_signature = Some("unrelated-assertion".into());
     input.receipts.push(other);
     let report = diagnose(&input)?;
-    assert_eq!(report.states.get(10).ok_or("10")?.evidence, StateEvidence::OtherFailure);
+    assert_eq!(
+        report.states.get(10).ok_or("10")?.evidence,
+        StateEvidence::OtherFailure
+    );
     assert_ne!(report.status, DiagnosisStatus::Localized);
     Ok(())
 }
@@ -144,7 +192,12 @@ fn pending_launch_is_charged_and_blocks_duplicate_work() -> TestResult {
     let mut input = packet(20)?;
     endpoints(&mut input)?;
     let state = input.sequence.states.get(10).ok_or("state")?;
-    input.launches.push(LaunchRecord { attempt_id: "pending".into(), state_id: state.id.0.clone(), commit: state.commit.0.clone(), tree: state.tree.0.clone() });
+    input.launches.push(LaunchRecord {
+        attempt_id: "pending".into(),
+        state_id: state.id.0.clone(),
+        commit: state.commit.0.clone(),
+        tree: state.tree.0.clone(),
+    });
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::AwaitingEvidence);
     assert_eq!(report.recorded_launches, 1);
@@ -158,7 +211,12 @@ fn pending_attempt_blocks_finalization_even_with_an_adjacent_provider_boundary()
     let mut input = packet(1)?;
     endpoints(&mut input)?;
     let state = input.sequence.states.get(1).ok_or("state")?;
-    input.launches.push(LaunchRecord { attempt_id: "pending".into(), state_id: state.id.0.clone(), commit: state.commit.0.clone(), tree: state.tree.0.clone() });
+    input.launches.push(LaunchRecord {
+        attempt_id: "pending".into(),
+        state_id: state.id.0.clone(),
+        commit: state.commit.0.clone(),
+        tree: state.tree.0.clone(),
+    });
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::AwaitingEvidence);
     assert!(report.outcome.is_none());
@@ -168,7 +226,9 @@ fn pending_attempt_blocks_finalization_even_with_an_adjacent_provider_boundary()
 #[test]
 fn native_receipt_requires_the_matching_charged_launch() -> TestResult {
     let mut input = packet(20)?;
-    input.receipts.push(receipt(&input, 10, "unpaid", true, EvidenceSource::Native)?);
+    input
+        .receipts
+        .push(receipt(&input, 10, "unpaid", true, EvidenceSource::Native)?);
     assert!(diagnose(&input).is_err());
     Ok(())
 }
@@ -188,8 +248,12 @@ fn duplicate_attempt_is_idempotent_but_rewritten_attempt_is_invalid() -> TestRes
     endpoints(&mut input)?;
     add(&mut input, 10, "native", true, EvidenceSource::Native)?;
     let once = diagnose(&input)?;
-    input.receipts.push(input.receipts.last().ok_or("receipt")?.clone());
-    input.launches.push(input.launches.last().ok_or("launch")?.clone());
+    input
+        .receipts
+        .push(input.receipts.last().ok_or("receipt")?.clone());
+    input
+        .launches
+        .push(input.launches.last().ok_or("launch")?.clone());
     assert_eq!(diagnose(&input)?, once);
     input.receipts.last_mut().ok_or("receipt")?.log_id = "rewritten".into();
     assert!(diagnose(&input).is_err());
@@ -206,7 +270,11 @@ fn exhausted_budget_preserves_the_supported_window() -> TestResult {
     assert_eq!(report.status, DiagnosisStatus::BudgetExhausted);
     assert!(report.next_probe.is_none());
     match report.outcome {
-        Some(IntegrationOutcome::SuspectTransitions { lower_bound_exclusive, upper_bound_inclusive, .. }) => {
+        Some(IntegrationOutcome::SuspectTransitions {
+            lower_bound_exclusive,
+            upper_bound_inclusive,
+            ..
+        }) => {
             assert_eq!(lower_bound_exclusive.ordinal, 10);
             assert_eq!(upper_bound_inclusive.ordinal, 20);
         }
@@ -226,8 +294,14 @@ fn operational_attempts_are_charged_not_converted_to_code_votes() -> TestResult 
     add(&mut input, 10, "clean", true, EvidenceSource::Native)?;
     let report = diagnose(&input)?;
     assert_eq!(report.recorded_launches, 2);
-    assert_eq!(report.states.get(10).ok_or("state")?.evidence, StateEvidence::Passing);
-    assert_eq!(report.states.get(10).ok_or("state")?.operational_attempts, 1);
+    assert_eq!(
+        report.states.get(10).ok_or("state")?.evidence,
+        StateEvidence::Passing
+    );
+    assert_eq!(
+        report.states.get(10).ok_or("state")?.operational_attempts,
+        1
+    );
     Ok(())
 }
 
@@ -243,7 +317,13 @@ fn stable_sample_requirement_charges_each_retry() -> TestResult {
         let report = diagnose(&input)?;
         if let Some(plan) = report.next_probe {
             assert!(attempt < 10);
-            add(&mut input, plan.state.ordinal, &format!("retry-{attempt}"), plan.state.ordinal < 14, EvidenceSource::Native)?;
+            add(
+                &mut input,
+                plan.state.ordinal,
+                &format!("retry-{attempt}"),
+                plan.state.ordinal < 14,
+                EvidenceSource::Native,
+            )?;
         } else {
             assert_eq!(report.status, DiagnosisStatus::Localized);
             assert_eq!(report.recorded_launches % 2, 0);
@@ -260,7 +340,11 @@ fn baseline_failure_does_not_blame_the_first_queued_pr() -> TestResult {
     add(&mut input, 20, "head", false, EvidenceSource::Provider)?;
     let report = diagnose(&input)?;
     assert_eq!(report.status, DiagnosisStatus::Inconclusive);
-    assert!(report.reason_codes.contains(&"baseline_already_failing".into()));
+    assert!(
+        report
+            .reason_codes
+            .contains(&"baseline_already_failing".into())
+    );
     assert!(report.next_probe.is_none());
     Ok(())
 }
@@ -309,7 +393,10 @@ fn json_roundtrip_is_stable_and_unknown_fields_are_rejected() -> TestResult {
     let decoded = serde_json::from_slice(&encoded)?;
     assert_eq!(diagnose(&decoded)?, before);
     let mut value = serde_json::to_value(input)?;
-    value.as_object_mut().ok_or("object")?.insert("assume_green".into(), serde_json::json!(true));
+    value
+        .as_object_mut()
+        .ok_or("object")?
+        .insert("assume_green".into(), serde_json::json!(true));
     assert!(serde_json::from_value::<faultline_queue::DiagnosisInput>(value).is_err());
     Ok(())
 }

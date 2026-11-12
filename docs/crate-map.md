@@ -60,3 +60,7 @@ Tooling: xtask (+smoke, +docs-check, +check-scenarios, +export-*)
 - `xtask` depends on `faultline-types` for schema generation
 
 See also: [Architecture](architecture.md), [Verification Matrix](verification-matrix.md)
+
+## Queue evidence application
+
+`faultline-queue` validates captured phase receipts, aggregates immutable attempts and plans bounded probes through `faultline-localization`. Its library depends inward on `faultline-integration`, `faultline-types` and `faultline-codes`; its thin binary is the file/JSON/CLI adapter. It does not execute code, contact GitHub or mutate queues. See [queue diagnosis](queue-diagnosis.md).

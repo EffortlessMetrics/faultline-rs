@@ -168,3 +168,7 @@ Git history, checkout creation, probe execution, persistence, artifact rendering
 - Application depends on ports + domain
 - `faultline-integration` depends only on pure `faultline-codes` / `faultline-types` contracts and serialization/error libraries
 - No domain crate imports infrastructure
+
+## Captured queue evidence
+
+The `faultline-queue` application consumes resolved `faultline-integration` sequences and compatible phase evidence. It reuses the localization engine without re-linearizing Git history. Its separate native-launch ledger does not charge reused provider observations. A thin local-file binary exports JSON/Markdown and generated schemas; provider capture, object custody, isolated execution and Check publication remain separate adapters. See [queue diagnosis](queue-diagnosis.md).
