@@ -251,6 +251,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "faultline-integration"
+version = "0.0.1"
+dependencies = [
+ "faultline-codes",
+ "faultline-types",
+ "schemars",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "faultline-junit"
 version = "0.0.1"
 dependencies = [
