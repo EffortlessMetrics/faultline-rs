@@ -1,84 +1,9 @@
-//! Pure domain model for ordered integration sequences.
+//! Pure cumulative-state identities and honest integration-transition mapping.
 //!
-//! Faultline's localization engine searches an ordered sequence of immutable
-//! candidate commits. This crate retains the integration meaning around that
-//! sequence: which cumulative changes each state contains, which change unit
-//! was introduced at each transition, and how strongly a reconstructed state
-//! matches the provider state it represents.
-//!
-//! The crate performs no Git, filesystem, process, network, or provider I/O.
-//!
-//! # Example
-//!
-//! ```
-//! use faultline_codes::AmbiguityReason;
-//! use faultline_integration::{
-//!     ChangeUnit, IntegrationOutcome, IntegrationSequence, IntegrationSnapshotId,
-//!     IntegrationState, IntegrationStateId, StateEquivalence, StateProvenance, TreeId,
-//! };
-//! use faultline_types::{CommitId, Confidence, LocalizationOutcome};
-//!
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let base = CommitId("base".into());
-//! let head = CommitId("head".into());
-//! let pull_request = ChangeUnit::PullRequest {
-//!     provider: "github".into(),
-//!     repository: "example/repo".into(),
-//!     number: 14,
-//!     head: CommitId("pr-head".into()),
-//! };
-//!
-//! let sequence = IntegrationSequence::try_new(
-//!     "github",
-//!     IntegrationSnapshotId("incident-1".into()),
-//!     vec![
-//!         IntegrationState {
-//!             id: IntegrationStateId("S0".into()),
-//!             ordinal: 0,
-//!             commit: base.clone(),
-//!             tree: TreeId("tree-0".into()),
-//!             included_changes: vec![],
-//!             transition: None,
-//!             equivalence: StateEquivalence::ExactCommit,
-//!             provenance: StateProvenance::Provider {
-//!                 provider: "github".into(),
-//!                 snapshot: IntegrationSnapshotId("incident-1".into()),
-//!             },
-//!         },
-//!         IntegrationState {
-//!             id: IntegrationStateId("S1".into()),
-//!             ordinal: 1,
-//!             commit: head.clone(),
-//!             tree: TreeId("tree-1".into()),
-//!             included_changes: vec![pull_request.clone()],
-//!             transition: Some(pull_request.clone()),
-//!             equivalence: StateEquivalence::ExactCommit,
-//!             provenance: StateProvenance::Provider {
-//!                 provider: "github".into(),
-//!                 snapshot: IntegrationSnapshotId("incident-1".into()),
-//!             },
-//!         },
-//!     ],
-//! )?;
-//!
-//! let result = sequence.map_localization_outcome(
-//!     &LocalizationOutcome::FirstBad {
-//!         last_good: base,
-//!         first_bad: head,
-//!         confidence: Confidence::high(),
-//!     },
-//!     StateEquivalence::ExactTree,
-//! )?;
-//!
-//! assert!(matches!(
-//!     result,
-//!     IntegrationOutcome::FirstFailingTransition { transition, .. }
-//!         if transition == pull_request
-//! ));
-//! let _ = AmbiguityReason::NeedsMoreProbes;
-//! # Ok(())
-//! # }
-//! ```
+//! No Git, process, filesystem, network or provider I/O belongs here. Adapters
+//! establish object provenance; this crate checks internal consistency. A
+//! sampled boundary is not the *first* boundary without an explicit search
+//! basis. The default mapping therefore produces a suspect result.
 
 #![forbid(unsafe_code)]
 
@@ -89,81 +14,76 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use thiserror::Error;
 
-/// Result type for integration-sequence validation and outcome mapping.
 pub type Result<T> = std::result::Result<T, IntegrationError>;
 
-/// Stable provider-neutral identity for one captured integration snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct IntegrationSnapshotId(pub String);
 
-/// Stable identity for one candidate state inside an integration sequence.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct IntegrationStateId(pub String);
 
-/// Git tree identity associated with an integration state.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub struct TreeId(pub String);
 
-/// One provider-neutral unit introduced between adjacent integration states.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 pub enum ChangeUnit {
-    /// A pull request at one immutable head commit.
     PullRequest {
         provider: String,
         repository: String,
         number: u64,
         head: CommitId,
     },
-    /// A raw commit transition for providers without pull-request identity.
     Commit {
         repository: String,
         commit: CommitId,
     },
 }
 
-/// Proven relationship between a candidate and the provider state it models.
-///
-/// Declaration order is weakest to strongest so ordinary ordering operations
-/// can compare whether an actual state satisfies a required minimum.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 pub enum StateEquivalence {
-    /// No provider equivalence has been established.
     Unverified,
-    /// A bounded patch-equivalence policy passed, but tree identity differs.
     PatchEquivalent,
-    /// Repository bytes match exactly while commit metadata or history differs.
     ExactTree,
-    /// Commit and tree identity both match the provider state.
     ExactCommit,
 }
 
 impl StateEquivalence {
-    /// Return whether this actual equivalence satisfies a predicate's minimum.
     #[must_use]
     pub fn satisfies(self, required: Self) -> bool {
         self >= required
     }
 }
 
-/// Source of one integration state.
+/// The caller must establish this basis from its policy or complete evidence.
+/// A monotonicity assumption is recorded, never silently treated as proof.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum LocalizationBasis {
+    #[default]
+    Unspecified,
+    MonotonicTargetAssumed,
+    CompletePrefixObserved,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum StateProvenance {
-    /// Exact state retained from an integration provider.
     Provider {
         provider: String,
         snapshot: IntegrationSnapshotId,
     },
-    /// State reconstructed from retained immutable inputs.
     Reconstructed {
         builder: String,
         source_snapshot: IntegrationSnapshotId,
+        /// Independently retained tree for this same cumulative prefix.
+        /// Matching the final group tree does not witness an earlier prefix.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider_tree: Option<TreeId>,
     },
 }
 
-/// One cumulative candidate in an ordered integration experiment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct IntegrationState {
     pub id: IntegrationStateId,
     pub ordinal: usize,
@@ -175,7 +95,6 @@ pub struct IntegrationState {
     pub provenance: StateProvenance,
 }
 
-/// Compact state identity embedded in an integration-facing outcome.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct IntegrationStateRef {
     pub id: IntegrationStateId,
@@ -197,8 +116,8 @@ impl From<&IntegrationState> for IntegrationStateRef {
     }
 }
 
-/// Ordered cumulative integration states supplied by a provider adapter.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct IntegrationSequence {
     pub provider: String,
     pub snapshot_id: IntegrationSnapshotId,
@@ -206,7 +125,6 @@ pub struct IntegrationSequence {
 }
 
 impl IntegrationSequence {
-    /// Construct and validate an integration sequence.
     pub fn try_new(
         provider: impl Into<String>,
         snapshot_id: IntegrationSnapshotId,
@@ -221,7 +139,6 @@ impl IntegrationSequence {
         Ok(sequence)
     }
 
-    /// Validate ordering, identity and cumulative-membership invariants.
     pub fn validate(&self) -> Result<()> {
         if self.provider.trim().is_empty() {
             return Err(IntegrationError::EmptyProvider);
@@ -234,236 +151,224 @@ impl IntegrationSequence {
                 actual: self.states.len(),
             });
         }
-
-        let mut seen_state_ids = HashSet::new();
-        let mut seen_commits = HashSet::new();
+        let mut state_ids = HashSet::new();
+        let mut commits = HashSet::new();
+        let mut changes = HashSet::new();
+        let mut repository: Option<&str> = None;
         let mut previous: Option<&IntegrationState> = None;
-
-        for (expected_ordinal, state) in self.states.iter().enumerate() {
+        for (ordinal, state) in self.states.iter().enumerate() {
             if state.id.0.trim().is_empty() {
-                return Err(IntegrationError::EmptyStateId {
-                    ordinal: expected_ordinal,
-                });
+                return Err(IntegrationError::EmptyStateId { ordinal });
             }
             if state.commit.0.trim().is_empty() {
-                return Err(IntegrationError::EmptyCommit {
-                    ordinal: expected_ordinal,
-                });
+                return Err(IntegrationError::EmptyCommit { ordinal });
             }
             if state.tree.0.trim().is_empty() {
-                return Err(IntegrationError::EmptyTree {
-                    ordinal: expected_ordinal,
-                });
+                return Err(IntegrationError::EmptyTree { ordinal });
             }
-            if state.ordinal != expected_ordinal {
+            if state.ordinal != ordinal {
                 return Err(IntegrationError::OrdinalMismatch {
-                    expected: expected_ordinal,
+                    expected: ordinal,
                     actual: state.ordinal,
                 });
             }
-            if !seen_state_ids.insert(state.id.clone()) {
+            if !state_ids.insert(&state.id) {
                 return Err(IntegrationError::DuplicateStateId {
                     state_id: state.id.0.clone(),
                 });
             }
-            if !seen_commits.insert(state.commit.clone()) {
+            if !commits.insert(&state.commit) {
                 return Err(IntegrationError::DuplicateCommit {
                     commit: state.commit.0.clone(),
                 });
             }
-
-            Self::validate_unique_changes(state)?;
-
-            match previous {
-                None => {
-                    if state.transition.is_some() {
-                        return Err(IntegrationError::BaseHasTransition);
-                    }
-                    if !state.included_changes.is_empty() {
-                        return Err(IntegrationError::BaseHasIncludedChanges);
-                    }
+            self.validate_provenance(state)?;
+            if let Some(prior) = previous {
+                let transition = state
+                    .transition
+                    .as_ref()
+                    .ok_or(IntegrationError::MissingTransition { ordinal })?;
+                let (repo, identity) = self.change_identity(transition, ordinal)?;
+                if repository.is_some_and(|expected| expected != repo) {
+                    return Err(IntegrationError::InvalidChange { ordinal });
                 }
-                Some(previous_state) => {
-                    let transition =
-                        state
-                            .transition
-                            .as_ref()
-                            .ok_or(IntegrationError::MissingTransition {
-                                ordinal: state.ordinal,
-                            })?;
-                    if previous_state.included_changes.contains(transition) {
-                        return Err(IntegrationError::RepeatedTransition {
-                            ordinal: state.ordinal,
-                        });
-                    }
-
-                    let mut expected_changes = previous_state.included_changes.clone();
-                    expected_changes.push(transition.clone());
-                    if state.included_changes != expected_changes {
-                        return Err(IntegrationError::NonCumulativeState {
-                            ordinal: state.ordinal,
-                        });
-                    }
+                repository = Some(repo);
+                if !changes.insert(identity) {
+                    return Err(IntegrationError::RepeatedTransition { ordinal });
+                }
+                if state.included_changes.len() != prior.included_changes.len() + 1
+                    || !state.included_changes.starts_with(&prior.included_changes)
+                    || state.included_changes.last() != Some(transition)
+                {
+                    return Err(IntegrationError::NonCumulativeState { ordinal });
+                }
+            } else {
+                if state.transition.is_some() {
+                    return Err(IntegrationError::BaseHasTransition);
+                }
+                if !state.included_changes.is_empty() {
+                    return Err(IntegrationError::BaseHasIncludedChanges);
                 }
             }
-
             previous = Some(state);
         }
-
         Ok(())
     }
 
-    /// Number of cumulative states, including the base state.
+    fn validate_provenance(&self, state: &IntegrationState) -> Result<()> {
+        let ordinal = state.ordinal;
+        match &state.provenance {
+            StateProvenance::Provider { provider, snapshot } => {
+                if provider != &self.provider || snapshot != &self.snapshot_id {
+                    return Err(IntegrationError::ProvenanceMismatch { ordinal });
+                }
+            }
+            StateProvenance::Reconstructed {
+                builder,
+                source_snapshot,
+                provider_tree,
+            } => {
+                if builder.trim().is_empty() || source_snapshot != &self.snapshot_id {
+                    return Err(IntegrationError::ProvenanceMismatch { ordinal });
+                }
+                if state.equivalence == StateEquivalence::ExactCommit
+                    || (state.equivalence == StateEquivalence::ExactTree
+                        && provider_tree.as_ref() != Some(&state.tree))
+                {
+                    return Err(IntegrationError::MissingEquivalenceWitness { ordinal });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn change_identity<'a>(
+        &self,
+        change: &'a ChangeUnit,
+        ordinal: usize,
+    ) -> Result<(&'a str, String)> {
+        match change {
+            ChangeUnit::PullRequest {
+                provider,
+                repository,
+                number,
+                head,
+            } if provider == &self.provider
+                && !repository.trim().is_empty()
+                && *number > 0
+                && !head.0.trim().is_empty() =>
+            {
+                // Head changes do not make a second occurrence of the same PR valid.
+                Ok((repository, format!("pr:{number}")))
+            }
+            ChangeUnit::Commit { repository, commit }
+                if !repository.trim().is_empty() && !commit.0.trim().is_empty() =>
+            {
+                Ok((repository, format!("commit:{}", commit.0)))
+            }
+            _ => Err(IntegrationError::InvalidChange { ordinal }),
+        }
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         self.states.len()
     }
 
-    /// Whether this sequence contains no states.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.states.is_empty()
     }
 
-    /// Convert the validated integration sequence into localization candidates.
     pub fn revision_sequence(&self) -> Result<RevisionSequence> {
         self.validate()?;
         Ok(RevisionSequence {
-            revisions: self
-                .states
-                .iter()
-                .map(|state| state.commit.clone())
-                .collect(),
+            revisions: self.states.iter().map(|state| state.commit.clone()).collect(),
         })
     }
 
-    /// Map a provider-neutral localization result back to integration states and
-    /// transition units.
+    /// Conservative compatibility entry point: no unstated monotonicity assumption.
     pub fn map_localization_outcome(
         &self,
         outcome: &LocalizationOutcome,
         required_equivalence: StateEquivalence,
     ) -> Result<IntegrationOutcome> {
-        self.validate()?;
+        self.map_localization_outcome_with_basis(
+            outcome,
+            required_equivalence,
+            LocalizationBasis::Unspecified,
+        )
+    }
 
-        match outcome {
+    pub fn map_localization_outcome_with_basis(
+        &self,
+        outcome: &LocalizationOutcome,
+        required_equivalence: StateEquivalence,
+        basis: LocalizationBasis,
+    ) -> Result<IntegrationOutcome> {
+        self.validate()?;
+        let (lower, upper, confidence, core_reasons, nominal_first) = match outcome {
             LocalizationOutcome::FirstBad {
                 last_good,
                 first_bad,
                 confidence,
-            } => self.map_first_bad(last_good, first_bad, confidence, required_equivalence),
+            } => (last_good, first_bad, confidence, &[][..], true),
             LocalizationOutcome::SuspectWindow {
                 lower_bound_exclusive,
                 upper_bound_inclusive,
                 confidence,
                 reasons,
-            } => self.map_suspect_window(
+            } => (
                 lower_bound_exclusive,
                 upper_bound_inclusive,
                 confidence,
-                reasons,
-                required_equivalence,
+                reasons.as_slice(),
+                false,
             ),
             LocalizationOutcome::Inconclusive { reasons } => {
-                let mapped_reasons = reasons
-                    .iter()
-                    .cloned()
-                    .map(IntegrationAmbiguityReason::Localization)
-                    .collect::<Vec<_>>();
-                if Self::contains_non_monotonic(reasons) {
-                    Ok(IntegrationOutcome::NonMonotonic {
+                let mapped = Self::map_reasons(reasons);
+                return Ok(if Self::non_monotonic(reasons) {
+                    IntegrationOutcome::NonMonotonic {
                         lower_bound_exclusive: None,
                         upper_bound_inclusive: None,
                         transitions: Vec::new(),
                         confidence: None,
-                        reasons: mapped_reasons,
-                    })
+                        reasons: mapped,
+                    }
                 } else {
-                    Ok(IntegrationOutcome::Inconclusive {
-                        reasons: mapped_reasons,
-                    })
-                }
-            }
-        }
-    }
-
-    fn validate_unique_changes(state: &IntegrationState) -> Result<()> {
-        let mut seen = HashSet::new();
-        for change in &state.included_changes {
-            if !seen.insert(change) {
-                return Err(IntegrationError::DuplicateIncludedChange {
-                    ordinal: state.ordinal,
+                    IntegrationOutcome::Inconclusive { reasons: mapped }
                 });
             }
-        }
-        Ok(())
-    }
-
-    fn map_first_bad(
-        &self,
-        last_good: &CommitId,
-        first_bad: &CommitId,
-        confidence: &Confidence,
-        required_equivalence: StateEquivalence,
-    ) -> Result<IntegrationOutcome> {
-        let (lower_index, upper_index, lower_state, upper_state) =
-            self.resolve_window(last_good, first_bad)?;
-        let transitions = self.transitions_between(lower_index, upper_index)?;
-        let boundary_equivalence = lower_state.equivalence.min(upper_state.equivalence);
-
-        let mut reasons = self.equivalence_reasons(lower_index, upper_index, required_equivalence);
-        if upper_index != lower_index + 1 {
-            reasons.push(IntegrationAmbiguityReason::NonAdjacentBoundary {
+        };
+        let lower_state = self.boundary(lower)?;
+        let upper_state = self.boundary(upper)?;
+        if upper_state.ordinal <= lower_state.ordinal {
+            return Err(IntegrationError::InvalidBoundaryOrder {
                 lower_ordinal: lower_state.ordinal,
                 upper_ordinal: upper_state.ordinal,
             });
         }
-
-        if reasons.is_empty() {
-            let transition =
-                upper_state
-                    .transition
-                    .clone()
-                    .ok_or(IntegrationError::MissingTransition {
-                        ordinal: upper_state.ordinal,
-                    })?;
-            return Ok(IntegrationOutcome::FirstFailingTransition {
-                last_passing: lower_state.into(),
-                first_failing: upper_state.into(),
-                transition,
-                boundary_equivalence,
-                confidence: confidence.clone(),
-            });
-        }
-
-        Ok(IntegrationOutcome::SuspectTransitions {
-            lower_bound_exclusive: lower_state.into(),
-            upper_bound_inclusive: upper_state.into(),
-            transitions,
-            confidence: confidence.clone(),
-            reasons,
-        })
-    }
-
-    fn map_suspect_window(
-        &self,
-        lower: &CommitId,
-        upper: &CommitId,
-        confidence: &Confidence,
-        core_reasons: &[AmbiguityReason],
-        required_equivalence: StateEquivalence,
-    ) -> Result<IntegrationOutcome> {
-        let (lower_index, upper_index, lower_state, upper_state) =
-            self.resolve_window(lower, upper)?;
-        let transitions = self.transitions_between(lower_index, upper_index)?;
-        let mut reasons = core_reasons
+        let transitions = self
+            .states
             .iter()
-            .cloned()
-            .map(IntegrationAmbiguityReason::Localization)
-            .collect::<Vec<_>>();
-        reasons.extend(self.equivalence_reasons(lower_index, upper_index, required_equivalence));
-
-        if Self::contains_non_monotonic(core_reasons) {
+            .filter(|s| s.ordinal > lower_state.ordinal && s.ordinal <= upper_state.ordinal)
+            .filter_map(|s| s.transition.clone())
+            .collect();
+        let mut reasons = Self::map_reasons(core_reasons);
+        // A weak predicate minimum does not authorize an exact provider-bound claim.
+        let minimum = required_equivalence.max(StateEquivalence::ExactTree);
+        for state in self.states.iter().filter(|s| {
+            s.ordinal >= lower_state.ordinal && s.ordinal <= upper_state.ordinal
+        }) {
+            if !state.equivalence.satisfies(minimum) {
+                reasons.push(IntegrationAmbiguityReason::InsufficientStateEquivalence {
+                    ordinal: state.ordinal,
+                    actual: state.equivalence,
+                    required: minimum,
+                });
+            }
+        }
+        if Self::non_monotonic(core_reasons) {
             return Ok(IntegrationOutcome::NonMonotonic {
                 lower_bound_exclusive: Some(lower_state.into()),
                 upper_bound_inclusive: Some(upper_state.into()),
@@ -472,7 +377,33 @@ impl IntegrationSequence {
                 reasons,
             });
         }
-
+        if nominal_first {
+            if basis == LocalizationBasis::Unspecified {
+                reasons.push(IntegrationAmbiguityReason::MonotonicityNotEstablished);
+            }
+            if upper_state.ordinal != lower_state.ordinal + 1 {
+                reasons.push(IntegrationAmbiguityReason::NonAdjacentBoundary {
+                    lower_ordinal: lower_state.ordinal,
+                    upper_ordinal: upper_state.ordinal,
+                });
+            }
+            if reasons.is_empty() {
+                let transition = upper_state
+                    .transition
+                    .clone()
+                    .ok_or(IntegrationError::MissingTransition {
+                        ordinal: upper_state.ordinal,
+                    })?;
+                return Ok(IntegrationOutcome::FirstFailingTransition {
+                    last_passing: lower_state.into(),
+                    first_failing: upper_state.into(),
+                    transition,
+                    boundary_equivalence: lower_state.equivalence.min(upper_state.equivalence),
+                    confidence: confidence.clone(),
+                    basis,
+                });
+            }
+        }
         Ok(IntegrationOutcome::SuspectTransitions {
             lower_bound_exclusive: lower_state.into(),
             upper_bound_inclusive: upper_state.into(),
@@ -482,129 +413,53 @@ impl IntegrationSequence {
         })
     }
 
-    fn resolve_window<'a>(
-        &'a self,
-        lower: &CommitId,
-        upper: &CommitId,
-    ) -> Result<(usize, usize, &'a IntegrationState, &'a IntegrationState)> {
-        let lower_index =
-            self.index_of_commit(lower)
-                .ok_or_else(|| IntegrationError::UnknownBoundaryCommit {
-                    commit: lower.0.clone(),
-                })?;
-        let upper_index =
-            self.index_of_commit(upper)
-                .ok_or_else(|| IntegrationError::UnknownBoundaryCommit {
-                    commit: upper.0.clone(),
-                })?;
-        if upper_index <= lower_index {
-            return Err(IntegrationError::InvalidBoundaryOrder {
-                lower_ordinal: lower_index,
-                upper_ordinal: upper_index,
-            });
-        }
-
-        let lower_state =
-            self.states
-                .get(lower_index)
-                .ok_or(IntegrationError::MissingStateAtOrdinal {
-                    ordinal: lower_index,
-                })?;
-        let upper_state =
-            self.states
-                .get(upper_index)
-                .ok_or(IntegrationError::MissingStateAtOrdinal {
-                    ordinal: upper_index,
-                })?;
-        Ok((lower_index, upper_index, lower_state, upper_state))
-    }
-
-    fn index_of_commit(&self, commit: &CommitId) -> Option<usize> {
-        self.states.iter().position(|state| state.commit == *commit)
-    }
-
-    fn transitions_between(
-        &self,
-        lower_index: usize,
-        upper_index: usize,
-    ) -> Result<Vec<ChangeUnit>> {
-        let width = upper_index.saturating_sub(lower_index);
-        let transitions = self
-            .states
-            .iter()
-            .skip(lower_index.saturating_add(1))
-            .take(width)
-            .map(|state| {
-                state
-                    .transition
-                    .clone()
-                    .ok_or(IntegrationError::MissingTransition {
-                        ordinal: state.ordinal,
-                    })
-            })
-            .collect::<Result<Vec<_>>>()?;
-        Ok(transitions)
-    }
-
-    fn equivalence_reasons(
-        &self,
-        lower_index: usize,
-        upper_index: usize,
-        required: StateEquivalence,
-    ) -> Vec<IntegrationAmbiguityReason> {
-        let width = upper_index.saturating_sub(lower_index).saturating_add(1);
+    fn boundary(&self, commit: &CommitId) -> Result<&IntegrationState> {
         self.states
             .iter()
-            .skip(lower_index)
-            .take(width)
-            .filter(|state| !state.equivalence.satisfies(required))
-            .map(
-                |state| IntegrationAmbiguityReason::InsufficientStateEquivalence {
-                    ordinal: state.ordinal,
-                    actual: state.equivalence,
-                    required,
-                },
-            )
-            .collect()
+            .find(|state| &state.commit == commit)
+            .ok_or_else(|| IntegrationError::UnknownBoundaryCommit {
+                commit: commit.0.clone(),
+            })
     }
 
-    fn contains_non_monotonic(reasons: &[AmbiguityReason]) -> bool {
+    fn non_monotonic(reasons: &[AmbiguityReason]) -> bool {
+        reasons.contains(&AmbiguityReason::NonMonotonicEvidence)
+    }
+
+    fn map_reasons(reasons: &[AmbiguityReason]) -> Vec<IntegrationAmbiguityReason> {
         reasons
             .iter()
-            .any(|reason| matches!(reason, AmbiguityReason::NonMonotonicEvidence))
+            .cloned()
+            .map(IntegrationAmbiguityReason::Localization)
+            .collect()
     }
 }
 
-/// Integration-specific reasons that prevent an exact transition claim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum IntegrationAmbiguityReason {
-    /// Ambiguity reported by the provider-neutral localization engine.
     Localization(AmbiguityReason),
-    /// One or more states are weaker than the predicate requires.
+    MonotonicityNotEstablished,
     InsufficientStateEquivalence {
         ordinal: usize,
         actual: StateEquivalence,
         required: StateEquivalence,
     },
-    /// A nominal first-bad result did not identify adjacent candidate states.
     NonAdjacentBoundary {
         lower_ordinal: usize,
         upper_ordinal: usize,
     },
 }
 
-/// Queue-facing localization result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum IntegrationOutcome {
-    /// Stable adjacent pass/fail states identify one transition unit.
     FirstFailingTransition {
         last_passing: IntegrationStateRef,
         first_failing: IntegrationStateRef,
         transition: ChangeUnit,
         boundary_equivalence: StateEquivalence,
         confidence: Confidence,
+        basis: LocalizationBasis,
     },
-    /// The supported evidence narrows to an ordered set of transition units.
     SuspectTransitions {
         lower_bound_exclusive: IntegrationStateRef,
         upper_bound_inclusive: IntegrationStateRef,
@@ -612,7 +467,6 @@ pub enum IntegrationOutcome {
         confidence: Confidence,
         reasons: Vec<IntegrationAmbiguityReason>,
     },
-    /// Observed evidence violates the one-way pass-to-fail model.
     NonMonotonic {
         lower_bound_exclusive: Option<IntegrationStateRef>,
         upper_bound_inclusive: Option<IntegrationStateRef>,
@@ -620,13 +474,11 @@ pub enum IntegrationOutcome {
         confidence: Option<Confidence>,
         reasons: Vec<IntegrationAmbiguityReason>,
     },
-    /// Missing or ineligible evidence prevents a supported transition window.
     Inconclusive {
         reasons: Vec<IntegrationAmbiguityReason>,
     },
 }
 
-/// Integration-sequence validation or mapping failure.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum IntegrationError {
     #[error("integration provider must not be empty")]
@@ -653,17 +505,21 @@ pub enum IntegrationError {
     BaseHasIncludedChanges,
     #[error("integration state at ordinal {ordinal} is missing its transition unit")]
     MissingTransition { ordinal: usize },
-    #[error("integration state at ordinal {ordinal} repeats a prior transition")]
+    #[error("integration state at ordinal {ordinal} repeats a prior change identity")]
     RepeatedTransition { ordinal: usize },
     #[error("integration state at ordinal {ordinal} contains a duplicate change unit")]
     DuplicateIncludedChange { ordinal: usize },
     #[error("integration state at ordinal {ordinal} is not the prior state plus one transition")]
     NonCumulativeState { ordinal: usize },
+    #[error("invalid or cross-repository change identity at ordinal {ordinal}")]
+    InvalidChange { ordinal: usize },
+    #[error("state provenance does not match the captured sequence at ordinal {ordinal}")]
+    ProvenanceMismatch { ordinal: usize },
+    #[error("reconstructed state lacks a same-prefix equivalence witness at ordinal {ordinal}")]
+    MissingEquivalenceWitness { ordinal: usize },
     #[error("localization boundary commit is not part of the integration sequence: {commit}")]
     UnknownBoundaryCommit { commit: String },
-    #[error(
-        "integration boundary order is invalid: lower ordinal {lower_ordinal}, upper ordinal {upper_ordinal}"
-    )]
+    #[error("invalid integration boundary order: {lower_ordinal} -> {upper_ordinal}")]
     InvalidBoundaryOrder {
         lower_ordinal: usize,
         upper_ordinal: usize,
