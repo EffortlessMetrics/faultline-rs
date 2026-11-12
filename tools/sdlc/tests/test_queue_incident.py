@@ -381,6 +381,48 @@ class QueueIncidentTests(unittest.TestCase):
         # Raw events are retained separately. The incident validates their digest
         # shape, while the capture path binds parsed content to the exact raw body.
 
+    def test_build_and_destroyed_reject_payload_not_parsed_from_raw_body(self) -> None:
+        payload = event_payload()
+        snapshot = queue_snapshot()
+        different_raw = raw_event({**payload, "action": "destroyed", "reason": "dequeued"})
+        with self.assertRaisesRegex(
+            queue_incident.QueueIncidentError,
+            "payload does not match raw event body",
+        ):
+            queue_incident.build_incident(
+      event_payload=payload,
+      raw_event=different_raw,
+      queue_snapshot=snapshot,
+      object_manifest=object_manifest(snapshot),
+      delivery_id="delivery-mismatch",
+      captured_at="2026-11-12T07:00:03Z",
+      signature_verified=True,
+            )
+
+        incident = build_valid_incident()
+        destroyed = event_payload("destroyed", "dequeued")
+        with self.assertRaisesRegex(
+            queue_incident.QueueIncidentError,
+            "payload does not match raw event body",
+        ):
+            queue_incident.append_destroyed(
+      incident=incident,
+      event_payload=destroyed,
+      raw_event=raw_event(event_payload("destroyed", "merged")),
+      delivery_id="destroyed-mismatch",
+      observed_at="2026-11-12T08:00:00Z",
+      signature_verified=True,
+            )
+
+    def test_initial_lifecycle_digest_must_match_event_digest(self) -> None:
+        incident = build_valid_incident()
+        incident["lifecycle"][0]["event_sha256"] = "b" * 64
+        with self.assertRaisesRegex(
+            queue_incident.QueueIncidentError,
+            "initial lifecycle digest does not match",
+        ):
+            queue_incident.validate_incident(incident)
+
 
 if __name__ == "__main__":
     unittest.main()

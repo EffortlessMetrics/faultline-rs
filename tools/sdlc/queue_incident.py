@@ -462,6 +462,9 @@ def build_incident(
     captured_at: str,
     signature_verified: bool,
 ) -> dict[str, Any]:
+    parsed_raw_event = load_json_bytes(raw_event, "raw event")
+    if parsed_raw_event != event_payload:
+        raise QueueIncidentError("event payload does not match raw event body")
     if not signature_verified:
         raise QueueIncidentError("authenticated webhook delivery is required")
     merge_group = normalize_checks_requested(event_payload)
@@ -616,6 +619,10 @@ def validate_incident(incident: dict[str, Any]) -> None:
             raise QueueIncidentError("destroyed lifecycle reason is invalid")
 
     first = require_object(lifecycle[0], "incident.lifecycle[0]")
+    if first.get("event_sha256") != event.get("sha256"):
+        raise QueueIncidentError(
+            "incident initial lifecycle digest does not match event digest"
+        )
     if first.get("action") != "checks_requested" or first.get("delivery_id") != first_delivery:
         raise QueueIncidentError(
             "incident lifecycle must begin with the captured checks_requested delivery"
@@ -647,6 +654,9 @@ def append_destroyed(
     observed_at: str,
     signature_verified: bool,
 ) -> dict[str, Any]:
+    parsed_raw_event = load_json_bytes(raw_event, "raw event")
+    if parsed_raw_event != event_payload:
+        raise QueueIncidentError("event payload does not match raw event body")
     if not signature_verified:
         raise QueueIncidentError("authenticated webhook delivery is required")
     validate_incident(incident)
