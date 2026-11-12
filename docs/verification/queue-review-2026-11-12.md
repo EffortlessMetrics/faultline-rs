@@ -2,10 +2,15 @@
 
 This supplements, rather than relabels, the earlier offline qualification in
 [queue-diagnosis-2026-11-12.md](queue-diagnosis-2026-11-12.md).
-The candidate is PR #92. It now targets the reviewed contract in #88 directly;
+The candidate is PR #92. It targets the reviewed contract in #88 directly;
 #89 is closed as superseded because its domain implementation and necessary
 correctness fixes are retained together in #92. Nothing is merged or deployed
 by this receipt.
+
+Latest qualified runtime source: **`efe01ef2b2849a436fd68ada0b87797987cb9413`**.
+The native integration/queue/CLI suite has **63 passing tests, zero failures**.
+The same suite passed Windows stable and Linux Rust 1.93.0. Normal PR checks,
+review-thread disposition and integration remain separate from this receipt.
 
 ## Exact code subjects
 
@@ -13,10 +18,13 @@ by this receipt.
 |---|---|---|---|
 | Admission and pending evidence | `fe7d93308268279c26f4874a05ae481893af3bd1` | `2b28416ed9d5501a110260432d98681103c622a0` | [43191632848](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43191632848) |
 | Equivalence-aware planning | `2b28416ed9d5501a110260432d98681103c622a0` | `95d93ab7b8f75afc0ca2ea96660e22c0f259d6eb` | [43192482101](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43192482101) |
+| External review contracts | `75854e579412cd31463c31a860ea690ecaa5fd40` | `efe01ef2b2849a436fd68ada0b87797987cb9413` | [43194725033](https://github.com/EffortlessMetrics/faultline-rs/actions/runs/43194725033) |
 
 The first qualified commit also incorporates the reviewed #88 contract at
 `42d99cad3e6e80d837ad12d16fcd618cc8f2b755`. It preserves that commit as a merge
-parent rather than copying the document without its ancestry.
+parent rather than copying the document without its ancestry. The difference
+between the second qualified source and the third input is this receipt's
+previous documentation revision, not an unqualified runtime change.
 
 ## Reproduced defects and corrections
 
@@ -37,6 +45,23 @@ parent rather than copying the document without its ancestry.
    states without upgrading them or deleting their transitions from the suspect
    window. Conservative scanning still refuses a first-transition claim when an
    earlier prefix is unavailable.
+5. A completed native attempt whose receipt was ineligible remained pending
+   forever. Completion and evidence eligibility are now separate: a structurally
+   valid terminal receipt matching its charged attempt/state/commit/tree settles
+   completion, stays charged and excluded, and contributes no code vote. The
+   report records `launch_receipt_ineligible`. Missing output still stays pending,
+   even when excluded; a different charged state/commit/tree is an integrity error.
+6. Generated schemas accepted arbitrary version strings that runtime diagnosis
+   rejected. Both input and report type-derived schemas now constrain the version
+   to `SCHEMA_VERSION`; library and actual CLI schema tests check the constraint.
+7. Markdown omitted predicate and execution-context identities. Both are now
+   visible and escaped, alongside the phase and target failure signature.
+8. Markdown omitted the provider/captured head for PR transitions and omitted
+   commit transitions entirely. Both supported change variants now render their
+   exact introduced identities, with supplied strings escaped.
+9. Markdown showed pending/excluded counts but not the attempt IDs and exclusion
+   reasons needed to act on them. Those identifiers and reasons are now visible
+   and escaped; the existing counts remain.
 
 ## Red/green evidence
 
@@ -50,15 +75,29 @@ correction. The tests exercise both monotonic binary planning and conservative
 prefix scanning, including a 20-transition case that still reaches the supported
 PR-14 boundary despite a weak earlier midpoint.
 
-The final integration/queue suite reports **53 passing tests, zero failures**:
-13 integration contracts, one original monotonicity regression, nine admission
-contracts, five CLI contracts, 21 diagnosis contracts and four planning contracts.
-The existing exhaustive 20-position test and both 128-case property tests remain
-in that suite; none was weakened or suppressed.
+The external review suite compiled against its exact pre-fix code and reported
+**eight specific failing regressions and two passing controls**. All ten pass with
+the corrections. The controls retain excluded-Missing blocking and reject a
+receipt for another charged state. The terminal-ineligible tests exercise
+context, phase, snapshot and equivalence exclusion without treating them as votes.
+The rendering and CLI schema tests execute the native binary, not a renderer mock.
+
+Across this follow-up, **23 tests were added: 16 demonstrated pre-fix failures
+and seven passing controls**. The final suite's 63 tests comprise 13 integration
+contracts, one original monotonicity regression, nine admission contracts, five
+CLI contracts, 21 diagnosis contracts, four planning contracts and ten external
+review contracts. The exhaustive 20-position test and both 128-case property tests
+remain in that suite; none was weakened or suppressed.
+
+The first external qualification attempt, run 43194278329, reproduced the eight
+failures and passed the corrected tests, then stopped on a test-helper formatting
+lint. Run 43194725033 corrected that formatting and reran the complete red/green,
+strict lint, workspace and compatibility qualification. The failed attempt is
+not represented as final green qualification.
 
 ## Executed qualification
 
-Both runs passed:
+All three successful runs passed:
 
 ```sh
 cargo test --locked -p faultline-integration -p faultline-queue --all-targets
@@ -70,10 +109,10 @@ cargo fmt --all -- --check
 git diff --check
 ```
 
-The final source also passed the native integration/queue suite on:
+Each qualified source also passed the native integration/queue suite on:
 
 - Linux with the declared minimum compiler, Rust **1.93.0**;
-- Windows with the stable compiler selected by that run.
+- Windows with the stable compiler selected by its run.
 
 The Linux stable qualification records Rust 1.99.1. The workspace gate retains its
 existing lint/allowance policy; strict Clippy above covers the two candidate
@@ -95,12 +134,16 @@ actual patches were inspected before the review checkpoint was recorded.
 |---|---|---|
 | `queue-admission-review` | `13931521458` | `21d834ae52da5f324bcf9dcbda5869c1b65bec1be2f22d4948e48f1d34774a16` |
 | `queue-planning-review` | `13931681750` | `a3e2c5571561fd83d447e25c953b7bc0f6fd0ee0717219ca10d015fb1f625599` |
+| `queue-external-review` | `13932716290` | `5ad1368d460ec0e2011c5899cca93beb9fc8ca2f405c44587264897ab797fb9d` |
 
-Qualification executed with repository-read permissions. A separate publisher
-checked the expected parent(s), allowed file paths and branch-head lease before
-fast-forwarding the existing candidate branch. The temporary qualification
-workflows are not part of the candidate tree. Artifact retention is finite;
-rerun qualification for later code rather than reusing this receipt as current.
+Qualification executed with repository-read permissions. Separate publishers
+checked expected parent(s), allowed file paths and branch-head leases before
+fast-forwarding the existing candidate branch. All four temporary qualification
+workflows were removed from the temporary branch at
+`6dd7df7c3ba5f71d8c9e860deb6628cf3726196f`; they were never part of this candidate.
+Artifact retention is finite; rerun qualification for later code rather than
+reusing this receipt as current. Review replies and resolved threads are not
+substitutes for an independently recorded approval.
 
 ## Remaining delivery boundary
 
@@ -114,6 +157,10 @@ recovery, #59/#61's execution lifecycle and ownership, #60's complete private
 logs and safe exports, #80's resolved-sequence execution, #82/#84's authenticated
 capture and verified objects/prefixes, and #83's real phase receipts. #85/#86 then
 cover advisory Check delivery and the live pilot. Those obligations remain open.
+
+The duplicate runtime-test execution inside `ci_full` is recorded under #83 for
+the phase-receipt refactor, with snapshot/tooling coverage and negative controls
+preserved. This review did not change the CI execution graph.
 
 Rendered Markdown is not a secret-redaction guarantee. A supplied identity is
 not provider authentication; a probe proposal is not an execution reservation;
