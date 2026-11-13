@@ -103,6 +103,8 @@ fn report_with_suspect_surface() -> AnalysisReport {
             },
         ],
         reproduction_capsules: vec![],
+        probe_attempts: Vec::new(),
+        probe_aggregates: Vec::new(),
         provenance: None,
     }
 }

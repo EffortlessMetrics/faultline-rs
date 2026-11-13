@@ -1,3 +1,4 @@
+mod attempts;
 use faultline_ports::RunStorePort;
 use faultline_types::{
     AnalysisReport, AnalysisRequest, FaultlineError, ProbeObservation, Result, RunHandle,
@@ -156,6 +157,12 @@ impl FileRunStore {
 }
 
 impl RunStorePort for FileRunStore {
+    fn load_probe_attempts(&self, run: &RunHandle) -> Result<Vec<ProbeObservation>> {
+        attempts::load(run)
+    }
+    fn save_probe_attempt(&self, run: &RunHandle, attempt: &ProbeObservation) -> Result<()> {
+        attempts::save(run, attempt)
+    }
     fn prepare_run(&self, request: &AnalysisRequest) -> Result<RunHandle> {
         let run_id = request.fingerprint();
         let root = self.run_root(&run_id);
@@ -332,6 +339,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }
@@ -1066,6 +1075,8 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules: vec![],
+                        probe_attempts: Vec::new(),
+                        probe_aggregates: Vec::new(),
                         provenance: None,
                     }
                 },

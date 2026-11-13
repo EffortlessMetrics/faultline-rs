@@ -34,6 +34,18 @@ pub trait ProbePort {
 pub trait RunStorePort {
     fn prepare_run(&self, request: &AnalysisRequest) -> Result<RunHandle>;
     fn load_observations(&self, run: &RunHandle) -> Result<Vec<ProbeObservation>>;
+    /// Immutable completed raw attempts, distinct from the per-commit cache.
+    /// Adapters must implement this before execution can proceed.
+    fn load_probe_attempts(&self, _run: &RunHandle) -> Result<Vec<ProbeObservation>> {
+        Err(faultline_types::FaultlineError::Store(
+            "attempt journal unsupported by this adapter".into(),
+        ))
+    }
+    fn save_probe_attempt(&self, _run: &RunHandle, _attempt: &ProbeObservation) -> Result<()> {
+        Err(faultline_types::FaultlineError::Store(
+            "attempt journal unsupported by this adapter".into(),
+        ))
+    }
     fn save_observation(&self, run: &RunHandle, observation: &ProbeObservation) -> Result<()>;
     fn save_report(&self, run: &RunHandle, report: &AnalysisReport) -> Result<()>;
     fn load_report(&self, run: &RunHandle) -> Result<Option<AnalysisReport>>;

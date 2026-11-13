@@ -67,6 +67,13 @@ fn build_run(report: &AnalysisReport) -> SarifRun {
         level,
         message: SarifMessage { text: message },
         locations,
+        properties: if report.probe_attempts.is_empty() {
+            None
+        } else {
+            Some(
+                serde_json::json!({"probe_attempts": report.probe_attempts, "probe_aggregates": report.probe_aggregates}),
+            )
+        },
     };
 
     SarifRun {
@@ -103,6 +110,7 @@ fn build_run(report: &AnalysisReport) -> SarifRun {
                         ),
                     },
                     locations: suspect_locations,
+                    properties: None,
                 });
             }
 
@@ -145,6 +153,8 @@ struct SarifResult {
     level: String,
     message: SarifMessage,
     locations: Vec<SarifLocation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    properties: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -217,6 +227,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }

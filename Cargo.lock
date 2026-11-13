@@ -211,11 +211,17 @@ name = "faultline-app"
 version = "0.0.1"
 dependencies = [
  "faultline-codes",
+ "faultline-junit",
  "faultline-localization",
  "faultline-ports",
+ "faultline-render",
+ "faultline-sarif",
+ "faultline-store",
  "faultline-surface",
  "faultline-types",
  "proptest",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

@@ -147,8 +147,8 @@ fn smoke_cli_produces_artifacts() {
         serde_json::from_str(&analysis_content).expect("analysis.json must be valid JSON");
     assert_eq!(
         parsed.get("schema_version").and_then(|v| v.as_str()),
-        Some("0.1.0"),
-        "analysis.json must contain schema_version 0.1.0"
+        Some("0.4.0"),
+        "analysis.json must contain schema_version 0.4.0"
     );
 
     // Verify index.html exists.
