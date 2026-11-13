@@ -249,6 +249,8 @@ pub fn arb_analysis_report_with_sentinels() -> impl Strategy<Value = (AnalysisRe
                 surface,
                 suspect_surface: vec![],
                 reproduction_capsules,
+                probe_attempts: Vec::new(),
+                probe_aggregates: Vec::new(),
                 provenance: None,
             };
 

@@ -126,6 +126,8 @@ fn build_sample_report() -> AnalysisReport {
             working_dir: "/tmp/repo".into(),
             timeout_seconds: 300,
         }],
+        probe_attempts: Vec::new(),
+        probe_aggregates: Vec::new(),
         provenance: None,
     }
 }

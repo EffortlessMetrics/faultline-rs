@@ -279,7 +279,8 @@ impl ReportRenderer {
         let log_links = sorted_observations
             .iter()
             .filter(|obs| {
-                obs.stdout.ends_with("[truncated]") || obs.stderr.ends_with("[truncated]")
+                report.probe_attempts.is_empty()
+                    && (obs.stdout.ends_with("[truncated]") || obs.stderr.ends_with("[truncated]"))
             })
             .map(|obs| {
                 let sha = escape_html(&obs.commit.0);
@@ -372,7 +373,26 @@ impl ReportRenderer {
             execution_surfaces_html,
             changed_paths,
             suspect_surface_html,
-            log_section,
+            if report.probe_attempts.is_empty() {
+                log_section
+            } else {
+                let details = report
+                    .probe_attempts
+                    .iter()
+                    .map(|a| {
+                        format!(
+                            "Attempt {}: {:?}, exit {:?}, {} ms",
+                            a.sequence_index, a.class, a.exit_code, a.duration_ms
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                format!(
+                    "{}<h2>Retained attempts</h2><p>Captured output is retained in analysis.json. A truncation marker does not establish that a complete log exists.</p><pre>{}</pre>",
+                    log_section,
+                    escape_html(&details)
+                )
+            },
         )
     }
 }
@@ -482,6 +502,21 @@ pub fn render_markdown(report: &AnalysisReport, policy: &RedactionPolicy) -> Str
         md.push('\n');
     }
 
+    if !report.probe_attempts.is_empty() {
+        md.push_str("## Retained attempts\n\nCaptured output is retained in analysis.json. A truncation marker does not establish that a complete log exists.\n\n");
+        for attempt in &report.probe_attempts {
+            md.push_str(&format!(
+                "Attempt {}: {:?}, exit {:?}, {} ms.\n\n",
+                attempt.sequence_index, attempt.class, attempt.exit_code, attempt.duration_ms
+            ));
+        }
+        for aggregate in &report.probe_aggregates {
+            md.push_str(&format!(
+                "Aggregate: {:?}; attempts {:?}; {}.\n\n",
+                aggregate.class, aggregate.attempt_ids, aggregate.decision_rule
+            ));
+        }
+    }
     // Reproduction command
     md.push_str("## Reproduction\n\n");
     if report.reproduction_capsules.is_empty() {
@@ -606,6 +641,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }
@@ -1384,6 +1421,8 @@ mod tests {
                 },
             ],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }
@@ -1841,6 +1880,8 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules: vec![],
+                        probe_attempts: Vec::new(),
+                        probe_aggregates: Vec::new(),
                         provenance: None,
                     }
                 },
@@ -2274,6 +2315,8 @@ mod tests {
                         surface,
                         suspect_surface,
                         reproduction_capsules,
+                        probe_attempts: Vec::new(),
+                        probe_aggregates: Vec::new(),
                         provenance: None,
                     }
                 },

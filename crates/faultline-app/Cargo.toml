@@ -18,6 +18,12 @@ faultline-surface = { path = "../faultline-surface", version = "0.0.1" }
 faultline-ports = { path = "../faultline-ports", version = "0.0.1" }
 
 [dev-dependencies]
+faultline-store = { path = "../faultline-store" }
+faultline-render = { path = "../faultline-render" }
+faultline-sarif = { path = "../faultline-sarif" }
+faultline-junit = { path = "../faultline-junit" }
+serde_json.workspace = true
+tempfile = "3"
 proptest = { workspace = true }
 
 [lints]

@@ -3,8 +3,9 @@ use faultline_localization::LocalizationSession;
 use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
 use faultline_surface::SurfaceAnalyzer;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, ReproductionCapsule, Result, RunHandle,
-    compute_flake_signal, now_epoch_seconds,
+    AnalysisReport, AnalysisRequest, FaultlineError, ProbeAggregate, ProbeObservation,
+    ReproductionCapsule, Result, RunHandle, aggregate_attempts, aggregate_projection,
+    now_epoch_seconds,
 };
 
 /// Options controlling the behavior of `FaultlineApp::localize`.
@@ -79,14 +80,34 @@ impl<'a> FaultlineApp<'a> {
 
         let mut session = LocalizationSession::new(sequence.clone(), request.policy.clone())?;
 
-        // Replay cached observations, preserving their existing sequence_index values.
-        let cached = self.store.load_observations(&run)?;
-        let mut next_sequence_index: u64 = if cached.is_empty() {
-            0
-        } else {
-            cached.iter().map(|o| o.sequence_index).max().unwrap_or(0) + 1
+        // The journal is authoritative; cached decisions require their originals.
+        let mut attempts = self.store.load_probe_attempts(&run)?;
+        let mut next_sequence_index = match attempts.iter().map(|a| a.sequence_index).max() {
+            Some(index) => index
+                .checked_add(1)
+                .ok_or_else(|| FaultlineError::Store("attempt index overflow".into()))?,
+            None => 0,
         };
-        for observation in cached {
+        let mut aggregates = Vec::new();
+        for observation in self.store.load_observations(&run)? {
+            let required = usize::try_from(request.policy.flake_policy.retries)
+                .map_err(|_| FaultlineError::InvalidInput("retry count overflow".into()))?
+                .checked_add(1)
+                .ok_or_else(|| FaultlineError::InvalidInput("retry count overflow".into()))?;
+            let mut original: Vec<_> = attempts
+                .iter()
+                .filter(|a| {
+                    a.commit == observation.commit && a.sequence_index <= observation.sequence_index
+                })
+                .rev()
+                .take(required)
+                .cloned()
+                .collect();
+            original.reverse();
+            if original.len() != required || aggregate_projection(&original)? != observation {
+                return Err(FaultlineError::Store("cached decision lacks matching raw attempts; recollect with --force (the journal is retained)".into()));
+            }
+            aggregates.push(aggregate_attempts(&original)?);
             session.record(observation)?;
         }
 
@@ -98,6 +119,8 @@ impl<'a> FaultlineApp<'a> {
             ObservationClass::Pass,
             "known-good",
             &mut next_sequence_index,
+            &mut attempts,
+            &mut aggregates,
         )?;
         self.ensure_boundary(
             &run,
@@ -107,58 +130,50 @@ impl<'a> FaultlineApp<'a> {
             ObservationClass::Fail,
             "known-bad",
             &mut next_sequence_index,
+            &mut attempts,
+            &mut aggregates,
         )?;
 
         let mut probe_count = 0usize;
         let max_probes = session.max_probes();
-        let retries = request.policy.flake_policy.retries;
-        let stability_threshold = request.policy.flake_policy.stability_threshold;
-
-        while probe_count < max_probes {
+        let endpoints_eligible = sequence
+            .revisions
+            .first()
+            .and_then(|c| session.get_observation(c))
+            .is_some_and(|o| o.class == ObservationClass::Pass)
+            && sequence
+                .revisions
+                .last()
+                .and_then(|c| session.get_observation(c))
+                .is_some_and(|o| o.class == ObservationClass::Fail);
+        while endpoints_eligible && probe_count < max_probes {
             let Some(commit) = session.next_probe() else {
                 break;
             };
-
-            let observation = if retries > 0 {
-                // Flake-aware: probe 1 + retries times, compute FlakeSignal
-                let total_attempts = 1 + retries as usize;
-                let mut results: Vec<faultline_types::ProbeObservation> =
-                    Vec::with_capacity(total_attempts);
-
-                for _ in 0..total_attempts {
-                    let obs = self.probe_commit(&request, &commit)?;
-                    results.push(obs);
-                }
-
-                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
-                let flake_signal = compute_flake_signal(&classes, stability_threshold);
-
-                // Majority vote: pick the most-frequent class
-                let majority_class = Self::majority_class(&classes);
-
-                // Use the first probe result as the base, override class and attach signal
-                let mut observation = results.into_iter().next().unwrap();
-                observation.class = majority_class;
-                observation.flake_signal = Some(flake_signal);
-                observation
-            } else {
-                // Default: single probe, no FlakeSignal
-                self.probe_commit(&request, &commit)?
-            };
-
-            let mut observation = observation;
-            observation.sequence_index = next_sequence_index;
-            next_sequence_index += 1;
-
-            // Full-log persistence: if stdout/stderr was truncated, save full logs
-            self.persist_truncated_logs(&run, &observation);
-
-            self.store.save_observation(&run, &observation)?;
+            let observation = self.collect_observation(
+                &run,
+                &request,
+                &commit,
+                &mut next_sequence_index,
+                &mut attempts,
+                &mut aggregates,
+            )?;
             session.record(observation)?;
             probe_count += 1;
         }
 
-        let outcome = session.outcome();
+        let mut outcome = session.outcome();
+        if aggregates.iter().any(|a| !a.counts.is_stable)
+            && matches!(
+                outcome,
+                faultline_types::LocalizationOutcome::FirstBad { .. }
+            )
+        {
+            outcome = faultline_types::LocalizationOutcome::Inconclusive {
+                reasons: vec![faultline_codes::AmbiguityReason::IndeterminateRevision],
+            };
+        }
+        aggregates.sort_by_key(|a| a.attempt_ids.last().copied().unwrap_or(0));
         let changed_paths = if let Some((from, to)) = outcome.boundary_pair() {
             self.history.changed_paths(from, to)?
         } else {
@@ -206,7 +221,7 @@ impl<'a> FaultlineApp<'a> {
             .collect();
 
         let report = AnalysisReport {
-            schema_version: "0.1.0".into(),
+            schema_version: "0.4.0".into(),
             run_id: run.id.clone(),
             created_at_epoch_seconds: now_epoch_seconds(),
             request,
@@ -217,6 +232,8 @@ impl<'a> FaultlineApp<'a> {
             surface,
             suspect_surface,
             reproduction_capsules,
+            probe_attempts: attempts,
+            probe_aggregates: aggregates,
             provenance: None,
         };
         self.store.save_report(&run, &report)?;
@@ -236,6 +253,8 @@ impl<'a> FaultlineApp<'a> {
         expected: ObservationClass,
         label: &str,
         next_sequence_index: &mut u64,
+        attempts: &mut Vec<ProbeObservation>,
+        aggregates: &mut Vec<ProbeAggregate>,
     ) -> Result<()> {
         let commit = session
             .sequence()
@@ -245,45 +264,28 @@ impl<'a> FaultlineApp<'a> {
             .clone();
 
         if !session.has_observation(&commit) {
-            let retries = request.policy.flake_policy.retries;
-            let stability_threshold = request.policy.flake_policy.stability_threshold;
-
-            let observation = if retries > 0 {
-                let total_attempts = 1 + retries as usize;
-                let mut results: Vec<faultline_types::ProbeObservation> =
-                    Vec::with_capacity(total_attempts);
-
-                for _ in 0..total_attempts {
-                    let obs = self.probe_commit(request, &commit)?;
-                    results.push(obs);
-                }
-
-                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
-                let flake_signal = compute_flake_signal(&classes, stability_threshold);
-                let majority_class = Self::majority_class(&classes);
-
-                let mut observation = results.into_iter().next().unwrap();
-                observation.class = majority_class;
-                observation.flake_signal = Some(flake_signal);
-                observation
-            } else {
-                self.probe_commit(request, &commit)?
-            };
-
-            let mut observation = observation;
-            observation.sequence_index = *next_sequence_index;
-            *next_sequence_index += 1;
-
-            // Full-log persistence for boundary probes
-            self.persist_truncated_logs(run, &observation);
-
-            self.store.save_observation(run, &observation)?;
+            let observation = self.collect_observation(
+                run,
+                request,
+                &commit,
+                next_sequence_index,
+                attempts,
+                aggregates,
+            )?;
             session.record(observation)?;
         }
 
         let observed = session
             .get_observation(&commit)
             .ok_or_else(|| FaultlineError::Domain("boundary observation missing".to_string()))?;
+        if observed.class == ObservationClass::Indeterminate
+            && observed
+                .flake_signal
+                .as_ref()
+                .is_some_and(|signal| !signal.is_stable)
+        {
+            return Ok(()); // Unstable endpoints produce an inconclusive report.
+        }
         if observed.class != expected {
             return Err(FaultlineError::InvalidBoundary(format!(
                 "{label} boundary {} evaluated as {:?}; expected {:?}",
@@ -293,72 +295,56 @@ impl<'a> FaultlineApp<'a> {
         Ok(())
     }
 
-    /// If stdout or stderr ends with "[truncated]", persist the (truncated)
-    /// output to per-commit log files via the store. In the current architecture
-    /// the probe adapter truncates in-memory and the full output is not available
-    /// at the app layer — this call saves what we have so the log files exist
-    /// for diagnostic purposes.
-    fn persist_truncated_logs(
+    fn collect_observation(
         &self,
         run: &RunHandle,
-        observation: &faultline_types::ProbeObservation,
-    ) {
-        let stdout_truncated = observation.stdout.ends_with("[truncated]");
-        let stderr_truncated = observation.stderr.ends_with("[truncated]");
-        if stdout_truncated || stderr_truncated {
-            let _ = self.store.save_probe_logs(
-                run,
-                &observation.commit.0,
-                &observation.stdout,
-                &observation.stderr,
-            );
-        }
-    }
-
-    fn probe_commit(
-        &self,
         request: &AnalysisRequest,
         commit: &faultline_types::CommitId,
-    ) -> Result<faultline_types::ProbeObservation> {
-        let checkout = self.checkout.checkout_revision(commit)?;
-        let result = self.probe.run(&checkout, &request.probe);
-        let cleanup = self.checkout.cleanup_checkout(&checkout);
-        match (result, cleanup) {
-            (Ok(observation), Ok(())) => Ok(observation),
-            (Err(err), Ok(())) => Err(err),
-            (Ok(_), Err(cleanup_err)) => Err(cleanup_err),
-            (Err(err), Err(_cleanup_err)) => Err(err),
-        }
-    }
-
-    /// Determine the majority class from a set of observation classes.
-    /// Ties are broken by preferring Fail > Pass > Skip > Indeterminate.
-    fn majority_class(classes: &[ObservationClass]) -> ObservationClass {
-        let mut pass = 0u32;
-        let mut fail = 0u32;
-        let mut skip = 0u32;
-        let mut indeterminate = 0u32;
-
-        for class in classes {
-            match class {
-                ObservationClass::Pass => pass += 1,
-                ObservationClass::Fail => fail += 1,
-                ObservationClass::Skip => skip += 1,
-                ObservationClass::Indeterminate => indeterminate += 1,
+        next_index: &mut u64,
+        retained: &mut Vec<ProbeObservation>,
+        aggregates: &mut Vec<ProbeAggregate>,
+    ) -> Result<ProbeObservation> {
+        let count = request
+            .policy
+            .flake_policy
+            .retries
+            .checked_add(1)
+            .ok_or_else(|| FaultlineError::InvalidInput("retry count overflow".into()))?;
+        let mut batch = Vec::new();
+        for _ in 0..count {
+            let index = *next_index;
+            let following = index
+                .checked_add(1)
+                .ok_or_else(|| FaultlineError::Store("attempt index overflow".into()))?;
+            let checkout = self.checkout.checkout_revision(commit)?;
+            let execution =
+                self.probe
+                    .run(&checkout, &request.probe)
+                    .and_then(|mut observation| {
+                        if observation.commit != *commit || observation.flake_signal.is_some() {
+                            return Err(FaultlineError::Probe(
+                                "probe returned another commit or an aggregate".into(),
+                            ));
+                        }
+                        observation.sequence_index = index;
+                        // Retain original output before cleanup, another retry or aggregation.
+                        self.store.save_probe_attempt(run, &observation)?;
+                        *next_index = following;
+                        retained.push(observation.clone());
+                        Ok(observation)
+                    });
+            let cleanup = self.checkout.cleanup_checkout(&checkout);
+            match (execution, cleanup) {
+                (Ok(observation), Ok(())) => batch.push(observation),
+                (Err(error), _) => return Err(error),
+                (Ok(_), Err(error)) => return Err(error),
             }
         }
-
-        // Find the maximum count, break ties: Fail > Pass > Skip > Indeterminate
-        let max_count = pass.max(fail).max(skip).max(indeterminate);
-        if fail == max_count {
-            ObservationClass::Fail
-        } else if pass == max_count {
-            ObservationClass::Pass
-        } else if skip == max_count {
-            ObservationClass::Skip
-        } else {
-            ObservationClass::Indeterminate
-        }
+        let aggregate = aggregate_attempts(&batch)?;
+        let observation = aggregate_projection(&batch)?;
+        self.store.save_observation(run, &observation)?;
+        aggregates.push(aggregate);
+        Ok(observation)
     }
 }
 
@@ -489,6 +475,12 @@ mod tests {
     struct MockRunStore;
 
     impl RunStorePort for MockRunStore {
+        fn load_probe_attempts(&self, _run: &RunHandle) -> Result<Vec<ProbeObservation>> {
+            Ok(Vec::new())
+        }
+        fn save_probe_attempt(&self, _run: &RunHandle, _attempt: &ProbeObservation) -> Result<()> {
+            Ok(())
+        }
         fn prepare_run(&self, _request: &AnalysisRequest) -> faultline_types::Result<RunHandle> {
             Ok(RunHandle {
                 id: "mock-run".to_string(),
@@ -685,6 +677,14 @@ mod tests {
     }
 
     impl RunStorePort for CachedRunStore {
+        fn load_probe_attempts(&self, _run: &RunHandle) -> Result<Vec<ProbeObservation>> {
+            let mut attempts = self.cached_observations.clone();
+            attempts.sort_by_key(|a| a.sequence_index);
+            Ok(attempts)
+        }
+        fn save_probe_attempt(&self, _run: &RunHandle, _attempt: &ProbeObservation) -> Result<()> {
+            Ok(())
+        }
         fn prepare_run(&self, _request: &AnalysisRequest) -> faultline_types::Result<RunHandle> {
             Ok(RunHandle {
                 id: "resumed-run".to_string(),
@@ -857,8 +857,8 @@ mod tests {
 
         // Verify schema_version is set on the report (Task 13.9)
         assert_eq!(
-            result.report.schema_version, "0.1.0",
-            "schema_version should be 0.1.0 on resumed run"
+            result.report.schema_version, "0.4.0",
+            "schema_version should be 0.4.0 on resumed run"
         );
 
         // Verify the run handle indicates resumed
@@ -1086,8 +1086,8 @@ mod tests {
 
         // Verify schema_version is set on the report (Task 13.9)
         assert_eq!(
-            result.report.schema_version, "0.1.0",
-            "schema_version should be 0.1.0"
+            result.report.schema_version, "0.4.0",
+            "schema_version should be 0.4.0"
         );
     }
 
@@ -1288,8 +1288,8 @@ mod tests {
             "created_at should be set"
         );
         assert_eq!(
-            report.schema_version, "0.1.0",
-            "schema_version should be 0.1.0"
+            report.schema_version, "0.4.0",
+            "schema_version should be 0.4.0"
         );
         assert_eq!(
             report.sequence.revisions.len(),
@@ -1499,10 +1499,10 @@ mod tests {
     }
 
     // Validates: Requirements 3.1, 3.4
-    // When a commit is flaky (mixed results), majority vote determines the class
+    // Mixed attempts cannot create a boundary by majority vote
     // and FlakeSignal.is_stable should be false when below threshold.
     #[test]
-    fn integration_flaky_commit_majority_vote() {
+    fn integration_flaky_commit_preserves_conflict() {
         let n = 5;
         let sequence = make_sequence(n);
         let history = MockHistory {
@@ -1546,11 +1546,11 @@ mod tests {
             .find(|o| o.commit.0 == "c2")
             .expect("c2 must be in observations");
 
-        // Majority vote: 2 Fail vs 1 Pass → Fail
+        // Mixed results remain indeterminate
         assert_eq!(
             obs_c2.class,
-            ObservationClass::Fail,
-            "c2 majority should be Fail (2 Fail vs 1 Pass)"
+            ObservationClass::Indeterminate,
+            "mixed c2 attempts must not define an exact boundary"
         );
 
         let signal = obs_c2

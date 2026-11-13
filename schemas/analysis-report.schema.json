@@ -33,6 +33,20 @@
     "outcome": {
       "$ref": "#/definitions/LocalizationOutcome"
     },
+    "probe_aggregates": {
+      "description": "Derived decisions linked to their immutable execution identities.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProbeAggregate"
+      }
+    },
+    "probe_attempts": {
+      "description": "Original completed executions, including interrupted batches.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ProbeObservation"
+      }
+    },
     "provenance": {
       "description": "Structured provenance metadata. None for reports produced before this change.",
       "default": null,
@@ -373,6 +387,39 @@
         },
         "status": {
           "$ref": "#/definitions/ChangeStatus"
+        }
+      }
+    },
+    "ProbeAggregate": {
+      "type": "object",
+      "required": [
+        "attempt_ids",
+        "class",
+        "commit",
+        "counts",
+        "decision_rule"
+      ],
+      "properties": {
+        "attempt_ids": {
+          "description": "Run-local immutable attempt sequence numbers, in execution order.",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        },
+        "class": {
+          "$ref": "#/definitions/ObservationClass"
+        },
+        "commit": {
+          "$ref": "#/definitions/CommitId"
+        },
+        "counts": {
+          "$ref": "#/definitions/FlakeSignal"
+        },
+        "decision_rule": {
+          "type": "string"
         }
       }
     },

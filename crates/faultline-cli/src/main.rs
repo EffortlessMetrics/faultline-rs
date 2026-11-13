@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use faultline_app::FaultlineApp;
+use faultline_app::{FaultlineApp, LocalizeOptions};
 use faultline_codes::{OperatorCode, ProbeKind};
 use faultline_git::GitAdapter;
 use faultline_probe_exec::ExecProbeAdapter;
@@ -81,7 +81,7 @@ struct Cli {
     #[arg(long, default_value_t = 0)]
     retries: u32,
 
-    /// Minimum proportion of consistent results to classify as stable (0.0–1.0)
+    /// Legacy compatibility value (0.0–1.0); decisive retry results require unanimity
     #[arg(long, default_value_t = 1.0)]
     stability_threshold: f64,
 
@@ -434,7 +434,14 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let store = FileRunStore::new(cli.repo.join(".faultline").join("runs"))?;
     let probe = ExecProbeAdapter;
     let app = FaultlineApp::new(&git, &git, &probe, &store);
-    let localized = match app.localize(request) {
+    let localized = match app.localize_with_options(
+        request,
+        LocalizeOptions {
+            force: cli.force,
+            fresh: cli.fresh,
+            no_render: cli.no_render,
+        },
+    ) {
         Ok(result) => result,
         Err(err) => {
             if let FaultlineError::InvalidBoundary(msg) = &err {

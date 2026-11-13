@@ -9,6 +9,9 @@ use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
+mod attempts;
+pub use attempts::{ProbeAggregate, aggregate_attempts, aggregate_projection};
+
 pub type Result<T> = std::result::Result<T, FaultlineError>;
 
 #[derive(Debug, Error)]
@@ -748,6 +751,12 @@ pub struct AnalysisReport {
     pub request: AnalysisRequest,
     pub sequence: RevisionSequence,
     pub observations: Vec<ProbeObservation>,
+    /// Original completed executions, including interrupted batches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_attempts: Vec<ProbeObservation>,
+    /// Derived decisions linked to their immutable execution identities.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probe_aggregates: Vec<ProbeAggregate>,
     pub outcome: LocalizationOutcome,
     pub changed_paths: Vec<PathChange>,
     pub surface: SurfaceSummary,
@@ -904,7 +913,11 @@ fn scrub_command_and_output_surfaces(report: &mut AnalysisReport) {
     scrub_probe_spec_surfaces(&mut report.request.probe);
 
     // Scrub observation fields
-    for obs in &mut report.observations {
+    for obs in report
+        .observations
+        .iter_mut()
+        .chain(report.probe_attempts.iter_mut())
+    {
         obs.probe_command = scrub_secrets(&obs.probe_command);
         obs.stdout = scrub_secrets(&obs.stdout);
         obs.stderr = scrub_secrets(&obs.stderr);
@@ -1038,6 +1051,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }
@@ -1692,6 +1707,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         };
         let right = AnalysisReport {
@@ -1710,6 +1727,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         };
         let cmp = compare_runs(&left, &right);
@@ -2010,6 +2029,8 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules: vec![],
+                        probe_attempts: Vec::new(),
+                        probe_aggregates: Vec::new(),
                         provenance: None,
                     }
                 },
@@ -2288,6 +2309,8 @@ mod tests {
                         surface,
                         suspect_surface: vec![],
                         reproduction_capsules,
+                        probe_attempts: Vec::new(),
+                        probe_aggregates: Vec::new(),
                         provenance: None,
                     }
                 },

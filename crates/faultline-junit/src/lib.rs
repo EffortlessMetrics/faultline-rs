@@ -127,6 +127,18 @@ fn build_observations_summary(report: &AnalysisReport) -> String {
         }
     }
 
+    for attempt in &report.probe_attempts {
+        lines.push(format!(
+            "Attempt {}: {:?}, exit {:?}, {} ms",
+            attempt.sequence_index, attempt.class, attempt.exit_code, attempt.duration_ms
+        ));
+    }
+    for aggregate in &report.probe_aggregates {
+        lines.push(format!(
+            "Aggregate {:?}: attempts {:?}",
+            aggregate.class, aggregate.attempt_ids
+        ));
+    }
     if !report.suspect_surface.is_empty() {
         lines.push(String::new());
         lines.push("Suspect Surface:".to_string());
@@ -198,6 +210,8 @@ mod tests {
             },
             suspect_surface: vec![],
             reproduction_capsules: vec![],
+            probe_attempts: Vec::new(),
+            probe_aggregates: Vec::new(),
             provenance: None,
         }
     }

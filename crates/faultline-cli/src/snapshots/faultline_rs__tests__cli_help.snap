@@ -72,7 +72,7 @@ Options:
           [default: 0]
 
       --stability-threshold <STABILITY_THRESHOLD>
-          Minimum proportion of consistent results to classify as stable (0.0–1.0)
+          Legacy compatibility value (0.0–1.0); decisive retry results require unanimity
           
           [default: 1]
 
