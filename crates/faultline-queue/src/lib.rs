@@ -257,6 +257,12 @@ pub fn diagnose(input: &DiagnosisInput) -> Result<DiagnosisReport> {
         return Err(invalid("diagnosis evidence exceeds bounded input limits"));
     }
     input.sequence.validate()?;
+    identifier(&input.sequence.snapshot_id.0, "sequence snapshot_id")?;
+    for state in &input.sequence.states {
+        identifier(&state.id.0, "sequence state_id")?;
+        identifier(&state.commit.0, "sequence commit")?;
+        identifier(&state.tree.0, "sequence tree")?;
+    }
     if !(1..=64).contains(&input.policy.minimum_attempts) {
         return Err(invalid("minimum_attempts must be between 1 and 64"));
     }
