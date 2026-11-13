@@ -1,0 +1,169 @@
+name: Qualify final attempt evidence diff
+on:
+  push:
+    branches: [work/attempt-evidence-qualification]
+    paths: [.github/workflows/normalize-attempt-candidate.yml]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  INPUT_SHA: 3cab51d0f5a71dd5e6938e3deef0294eaee30eb4
+  QUEUE_SHA: d168c05992eca029df5644a38247f1428e2744db
+  CARGO_TERM_COLOR: never
+concurrency:
+  group: attempt-evidence-final-diff
+  cancel-in-progress: false
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: jdx/jactionlint@9e87e8f34edfc00b849a27807e26eff9d00b936d
+        with:
+          config-file: .github/jactionlint.yaml
+          profile: correctness
+          online: false
+          args: --shellcheck= --pyflakes=
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-attempt-evidence-reviewable-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-attempt-evidence-final-
+            ${{ runner.os }}-cargo-
+      - uses: actions/cache@v4
+        id: tools
+        with:
+          path: |
+            ~/.cargo/bin/cargo-insta
+            ~/.cargo/bin/ripr
+          key: ${{ runner.os }}-${{ runner.arch }}-verification-tools-insta-1.46.1-ripr-0.10.0
+      - name: Install pinned verification tools
+        if: steps.tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-insta --locked --version 1.46.1
+          cargo install ripr --locked --version 0.10.0
+      - name: Preserve existing source encoding and correct scenario descriptions
+        run: |
+          git checkout --detach "$INPUT_SHA"
+          mkdir -p "$RUNNER_TEMP/final-attempt-proof"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, subprocess
+          base = os.environ['QUEUE_SHA']
+          paths = subprocess.check_output(['git', 'diff', '--name-only', '--diff-filter=M', base, 'HEAD']).decode().splitlines()
+          normalized = []
+          for name in paths:
+              if not name.endswith('.rs'): continue
+              original = subprocess.check_output(['git', 'show', f'{base}:{name}'])
+              current = Path(name).read_bytes()
+              if original.count(b'\n') and original.count(b'\n') == original.count(b'\r\n'):
+                  fixed = current.replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+                  assert fixed.replace(b'\r\n', b'\n') == current.replace(b'\r\n', b'\n')
+                  Path(name).write_bytes(fixed)
+                  normalized.append(name)
+          Path(os.environ['RUNNER_TEMP'], 'final-attempt-proof', 'line-endings.txt').write_text('\n'.join(normalized) + '\n')
+          p = Path('docs/scenarios/scenario_index.md')
+          lines = p.read_text().splitlines()
+          for index, line in enumerate(lines):
+              for name in ('planned_state_identifiers_must_be_receiptable', 'bounded_unicode_state_identity_remains_usable'):
+                  if line.startswith(f'| `{name}` |'):
+                      lines[index] = f'| `{name}` | Planned identities match receipt constraints | Captured queue sequence | faultline-queue | Diagnosis packet | No unreceiptable probe | #81 #92 | app | queue-localization | diagnosis v0.1 | faultline-queue | P0 | faultline-queue | no |'
+          p.write_text('\n'.join(lines) + '\n')
+          PY
+          git diff --ignore-space-at-eol --exit-code -- crates
+          cargo fmt --all -- --check
+          cargo test --locked --workspace --all-targets 2>&1 | tee "$RUNNER_TEMP/final-attempt-proof/tests.log"
+          cargo xtask ci-full 2>&1 | tee "$RUNNER_TEMP/final-attempt-proof/full.log"
+          cargo xtask badges --check
+          git diff --check
+          git config user.name EffortlessSteven
+          git config user.email 15812269+EffortlessSteven@users.noreply.github.com
+          git add crates docs/scenarios/scenario_index.md
+          git commit -m 'chore: preserve existing source line endings in attempt repair'
+          test "$(git rev-parse HEAD^)" = "$INPUT_SHA"
+          test -z "$(git status --porcelain)"
+          git branch qualified-attempt-final
+          git rev-parse HEAD > "$RUNNER_TEMP/final-attempt-proof/qualified-sha.txt"
+          rustc --version --verbose > "$RUNNER_TEMP/final-attempt-proof/toolchain.txt"
+          git diff "$QUEUE_SHA" HEAD > "$RUNNER_TEMP/final-attempt-proof/patch.diff"
+          git diff --stat "$QUEUE_SHA" HEAD > "$RUNNER_TEMP/final-attempt-proof/stat.txt"
+          git bundle create "$RUNNER_TEMP/final-attempt-proof/source.bundle" "$INPUT_SHA"..qualified-attempt-final
+          git archive --format=tar HEAD > "$RUNNER_TEMP/final-attempt-proof/source.tar"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-attempt-proof
+          path: ${{ runner.temp }}/final-attempt-proof
+          retention-days: 14
+  compatibility:
+    needs: qualify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: '1.93.0'
+          - os: windows-latest
+            toolchain: stable
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: final-attempt-proof
+          path: ${{ runner.temp }}/final-attempt-proof
+      - name: Select exact final source
+        run: |
+          git fetch "$RUNNER_TEMP/final-attempt-proof/source.bundle" refs/heads/qualified-attempt-final:refs/heads/qualified-attempt-final
+          git checkout --detach qualified-attempt-final
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - name: Verify persistence and actual CLI behavior
+        run: |
+          cargo test --locked -p faultline-app --test attempt_evidence
+          cargo test --locked -p faultline-rs --test attempt_modes
+          git diff --exit-code
+  publish:
+    needs: [qualify, compatibility]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: final-attempt-proof
+          path: ${{ runner.temp }}/final-attempt-proof
+      - name: Publish the qualified non-semantic cleanup
+        run: |
+          git fetch "$RUNNER_TEMP/final-attempt-proof/source.bundle" refs/heads/qualified-attempt-final:refs/heads/qualified-attempt-final
+          test "$(git rev-parse qualified-attempt-final^)" = "$INPUT_SHA"
+          git diff --ignore-space-at-eol --exit-code "$INPUT_SHA" qualified-attempt-final -- crates
+          python3 - <<'PY'
+          import os, subprocess
+          paths = subprocess.check_output(['git', 'diff', '--name-only', os.environ['INPUT_SHA'], 'qualified-attempt-final']).decode().splitlines()
+          assert all(p == 'docs/scenarios/scenario_index.md' or (p.startswith('crates/') and p.endswith('.rs')) for p in paths), paths
+          PY
+          test "$(git ls-remote origin refs/heads/fix/retain-probe-attempts | cut -f1)" = "$INPUT_SHA"
+          git push origin qualified-attempt-final:refs/heads/fix/retain-probe-attempts
