@@ -251,6 +251,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "faultline-integration"
+version = "0.0.1"
+dependencies = [
+ "faultline-codes",
+ "faultline-types",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "faultline-junit"
 version = "0.0.1"
 dependencies = [
@@ -298,6 +311,22 @@ dependencies = [
  "faultline-types",
  "proptest",
  "tempfile",
+]
+
+[[package]]
+name = "faultline-queue"
+version = "0.0.1"
+dependencies = [
+ "clap",
+ "faultline-codes",
+ "faultline-integration",
+ "faultline-localization",
+ "faultline-types",
+ "proptest",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

@@ -78,3 +78,7 @@ Fuzz testing is run via `cargo xtask fuzz --duration <seconds>` and is available
 | `ci-extended` | Manual / release | mutation testing + supply-chain checks (`cargo-deny`, `cargo-audit`, `cargo-semver-checks`) | Variable |
 
 > **Note on fuzz testing:** faultline supports fuzz targets (via `cargo xtask fuzz`), but the current `ci-extended` workflow does not execute fuzz automatically. Fuzz is available as a manual tool for local exploration.
+
+## Queue diagnosis qualification
+
+`faultline-integration`: provenance/identity rejection, same-prefix tree witnesses, explicit localization basis, all 20 adjacent transition mappings and 128-case properties. `faultline-queue`: all 20 breakpoints within five midpoint launches, provider reuse, budgets, pending attempts, context mismatches, conflicting retries, operational failures and binary CLI contracts. Run `cargo test -p faultline-integration -p faultline-queue --all-targets`. These are synthetic contracts, not the live pilot.

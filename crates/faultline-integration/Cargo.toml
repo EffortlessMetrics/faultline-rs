@@ -1,0 +1,25 @@
+[package]
+name = "faultline-integration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Ordered integration-sequence and transition domain model for faultline"
+
+[dependencies]
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
+schemars = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true

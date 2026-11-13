@@ -1,0 +1,28 @@
+[package]
+name = "faultline-queue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+license-file.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Offline merge-queue evidence diagnosis and bounded probe planning"
+
+[dependencies]
+faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
+faultline-types = { path = "../faultline-types", version = "0.0.1" }
+faultline-localization = { path = "../faultline-localization", version = "0.0.1" }
+faultline-integration = { path = "../faultline-integration", version = "0.0.1" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

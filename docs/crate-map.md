@@ -19,6 +19,8 @@ faultline-app (app: +flake retry loop, +capsule emit, +suspect surface wiring)
   │    +SuspectEntry)          └─ faultline-junit (+suspect surface in system-out)
   ├─ faultline-localization
   │   (+FlakePolicy awareness, +confidence degradation)
+  ├─ faultline-integration
+  │   (+cumulative state validation, +transition outcome mapping)
   └─ faultline-surface
       (+rank_suspect_surface, +SuspectEntry scoring)
 
@@ -33,6 +35,7 @@ Tooling: xtask (+smoke, +docs-check, +check-scenarios, +export-*)
 | `faultline-codes` | domain | `serde`, `schemars` | property (via types), unit | Shared diagnostic vocabulary — `ObservationClass`, `ProbeKind`, `AmbiguityReason`, `OperatorCode` enums. |
 | `faultline-types` | domain | `faultline-codes`, `serde`, `serde_json`, `schemars`, `thiserror` | property, unit, fuzz | Pure value objects (`CommitId`, `RevisionSequence`, `ProbeObservation`, `AnalysisReport`, `FlakePolicy`, `FlakeSignal`, `ReproductionCapsule`, `RunComparison`, `SuspectEntry`), error types, serialization contracts, `compare_runs` pure function, and `to_shell_script` capsule generation. |
 | `faultline-localization` | domain | `faultline-codes`, `faultline-types` | property, unit, mutation | Regression-window search engine — binary narrowing over a `RevisionSequence` using recorded observations, producing `FirstBad`, `SuspectWindow`, or `Inconclusive` outcomes. Supports flake-aware probing via `FlakePolicy` with confidence degradation for unstable observations. |
+| `faultline-integration` | domain | `faultline-codes`, `faultline-types`, `serde`, `schemars`, `thiserror` | doctest, property planned | Ordered integration-sequence model — validates cumulative provider states, records state equivalence and maps localization boundaries to exact or suspect transition units without provider I/O. |
 | `faultline-surface` | domain | `faultline-types` | property, unit, mutation | Ranked suspect surface — groups changed files into subsystem buckets, assigns surface kinds, and ranks paths by investigation priority with execution-surface weighting, rename/delete scoring, and optional owner hints via `rank_suspect_surface`. |
 | `faultline-ports` | ports | `faultline-types` | — | Four outbound hexagonal port traits: `HistoryPort` (including `codeowners_for_paths` and `blame_frequency`), `CheckoutPort`, `ProbePort`, `RunStorePort`. |
 | `faultline-app` | app | `faultline-ports`, `faultline-localization`, `faultline-surface`, `faultline-types` | property, integration, mutation | Use-case orchestration — wires port implementations, drives the localization loop with flake retry support, generates reproduction capsules, populates ranked suspect surface, and enforces policy (max probes, boundary validation). |
@@ -50,9 +53,14 @@ Tooling: xtask (+smoke, +docs-check, +check-scenarios, +export-*)
 
 - Adapters depend inward on ports and types
 - Application depends on ports + domain
-- Domain depends only on `faultline-codes` and `faultline-types`
+- Domain depends only on pure shared domain crates and third-party serialization/error libraries
+- `faultline-integration` depends on localization result types but imports no provider, filesystem, process or Git adapter
 - No domain crate imports infrastructure
 - Export adapters (`faultline-sarif`, `faultline-junit`) depend only on `faultline-types`
 - `xtask` depends on `faultline-types` for schema generation
 
 See also: [Architecture](architecture.md), [Verification Matrix](verification-matrix.md)
+
+## Queue evidence application
+
+`faultline-queue` validates captured phase receipts, aggregates immutable attempts and plans bounded probes through `faultline-localization`. Its library depends inward on `faultline-integration`, `faultline-types` and `faultline-codes`; its thin binary is the file/JSON/CLI adapter. It does not execute code, contact GitHub or mutate queues. See [queue diagnosis](queue-diagnosis.md).
