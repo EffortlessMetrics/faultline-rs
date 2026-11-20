@@ -339,12 +339,12 @@ mod tests {
     // --- prepare_run tests ---
 
     #[test]
-    fn prepare_run_creates_directory_and_request_json() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_creates_directory_and_request_json() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         assert!(!handle.resumed);
         assert!(handle.root.exists());
@@ -352,80 +352,85 @@ mod tests {
 
         let request_path = handle.root.join("request.json");
         assert!(request_path.exists());
-        let raw = fs::read_to_string(&request_path).unwrap();
-        let deserialized: AnalysisRequest = serde_json::from_str(&raw).unwrap();
+        let raw = fs::read_to_string(&request_path)?;
+        let deserialized: AnalysisRequest = serde_json::from_str(&raw)?;
         assert_eq!(deserialized, request);
+        Ok(())
     }
 
     #[test]
-    fn prepare_run_sets_resumed_on_second_call() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_sets_resumed_on_second_call() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
-        let handle1 = store.prepare_run(&request).unwrap();
+        let handle1 = store.prepare_run(&request)?;
         assert!(!handle1.resumed);
 
-        let handle2 = store.prepare_run(&request).unwrap();
+        let handle2 = store.prepare_run(&request)?;
         assert!(handle2.resumed);
         assert_eq!(handle1.id, handle2.id);
+        Ok(())
     }
 
     // --- load_observations tests ---
 
     #[test]
-    fn load_observations_returns_empty_when_no_file() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn load_observations_returns_empty_when_no_file() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
-        let obs = store.load_observations(&handle).unwrap();
+        let obs = store.load_observations(&handle)?;
         assert!(obs.is_empty());
+        Ok(())
     }
 
     // --- save_observation tests ---
 
     #[test]
-    fn save_and_load_single_observation() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_and_load_single_observation() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let obs = sample_observation("abc123", ObservationClass::Pass);
-        store.save_observation(&handle, &obs).unwrap();
+        store.save_observation(&handle, &obs)?;
 
-        let loaded = store.load_observations(&handle).unwrap();
+        let loaded = store.load_observations(&handle)?;
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0], obs);
+        Ok(())
     }
 
     #[test]
-    fn save_observation_upserts_by_commit_id() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_observation_upserts_by_commit_id() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let obs1 = sample_observation("abc123", ObservationClass::Pass);
-        store.save_observation(&handle, &obs1).unwrap();
+        store.save_observation(&handle, &obs1)?;
 
         // Save again with different class for same commit — should replace
         let obs2 = sample_observation("abc123", ObservationClass::Fail);
-        store.save_observation(&handle, &obs2).unwrap();
+        store.save_observation(&handle, &obs2)?;
 
-        let loaded = store.load_observations(&handle).unwrap();
+        let loaded = store.load_observations(&handle)?;
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].class, ObservationClass::Fail);
+        Ok(())
     }
 
     #[test]
-    fn save_observation_sorts_by_sequence_index() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_observation_sorts_by_sequence_index() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         // Save in non-sequential order with explicit sequence indices
         let mut obs_c = sample_observation("ccc", ObservationClass::Pass);
@@ -435,11 +440,11 @@ mod tests {
         let mut obs_b = sample_observation("bbb", ObservationClass::Skip);
         obs_b.sequence_index = 1;
 
-        store.save_observation(&handle, &obs_c).unwrap();
-        store.save_observation(&handle, &obs_a).unwrap();
-        store.save_observation(&handle, &obs_b).unwrap();
+        store.save_observation(&handle, &obs_c)?;
+        store.save_observation(&handle, &obs_a)?;
+        store.save_observation(&handle, &obs_b)?;
 
-        let loaded = store.load_observations(&handle).unwrap();
+        let loaded = store.load_observations(&handle)?;
         assert_eq!(loaded.len(), 3);
         // Sorted by sequence_index, not by commit hash
         assert_eq!(loaded[0].commit.0, "aaa");
@@ -448,78 +453,83 @@ mod tests {
         assert_eq!(loaded[1].sequence_index, 1);
         assert_eq!(loaded[2].commit.0, "ccc");
         assert_eq!(loaded[2].sequence_index, 2);
+        Ok(())
     }
 
     // --- save_report tests ---
 
     #[test]
-    fn save_and_read_report() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_and_read_report() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let report = sample_report();
-        store.save_report(&handle, &report).unwrap();
+        store.save_report(&handle, &report)?;
 
         let report_path = handle.root.join("report.json");
         assert!(report_path.exists());
-        let raw = fs::read_to_string(&report_path).unwrap();
-        let deserialized: AnalysisReport = serde_json::from_str(&raw).unwrap();
+        let raw = fs::read_to_string(&report_path)?;
+        let deserialized: AnalysisReport = serde_json::from_str(&raw)?;
         assert_eq!(deserialized, report);
+        Ok(())
     }
 
     // --- load_report tests ---
 
     #[test]
-    fn load_report_returns_none_when_no_file() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn load_report_returns_none_when_no_file() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
-        let loaded = store.load_report(&handle).unwrap();
+        let loaded = store.load_report(&handle)?;
         assert!(
             loaded.is_none(),
             "load_report should return None when report.json does not exist"
         );
+        Ok(())
     }
 
     #[test]
-    fn load_report_returns_saved_report() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn load_report_returns_saved_report() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let report = sample_report();
-        store.save_report(&handle, &report).unwrap();
+        store.save_report(&handle, &report)?;
 
-        let loaded = store.load_report(&handle).unwrap();
+        let loaded = store.load_report(&handle)?;
         assert_eq!(loaded, Some(report));
+        Ok(())
     }
 
     // --- FileRunStore::new tests ---
 
     #[test]
-    fn new_creates_root_directory() {
-        let tmp = TempDir::new().unwrap();
+    fn new_creates_root_directory() -> Result<()> {
+        let tmp = TempDir::new()?;
         let root = tmp.path().join("deep").join("nested").join("runs");
         assert!(!root.exists());
 
-        let _store = FileRunStore::new(&root).unwrap();
+        let _store = FileRunStore::new(&root)?;
         assert!(root.exists());
+        Ok(())
     }
 
     // --- Lock file tests ---
 
     #[test]
-    fn prepare_run_creates_lock_file() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_creates_lock_file() -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let lock_path = handle.root.join(".lock");
         assert!(
@@ -527,140 +537,160 @@ mod tests {
             "lock file should be created by prepare_run"
         );
 
-        let content = fs::read_to_string(&lock_path).unwrap();
+        let content = fs::read_to_string(&lock_path)?;
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 2, "lock file should contain PID and timestamp");
 
-        let pid: u32 = lines[0].parse().expect("first line should be a PID");
+        let pid: u32 = lines[0].parse()?;
         assert_eq!(
             pid,
             std::process::id(),
             "lock PID should match current process"
         );
 
-        let _timestamp: u64 = lines[1].parse().expect("second line should be a timestamp");
+        let _timestamp: u64 = lines[1].parse()?;
+        Ok(())
     }
 
     #[test]
-    fn prepare_run_allows_same_process_reentry() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_allows_same_process_reentry() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
-        let handle1 = store.prepare_run(&request).unwrap();
+        let handle1 = store.prepare_run(&request)?;
         assert!(handle1.root.join(".lock").exists());
 
         // Same process calling prepare_run again should succeed (re-entry)
-        let handle2 = store.prepare_run(&request).unwrap();
+        let handle2 = store.prepare_run(&request)?;
         assert!(handle2.root.join(".lock").exists());
         assert_eq!(handle1.id, handle2.id);
+        Ok(())
     }
 
     #[test]
     #[cfg(unix)]
-    fn prepare_run_rejects_lock_held_by_another_live_process() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_rejects_lock_held_by_another_live_process()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
         // Create the run directory and write a lock file with PID 1 (init/launchd — always alive on Unix)
         let run_id = request.fingerprint();
         let run_dir = tmp.path().join("runs").join(&run_id);
-        fs::create_dir_all(&run_dir).unwrap();
+        fs::create_dir_all(&run_dir)?;
         let lock_path = run_dir.join(".lock");
-        fs::write(&lock_path, "1\n1700000000").unwrap();
+        fs::write(&lock_path, "1\n1700000000")?;
 
         let result = store.prepare_run(&request);
         assert!(
             result.is_err(),
             "should fail when lock is held by another live process"
         );
-        let err_msg = format!("{}", result.unwrap_err());
+        let err_msg = format!(
+            "{}",
+            result.err().ok_or("expected a live-process lock error")?
+        );
         assert!(
             err_msg.contains("run locked by process 1"),
             "error should mention the locking PID, got: {}",
             err_msg
         );
+        Ok(())
     }
 
     #[test]
     #[cfg(not(unix))]
-    fn prepare_run_treats_foreign_pid_lock_as_stale_on_non_unix() {
+    fn prepare_run_treats_foreign_pid_lock_as_stale_on_non_unix()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         // On non-Unix platforms, PID liveness checks always return false,
         // so any foreign-PID lock is treated as stale and cleaned up.
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
         let run_id = request.fingerprint();
         let run_dir = tmp.path().join("runs").join(&run_id);
-        fs::create_dir_all(&run_dir).unwrap();
+        fs::create_dir_all(&run_dir)?;
         let lock_path = run_dir.join(".lock");
-        fs::write(&lock_path, "1\n1700000000").unwrap();
+        fs::write(&lock_path, "1\n1700000000")?;
 
         // Should succeed — on non-Unix, all foreign locks are treated as stale
-        let handle = store.prepare_run(&request).unwrap();
-        let content = fs::read_to_string(handle.root.join(".lock")).unwrap();
-        let pid: u32 = content.lines().next().unwrap().parse().unwrap();
+        let handle = store.prepare_run(&request)?;
+        let content = fs::read_to_string(handle.root.join(".lock"))?;
+        let pid: u32 = content
+            .lines()
+            .next()
+            .ok_or("lock file must contain a PID")?
+            .parse()?;
         assert_eq!(pid, std::process::id());
+        Ok(())
     }
 
     #[test]
-    fn prepare_run_cleans_stale_lock_from_dead_process() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn prepare_run_cleans_stale_lock_from_dead_process()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
         // Create the run directory and write a lock file with a very high PID
         // that is almost certainly not alive
         let run_id = request.fingerprint();
         let run_dir = tmp.path().join("runs").join(&run_id);
-        fs::create_dir_all(&run_dir).unwrap();
+        fs::create_dir_all(&run_dir)?;
         let lock_path = run_dir.join(".lock");
-        fs::write(&lock_path, "4294967295\n1700000000").unwrap();
+        fs::write(&lock_path, "4294967295\n1700000000")?;
 
         // Should succeed — stale lock is cleaned up
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
         assert!(handle.root.join(".lock").exists());
 
         // Verify the lock now contains our PID
-        let content = fs::read_to_string(handle.root.join(".lock")).unwrap();
-        let pid: u32 = content.lines().next().unwrap().parse().unwrap();
+        let content = fs::read_to_string(handle.root.join(".lock"))?;
+        let pid: u32 = content
+            .lines()
+            .next()
+            .ok_or("lock file must contain a PID")?
+            .parse()?;
         assert_eq!(pid, std::process::id());
+        Ok(())
     }
 
     #[test]
-    fn save_report_releases_lock() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_report_releases_lock() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
 
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
         assert!(
             handle.root.join(".lock").exists(),
             "lock should exist after prepare_run"
         );
 
         let report = sample_report();
-        store.save_report(&handle, &report).unwrap();
+        store.save_report(&handle, &report)?;
         assert!(
             !handle.root.join(".lock").exists(),
             "lock should be released after save_report"
         );
+        Ok(())
     }
 
     // --- atomic_write tests ---
 
     #[test]
-    fn atomic_write_produces_correct_content_and_no_tmp_file() {
-        let tmp = TempDir::new().unwrap();
+    fn atomic_write_produces_correct_content_and_no_tmp_file() -> Result<()> {
+        let tmp = TempDir::new()?;
         let target = tmp.path().join("data.json");
 
         let content = b"{\"key\": \"value\", \"number\": 42}";
-        atomic_write(&target, content).unwrap();
+        atomic_write(&target, content)?;
 
         // Verify the target file has the correct content
-        let read_back = fs::read(&target).unwrap();
+        let read_back = fs::read(&target)?;
         assert_eq!(
             read_back, content,
             "atomic_write must produce correct file content"
@@ -672,46 +702,40 @@ mod tests {
             !tmp_path.exists(),
             "atomic_write must not leave a .tmp file behind after success"
         );
+        Ok(())
     }
 
     // --- save_probe_logs tests ---
 
     #[test]
-    fn save_probe_logs_creates_log_files() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_probe_logs_creates_log_files() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
-        store
-            .save_probe_logs(
-                &handle,
-                "abc123",
-                "full stdout output",
-                "full stderr output",
-            )
-            .unwrap();
+        store.save_probe_logs(
+            &handle,
+            "abc123",
+            "full stdout output",
+            "full stderr output",
+        )?;
 
         let stdout_path = handle.root.join("logs").join("abc123_stdout.log");
         let stderr_path = handle.root.join("logs").join("abc123_stderr.log");
         assert!(stdout_path.exists(), "stdout log file should exist");
         assert!(stderr_path.exists(), "stderr log file should exist");
-        assert_eq!(
-            fs::read_to_string(&stdout_path).unwrap(),
-            "full stdout output"
-        );
-        assert_eq!(
-            fs::read_to_string(&stderr_path).unwrap(),
-            "full stderr output"
-        );
+        assert_eq!(fs::read_to_string(&stdout_path)?, "full stdout output");
+        assert_eq!(fs::read_to_string(&stderr_path)?, "full stderr output");
+        Ok(())
     }
 
     #[test]
-    fn save_probe_logs_creates_logs_directory() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_probe_logs_creates_logs_directory() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
         let logs_dir = handle.root.join("logs");
         assert!(
@@ -719,55 +743,48 @@ mod tests {
             "logs dir should not exist before save_probe_logs"
         );
 
-        store
-            .save_probe_logs(&handle, "abc123", "out", "err")
-            .unwrap();
+        store.save_probe_logs(&handle, "abc123", "out", "err")?;
         assert!(
             logs_dir.exists(),
             "logs dir should be created by save_probe_logs"
         );
+        Ok(())
     }
 
     #[test]
-    fn save_probe_logs_overwrites_existing_logs() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_probe_logs_overwrites_existing_logs() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
-        store
-            .save_probe_logs(&handle, "abc123", "first", "first")
-            .unwrap();
-        store
-            .save_probe_logs(&handle, "abc123", "second", "second")
-            .unwrap();
+        store.save_probe_logs(&handle, "abc123", "first", "first")?;
+        store.save_probe_logs(&handle, "abc123", "second", "second")?;
 
         let stdout_path = handle.root.join("logs").join("abc123_stdout.log");
-        assert_eq!(fs::read_to_string(&stdout_path).unwrap(), "second");
+        assert_eq!(fs::read_to_string(&stdout_path)?, "second");
+        Ok(())
     }
 
     #[test]
-    fn save_probe_logs_handles_multiple_commits() {
-        let tmp = TempDir::new().unwrap();
-        let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+    fn save_probe_logs_handles_multiple_commits() -> Result<()> {
+        let tmp = TempDir::new()?;
+        let store = FileRunStore::new(tmp.path().join("runs"))?;
         let request = sample_request();
-        let handle = store.prepare_run(&request).unwrap();
+        let handle = store.prepare_run(&request)?;
 
-        store
-            .save_probe_logs(&handle, "aaa111", "out-a", "err-a")
-            .unwrap();
-        store
-            .save_probe_logs(&handle, "bbb222", "out-b", "err-b")
-            .unwrap();
+        store.save_probe_logs(&handle, "aaa111", "out-a", "err-a")?;
+        store.save_probe_logs(&handle, "bbb222", "out-b", "err-b")?;
 
         assert_eq!(
-            fs::read_to_string(handle.root.join("logs").join("aaa111_stdout.log")).unwrap(),
+            fs::read_to_string(handle.root.join("logs").join("aaa111_stdout.log"))?,
             "out-a"
         );
         assert_eq!(
-            fs::read_to_string(handle.root.join("logs").join("bbb222_stderr.log")).unwrap(),
+            fs::read_to_string(handle.root.join("logs").join("bbb222_stderr.log"))?,
             "err-b"
         );
+        Ok(())
     }
 
     // --- Property tests: Property 11 — Run Store Round-Trip ---
@@ -1086,13 +1103,13 @@ mod tests {
 
         #[test]
         fn prop_observation_round_trip(obs in arb_probe_observation()) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
             let request = sample_request();
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
-            store.save_observation(&handle, &obs).unwrap();
-            let loaded = store.load_observations(&handle).unwrap();
+            store.save_observation(&handle, &obs)?;
+            let loaded = store.load_observations(&handle)?;
 
             prop_assert!(
                 loaded.iter().any(|o| *o == obs),
@@ -1102,29 +1119,29 @@ mod tests {
 
         #[test]
         fn prop_report_round_trip(report in arb_analysis_report()) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
             let request = sample_request();
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
-            store.save_report(&handle, &report).unwrap();
+            store.save_report(&handle, &report)?;
 
             let report_path = handle.root.join("report.json");
-            let raw = fs::read_to_string(&report_path).unwrap();
-            let deserialized: AnalysisReport = serde_json::from_str(&raw).unwrap();
+            let raw = fs::read_to_string(&report_path)?;
+            let deserialized: AnalysisReport = serde_json::from_str(&raw)?;
             prop_assert_eq!(report, deserialized, "AnalysisReport round-trip must preserve equality");
         }
 
         #[test]
         fn prop_request_round_trip(request in arb_analysis_request()) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
 
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
             let request_path = handle.root.join("request.json");
-            let raw = fs::read_to_string(&request_path).unwrap();
-            let deserialized: AnalysisRequest = serde_json::from_str(&raw).unwrap();
+            let raw = fs::read_to_string(&request_path)?;
+            let deserialized: AnalysisRequest = serde_json::from_str(&raw)?;
             prop_assert_eq!(request, deserialized, "AnalysisRequest round-trip must preserve equality");
         }
 
@@ -1144,18 +1161,18 @@ mod tests {
                 })
                 .prop_shuffle()
         ) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
             let request = sample_request();
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
             // Save observations in shuffled order
             for obs in &observations {
-                store.save_observation(&handle, obs).unwrap();
+                store.save_observation(&handle, obs)?;
             }
 
             // Load and verify ascending sequence_index order
-            let loaded = store.load_observations(&handle).unwrap();
+            let loaded = store.load_observations(&handle)?;
             prop_assert_eq!(
                 loaded.len(),
                 observations.len(),
@@ -1179,25 +1196,25 @@ mod tests {
             request in arb_analysis_request(),
             observations in prop::collection::vec(arb_probe_observation(), 1..=5),
         ) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
 
             // First prepare_run — should NOT be resumed
-            let handle1 = store.prepare_run(&request).unwrap();
+            let handle1 = store.prepare_run(&request)?;
             prop_assert!(!handle1.resumed, "first prepare_run must have resumed == false");
 
             // Save all observations via the first handle
             for obs in &observations {
-                store.save_observation(&handle1, obs).unwrap();
+                store.save_observation(&handle1, obs)?;
             }
 
             // Second prepare_run — should be resumed
-            let handle2 = store.prepare_run(&request).unwrap();
+            let handle2 = store.prepare_run(&request)?;
             prop_assert!(handle2.resumed, "second prepare_run must have resumed == true");
             prop_assert_eq!(&handle1.id, &handle2.id, "both handles must share the same run ID");
 
             // Load observations from the second handle
-            let loaded = store.load_observations(&handle2).unwrap();
+            let loaded = store.load_observations(&handle2)?;
 
             // Verify all saved observations are present in the loaded list.
             // Note: save_observation upserts by commit ID, so if multiple observations
@@ -1227,13 +1244,13 @@ mod tests {
         // **Validates: Requirement 6.11**
         #[test]
         fn prop_report_load_round_trip(report in arb_analysis_report()) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
             let request = sample_request();
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
-            store.save_report(&handle, &report).unwrap();
-            let loaded = store.load_report(&handle).unwrap();
+            store.save_report(&handle, &report)?;
+            let loaded = store.load_report(&handle)?;
 
             prop_assert_eq!(
                 loaded,
@@ -1248,16 +1265,16 @@ mod tests {
         fn prop_schema_version_round_trip(
             report in arb_analysis_report_with_custom_schema_version()
         ) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
             let request = sample_request();
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
             let original_version = report.schema_version.clone();
 
             // Verify JSON serialization round-trip preserves schema_version
-            let json = serde_json::to_string_pretty(&report).unwrap();
-            let deserialized: AnalysisReport = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string_pretty(&report)?;
+            let deserialized: AnalysisReport = serde_json::from_str(&json)?;
             prop_assert_eq!(
                 &deserialized.schema_version,
                 &original_version,
@@ -1265,12 +1282,12 @@ mod tests {
             );
 
             // Verify store save/load round-trip preserves schema_version
-            store.save_report(&handle, &report).unwrap();
-            let loaded = store.load_report(&handle).unwrap();
+            store.save_report(&handle, &report)?;
+            let loaded = store.load_report(&handle)?;
             prop_assert!(loaded.is_some(), "load_report must return Some after save_report");
             prop_assert_eq!(
-                &loaded.unwrap().schema_version,
-                &original_version,
+                loaded.as_ref().map(|r| &r.schema_version),
+                Some(&original_version),
                 "store round-trip must preserve schema_version"
             );
         }
@@ -1279,27 +1296,27 @@ mod tests {
         // **Validates: Requirement 6.4**
         #[test]
         fn prop_version_metadata_persistence(request in arb_analysis_request()) {
-            let tmp = TempDir::new().unwrap();
-            let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+            let tmp = TempDir::new()?;
+            let store = FileRunStore::new(tmp.path().join("runs"))?;
 
-            let handle = store.prepare_run(&request).unwrap();
+            let handle = store.prepare_run(&request)?;
 
             // Read metadata.json from the run directory
             let metadata_path = handle.root.join("metadata.json");
             prop_assert!(metadata_path.exists(), "metadata.json must exist after prepare_run");
 
-            let raw = fs::read_to_string(&metadata_path).unwrap();
-            let metadata: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            let raw = fs::read_to_string(&metadata_path)?;
+            let metadata: serde_json::Value = serde_json::from_str(&raw)?;
 
             prop_assert_eq!(
-                metadata["schema_version"].as_str().unwrap(),
-                "0.1.0",
+                metadata["schema_version"].as_str(),
+                Some("0.1.0"),
                 "schema_version in metadata.json must be 0.1.0"
             );
 
             prop_assert_eq!(
-                metadata["tool_version"].as_str().unwrap(),
-                env!("CARGO_PKG_VERSION"),
+                metadata["tool_version"].as_str(),
+                Some(env!("CARGO_PKG_VERSION")),
                 "tool_version in metadata.json must match workspace version"
             );
         }
@@ -1320,8 +1337,7 @@ mod tests {
             ) {
                 // The store saves report.json via serde_json::to_string_pretty().
                 // Verify that serializing the report preserves all sentinel env values.
-                let json = serde_json::to_string_pretty(&report)
-                    .expect("report must serialize to JSON");
+                let json = serde_json::to_string_pretty(&report)?;
 
                 for sentinel in &sentinels {
                     prop_assert!(
@@ -1333,18 +1349,17 @@ mod tests {
                 }
 
                 // Also verify via actual FileRunStore round-trip
-                let tmp = TempDir::new().unwrap();
-                let store = FileRunStore::new(tmp.path().join("runs")).unwrap();
+                let tmp = TempDir::new()?;
+                let store = FileRunStore::new(tmp.path().join("runs"))?;
                 let request = sample_request();
-                let handle = store.prepare_run(&request).unwrap();
+                let handle = store.prepare_run(&request)?;
 
-                store.save_report(&handle, &report).unwrap();
-                let loaded = store.load_report(&handle).unwrap();
+                store.save_report(&handle, &report)?;
+                let loaded = store.load_report(&handle)?;
                 prop_assert!(loaded.is_some(), "load_report must return Some after save_report");
 
-                let loaded_report = loaded.unwrap();
-                let loaded_json = serde_json::to_string_pretty(&loaded_report)
-                    .expect("loaded report must serialize to JSON");
+                let loaded_report = loaded.ok_or_else(|| TestCaseError::fail("saved report must exist"))?;
+                let loaded_json = serde_json::to_string_pretty(&loaded_report)?;
 
                 for sentinel in &sentinels {
                     prop_assert!(
