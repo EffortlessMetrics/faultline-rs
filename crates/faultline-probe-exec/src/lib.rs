@@ -277,6 +277,7 @@ mod tests {
     use faultline_codes::{ObservationClass, ProbeKind};
     use faultline_types::{CheckedOutRevision, CommitId, ShellKind};
     use proptest::prelude::*;
+    use std::error::Error;
 
     // Feature: v01-release-train, Property 1: Exit Code Classification
     // **Validates: Requirements 2.3, 2.4, 2.5, 2.6**
@@ -371,7 +372,8 @@ mod tests {
             commit_id in arb_commit_id(),
             kind in arb_probe_kind(),
         ) {
-            let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+            let tmp_dir = tempfile::tempdir()
+                .map_err(|err| TestCaseError::fail(format!("failed to create temp dir: {err}")))?;
 
             let probe = ProbeSpec::Shell {
                 kind,
@@ -387,7 +389,9 @@ mod tests {
             };
 
             let adapter = ExecProbeAdapter;
-            let obs = adapter.run(&checkout, &probe).expect("probe should succeed");
+            let obs = adapter
+                .run(&checkout, &probe)
+                .map_err(|err| TestCaseError::fail(format!("probe should succeed: {err}")))?;
 
             // commit is non-empty
             prop_assert!(!obs.commit.0.is_empty(), "commit must be non-empty");
@@ -478,10 +482,10 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn signal_termination_sets_signal_number() {
+    fn signal_termination_sets_signal_number() -> std::result::Result<(), Box<dyn Error>> {
         use faultline_codes::ProbeKind;
 
-        let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let tmp_dir = tempfile::tempdir()?;
         let checkout = CheckedOutRevision {
             commit: CommitId("abc123".to_string()),
             path: tmp_dir.path().to_path_buf(),
@@ -501,9 +505,7 @@ mod tests {
         };
 
         let adapter = ExecProbeAdapter;
-        let obs = adapter
-            .run(&checkout, &probe)
-            .expect("probe should complete");
+        let obs = adapter.run(&checkout, &probe)?;
 
         // The process killed itself with SIGTERM (signal 15).
         assert!(
@@ -522,17 +524,18 @@ mod tests {
             "signal-killed process should be classified as Indeterminate"
         );
         assert!(!obs.timed_out, "should not be marked as timed out");
+        Ok(())
     }
 
     #[test]
-    fn probe_output_exceeding_limit_is_truncated() {
+    fn probe_output_exceeding_limit_is_truncated() -> std::result::Result<(), Box<dyn Error>> {
         // Generate substantially more data than an operating-system pipe can
         // ordinarily buffer on both stdout and stderr. The adapter must drain
         // both streams while the child runs rather than false-timeout waiting
         // for a producer blocked on a full pipe.
         use faultline_codes::ProbeKind;
 
-        let tmp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let tmp_dir = tempfile::tempdir()?;
         let checkout = CheckedOutRevision {
             commit: CommitId("def456".to_string()),
             path: tmp_dir.path().to_path_buf(),
@@ -572,9 +575,7 @@ mod tests {
 
         let small_limit: usize = 256;
         let adapter = ExecProbeAdapter;
-        let obs = adapter
-            .run_with_limit(&checkout, &probe, small_limit)
-            .expect("probe should complete");
+        let obs = adapter.run_with_limit(&checkout, &probe, small_limit)?;
 
         assert!(
             !obs.timed_out,
@@ -599,5 +600,6 @@ mod tests {
             small_limit + TRUNCATION_MARKER.len(),
             "stderr preview should be exactly limit + marker length"
         );
+        Ok(())
     }
 }
