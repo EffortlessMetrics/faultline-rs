@@ -119,20 +119,6 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0008"
-path = "crates/faultline-fixtures/src/lib.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "21 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
 id = "panic-baseline-0011"
 path = "crates/faultline-git/src/lib.rs"
 family = "panic_macro"
@@ -167,76 +153,6 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "1 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0015"
-path = "crates/faultline-localization/src/lib.rs"
-family = "expect"
-classification = "baseline"
-owner = "unassigned"
-explanation = "1 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0016"
-path = "crates/faultline-localization/src/lib.rs"
-family = "get_unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "1 pre-policy get_unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0017"
-path = "crates/faultline-localization/src/lib.rs"
-family = "panic_macro"
-classification = "baseline"
-owner = "unassigned"
-explanation = "16 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0018"
-path = "crates/faultline-localization/src/lib.rs"
-family = "unreachable"
-classification = "baseline"
-owner = "unassigned"
-explanation = "1 pre-policy unreachable call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0019"
-path = "crates/faultline-localization/src/lib.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "133 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
 expires = "2026-11-14"
 
 [allow.selector]
@@ -391,34 +307,6 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "151 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0031"
-path = "crates/faultline-surface/src/lib.rs"
-family = "expect"
-classification = "baseline"
-owner = "unassigned"
-explanation = "4 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0032"
-path = "crates/faultline-surface/src/lib.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "6 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
 expires = "2026-11-14"
 
 [allow.selector]
@@ -685,34 +573,6 @@ family = "unwrap"
 classification = "baseline"
 owner = "unassigned"
 explanation = "2 unwrap call site(s) in secrets-sentinel fixture tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0062"
-path = "crates/faultline-localization/tests/bdd_narrowing.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "11 unwrap call site(s) in bdd-narrowing tests; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0063"
-path = "crates/faultline-localization/tests/bdd_narrowing.rs"
-family = "panic_macro"
-classification = "baseline"
-owner = "unassigned"
-explanation = "6 panic_macro call site(s) in bdd-narrowing tests; burn down by Q3 2026."
 expires = "2026-11-14"
 
 [allow.selector]
