@@ -785,41 +785,46 @@ pub fn stable_hash(data: &[u8]) -> String {
 
 // --- Secret Scrubber ---
 
+type CompiledSecretPatterns = std::result::Result<Vec<Regex>, regex::Error>;
+
 /// Conservative set of high-confidence secret patterns.
 /// Each pattern uses a capture group for the prefix that will be preserved.
-static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
-    vec![
+static SECRET_PATTERNS: LazyLock<CompiledSecretPatterns> = LazyLock::new(|| {
+    Ok(vec![
         // GitHub classic tokens: ghp_, gho_, ghu_, ghs_, ghr_ followed by 36+ alphanumeric
-        Regex::new(r"(gh[pousr]_)[A-Za-z0-9]{36,}").expect("valid regex: GitHub token pattern"),
+        Regex::new(r"(gh[pousr]_)[A-Za-z0-9]{36,}")?,
         // GitHub fine-grained PATs: github_pat_ followed by 40+ Base62 token body
-        Regex::new(r"(github_pat_)[A-Za-z0-9_]{40,}")
-            .expect("valid regex: GitHub fine-grained PAT pattern"),
+        Regex::new(r"(github_pat_)[A-Za-z0-9_]{40,}")?,
         // AWS access keys: AKIA followed by 16 uppercase alphanumeric
-        Regex::new(r"(AKIA)[A-Z0-9]{16}").expect("valid regex: AWS key pattern"),
+        Regex::new(r"(AKIA)[A-Z0-9]{16}")?,
         // Google API keys: AIza followed by 35 URL-safe chars
-        Regex::new(r"(AIza)[A-Za-z0-9_\-]{35}").expect("valid regex: Google API key pattern"),
+        Regex::new(r"(AIza)[A-Za-z0-9_\-]{35}")?,
         // Stripe keys: sk-live_ or sk-test_ followed by alphanumeric
-        Regex::new(r"(sk-(?:live|test)_)[A-Za-z0-9]{24,}")
-            .expect("valid regex: Stripe key pattern"),
+        Regex::new(r"(sk-(?:live|test)_)[A-Za-z0-9]{24,}")?,
         // Slack tokens: xox[baprs]- followed by 10+ chars (bot/user/app/refresh)
-        Regex::new(r"(xox[baprs]-)[A-Za-z0-9-]{10,}").expect("valid regex: Slack token pattern"),
+        Regex::new(r"(xox[baprs]-)[A-Za-z0-9-]{10,}")?,
         // Bearer tokens: "Bearer " followed by non-whitespace
-        Regex::new(r"(Bearer )\S+").expect("valid regex: Bearer token pattern"),
+        Regex::new(r"(Bearer )\S+")?,
         // password= followed by non-whitespace value
-        Regex::new(r"(password=)\S+").expect("valid regex: password pattern"),
+        Regex::new(r"(password=)\S+")?,
         // PEM private key blocks: capture the header, redact the whole block
-        Regex::new(r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----")
-            .expect("valid regex: PEM private key pattern"),
-    ]
+        Regex::new(
+            r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+        )?,
+    ])
 });
 
 /// Scrub secret-like patterns from a string, replacing matched
 /// portions with `[REDACTED]` while preserving the prefix for context.
 ///
-/// The replacement format is `{prefix}[REDACTED]`.
+/// The replacement format is `{prefix}[REDACTED]`. If a pattern fails to compile,
+/// the entire input is replaced with `[REDACTED]`.
 pub fn scrub_secrets(input: &str) -> String {
+    let Ok(patterns) = &*SECRET_PATTERNS else {
+        return "[REDACTED]".to_owned();
+    };
     let mut result = input.to_string();
-    for pattern in SECRET_PATTERNS.iter() {
+    for pattern in patterns {
         result = pattern.replace_all(&result, "${1}[REDACTED]").to_string();
     }
     result
