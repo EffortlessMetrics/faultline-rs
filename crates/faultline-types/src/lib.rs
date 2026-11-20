@@ -2030,15 +2030,15 @@ mod tests {
 
         #[test]
         fn prop_json_serialization_determinism(report in arb_analysis_report()) {
-            let json1 = serde_json::to_string_pretty(&report).expect("first serialization");
-            let json2 = serde_json::to_string_pretty(&report).expect("second serialization");
+            let json1 = serde_json::to_string_pretty(&report)?;
+            let json2 = serde_json::to_string_pretty(&report)?;
             prop_assert_eq!(json1, json2, "serializing the same AnalysisReport twice must produce byte-identical JSON");
         }
 
         #[test]
         fn prop_analysis_report_json_round_trip(report in arb_analysis_report()) {
-            let json = serde_json::to_string_pretty(&report).expect("serialize");
-            let deserialized: AnalysisReport = serde_json::from_str(&json).expect("deserialize");
+            let json = serde_json::to_string_pretty(&report)?;
+            let deserialized: AnalysisReport = serde_json::from_str(&json)?;
             prop_assert_eq!(report, deserialized, "JSON round-trip must preserve equality");
         }
     }
@@ -2052,26 +2052,28 @@ mod tests {
         fn prop_json_schema_validates_all_valid_reports(report in arb_analysis_report()) {
             // Generate the JSON Schema from the Rust types
             let schema = schemars::schema_for!(AnalysisReport);
-            let schema_json = serde_json::to_value(&schema).expect("schema serializes to JSON");
+            let schema_json = serde_json::to_value(&schema)?;
 
             // Verify schema contains $schema draft identifier
-            let schema_draft = schema_json.get("$schema").expect("schema must have $schema field");
+            let schema_draft = schema_json.get("$schema")
+                .ok_or_else(|| TestCaseError::fail("schema must have $schema field"))?;
             prop_assert!(
                 schema_draft.as_str().is_some_and(|draft| draft.contains("json-schema.org")),
                 "schema $schema field must reference json-schema.org draft"
             );
 
             // Verify schema contains title field
-            let title = schema_json.get("title").expect("schema must have title field");
+            let title = schema_json.get("title")
+                .ok_or_else(|| TestCaseError::fail("schema must have title field"))?;
             prop_assert_eq!(title.as_str(), Some("AnalysisReport"));
 
             // Serialize the generated report to JSON
-            let report_json = serde_json::to_string(&report).expect("report serializes to JSON");
+            let report_json = serde_json::to_string(&report)?;
 
             // Validate: the report JSON can be deserialized back to AnalysisReport
             // This proves the schema (derived from the same types) accepts all valid reports
             let roundtripped: AnalysisReport =
-                serde_json::from_str(&report_json).expect("report JSON deserializes back");
+                serde_json::from_str(&report_json)?;
             prop_assert_eq!(
                 report, roundtripped,
                 "schema-conformant report must round-trip through JSON"
@@ -2079,14 +2081,15 @@ mod tests {
 
             // Structural check: the report JSON is a valid JSON object with expected top-level keys
             let report_value: serde_json::Value =
-                serde_json::from_str(&report_json).expect("report is valid JSON");
-            let obj = report_value.as_object().expect("report must be a JSON object");
+                serde_json::from_str(&report_json)?;
+            let obj = report_value.as_object()
+                .ok_or_else(|| TestCaseError::fail("report must be a JSON object"))?;
 
             // Verify all required fields from the schema are present in the serialized report
             let required = schema_json
                 .get("required")
                 .and_then(|r| r.as_array())
-                .expect("schema must have required array");
+                .ok_or_else(|| TestCaseError::fail("schema must have required array"))?;
             for req_field in required {
                 let field_name = req_field.as_str()
                     .ok_or_else(|| TestCaseError::fail("required field name must be a string"))?;
@@ -2480,8 +2483,7 @@ mod tests {
             }
         }"#;
 
-        let report: AnalysisReport =
-            serde_json::from_str(old_json).expect("old v0.1.0 JSON must deserialize");
+        let report: AnalysisReport = serde_json::from_str(old_json)?;
 
         // Verify the explicitly set fields
         assert_eq!(report.schema_version, "0.1.0");
@@ -2692,24 +2694,26 @@ mod tests {
     }
 
     #[test]
-    fn redact_report_sets_provenance_default_policy() {
+    fn redact_report_sets_provenance_default_policy() -> std::result::Result<(), &'static str> {
         let report = sample_report();
         let redacted = redact_report(&report, &RedactionPolicy::default_safe());
-        let prov = redacted.provenance.expect("provenance must be set");
+        let prov = redacted.provenance.ok_or("provenance must be set")?;
         assert_eq!(prov.redaction_policy, "default");
         assert!(prov.env_values_redacted);
         assert!(prov.output_scrubbed);
         assert_eq!(prov.artifact_source, None);
+        Ok(())
     }
 
     #[test]
-    fn redact_report_sets_provenance_none_policy() {
+    fn redact_report_sets_provenance_none_policy() -> std::result::Result<(), &'static str> {
         let report = sample_report();
         let redacted = redact_report(&report, &RedactionPolicy::none());
-        let prov = redacted.provenance.expect("provenance must be set");
+        let prov = redacted.provenance.ok_or("provenance must be set")?;
         assert_eq!(prov.redaction_policy, "none");
         assert!(!prov.env_values_redacted);
         assert!(!prov.output_scrubbed);
+        Ok(())
     }
 
     #[test]
@@ -3076,7 +3080,7 @@ mod tests {
                 let redacted = redact_report(&report, &policy);
 
                 let prov = redacted.provenance.as_ref()
-                    .expect("provenance must be Some after redact_report");
+                    .ok_or_else(|| TestCaseError::fail("provenance must be Some after redact_report"))?;
 
                 prop_assert_eq!(
                     prov.redaction_policy.as_str(),
@@ -3123,11 +3127,9 @@ mod tests {
             ) {
                 let redacted = redact_report(&report, &policy);
 
-                let json = serde_json::to_string_pretty(&redacted)
-                    .expect("redacted report must serialize to JSON");
+                let json = serde_json::to_string_pretty(&redacted)?;
 
-                let deserialized: AnalysisReport = serde_json::from_str(&json)
-                    .expect("redacted report JSON must deserialize back");
+                let deserialized: AnalysisReport = serde_json::from_str(&json)?;
 
                 prop_assert_eq!(
                     redacted, deserialized,
@@ -3149,14 +3151,12 @@ mod tests {
             fn prop_redacted_output_conforms_to_schema(report in arb_analysis_report()) {
                 let redacted = redact_report(&report, &RedactionPolicy::default_safe());
 
-                let json_str = serde_json::to_string(&redacted)
-                    .expect("redacted report must serialize to JSON");
+                let json_str = serde_json::to_string(&redacted)?;
 
-                let json_value: serde_json::Value = serde_json::from_str(&json_str)
-                    .expect("serialized JSON must be valid");
+                let json_value: serde_json::Value = serde_json::from_str(&json_str)?;
 
                 let obj = json_value.as_object()
-                    .expect("report JSON must be an object");
+                    .ok_or_else(|| TestCaseError::fail("report JSON must be an object"))?;
 
                 // Verify required top-level fields
                 prop_assert!(obj.contains_key("schema_version"));
@@ -3171,12 +3171,12 @@ mod tests {
 
                 // Verify provenance field structure
                 let provenance = obj.get("provenance")
-                    .expect("redacted report must have provenance field");
+                    .ok_or_else(|| TestCaseError::fail("redacted report must have provenance field"))?;
                 prop_assert!(!provenance.is_null(),
                     "provenance must not be null after redaction");
 
                 let prov_obj = provenance.as_object()
-                    .expect("provenance must be an object");
+                    .ok_or_else(|| TestCaseError::fail("provenance must be an object"))?;
                 prop_assert!(prov_obj.contains_key("redaction_policy"));
                 prop_assert!(prov_obj.contains_key("env_values_redacted"));
                 prop_assert!(prov_obj.contains_key("output_scrubbed"));
@@ -3186,8 +3186,7 @@ mod tests {
                 prop_assert!(prov_obj["output_scrubbed"].is_boolean());
 
                 // Verify full schema conformance via round-trip
-                let _roundtrip: AnalysisReport = serde_json::from_str(&json_str)
-                    .expect("redacted report JSON must conform to AnalysisReport schema");
+                let _roundtrip: AnalysisReport = serde_json::from_str(&json_str)?;
             }
         }
     }
@@ -3228,7 +3227,7 @@ mod tests {
     // Feature: v01-artifact-hardening, Property 13: Backward-Compatible Deserialization
     // **Validates: Requirements 8.1, 8.2**
     #[test]
-    fn prop13_backward_compatible_deserialization_without_provenance() {
+    fn prop13_backward_compatible_deserialization_without_provenance() -> serde_json::Result<()> {
         // A JSON string representing a report WITHOUT the provenance field
         let old_json = r#"{
             "schema_version": "0.2.0",
@@ -3269,8 +3268,7 @@ mod tests {
             }
         }"#;
 
-        let report: AnalysisReport =
-            serde_json::from_str(old_json).expect("old JSON without provenance must deserialize");
+        let report: AnalysisReport = serde_json::from_str(old_json)?;
 
         // provenance must be None for old reports
         assert!(
@@ -3278,10 +3276,12 @@ mod tests {
             "provenance must be None for reports without the field"
         );
         assert_eq!(report.run_id, "old-run-no-provenance");
+        Ok(())
     }
 
     #[test]
-    fn prop13_backward_compatible_deserialization_with_provenance() {
+    fn prop13_backward_compatible_deserialization_with_provenance()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         // A JSON string representing a report WITH the provenance field
         let new_json = r#"{
             "schema_version": "0.2.0",
@@ -3328,15 +3328,15 @@ mod tests {
             }
         }"#;
 
-        let report: AnalysisReport =
-            serde_json::from_str(new_json).expect("JSON with provenance must deserialize");
+        let report: AnalysisReport = serde_json::from_str(new_json)?;
 
-        let prov = report.provenance.expect("provenance must be Some");
+        let prov = report.provenance.ok_or("provenance must be Some")?;
         assert_eq!(prov.redaction_policy, "default");
         assert!(prov.env_values_redacted);
         assert!(prov.output_scrubbed);
         assert_eq!(prov.artifact_source, None);
         assert_eq!(report.run_id, "new-run-with-provenance");
+        Ok(())
     }
 
     // Feature: v01-artifact-hardening, Property 14: Secret Pattern Scrubbing in Shareable Artifacts
@@ -3408,8 +3408,7 @@ mod tests {
                 );
 
                 // Serialize to JSON
-                let json = serde_json::to_string(&redacted)
-                    .expect("redacted report must serialize to JSON");
+                let json = serde_json::to_string(&redacted)?;
 
                 // Assert none of the known secrets appear in the output
                 for secret in KNOWN_SECRETS {
