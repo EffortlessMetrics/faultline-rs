@@ -119,20 +119,6 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0011"
-path = "crates/faultline-git/src/lib.rs"
-family = "panic_macro"
-classification = "baseline"
-owner = "unassigned"
-explanation = "3 pre-policy panic_macro call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
 id = "panic-baseline-0021"
 path = "crates/faultline-render/src/lib.rs"
 family = "expect"

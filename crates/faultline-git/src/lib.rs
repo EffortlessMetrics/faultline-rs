@@ -1010,14 +1010,26 @@ mod fixture_scenario_tests {
                 "commit-3: introduces bug",
                 vec![FileOp::Write {
                     path: "src/main.rs".into(),
-                    content: "fn main() { panic!(\"bug\"); }".into(),
+                    content: concat!(
+                        "// The regression starts in this revision.\n",
+                        "fn main() -> std::process::ExitCode {\n",
+                        "    std::process::ExitCode::from(1)\n",
+                        "}\n",
+                    )
+                    .into(),
                 }],
             )
             .commit(
                 "commit-4: still bad",
                 vec![FileOp::Write {
                     path: "src/main.rs".into(),
-                    content: "fn main() { panic!(\"still broken\"); }".into(),
+                    content: concat!(
+                        "// The regression persists in this revision.\n",
+                        "fn main() -> std::process::ExitCode {\n",
+                        "    std::process::ExitCode::from(1)\n",
+                        "}\n",
+                    )
+                    .into(),
                 }],
             )
             .build()?;
