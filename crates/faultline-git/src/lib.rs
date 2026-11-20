@@ -156,13 +156,18 @@ impl GitAdapter {
     }
 
     fn resolve_revision(&self, spec: &RevisionSpec) -> Result<CommitId> {
-        let resolved = self.git_output(vec![
-            OsString::from("rev-parse"),
-            OsString::from("--verify"),
-            OsString::from("--end-of-options"),
-            OsString::from(format!("{}^{{commit}}", spec.0)),
-        ])?;
-        Ok(CommitId(resolved))
+        let verify = |expression: &str| {
+            self.git_output(vec![
+                OsString::from("rev-parse"),
+                OsString::from("--verify"),
+                OsString::from("--end-of-options"),
+                OsString::from(expression),
+            ])
+        };
+        // Suffixes on a :/message search are part of the search pattern.
+        let object_id = verify(&spec.0)?;
+        let commit_id = verify(&format!("{object_id}^{{commit}}"))?;
+        Ok(CommitId(commit_id))
     }
 
     fn ensure_ancestor(&self, good: &CommitId, bad: &CommitId) -> Result<()> {
@@ -1123,7 +1128,19 @@ mod fixture_scenario_tests {
         // The sequence should contain all 5 commits in order.
         assert_eq!(sequence.revisions, repo.commits);
 
-        for spec in ["HEAD^{tree}", "--all"] {
+        let searched = adapter.linearize(
+            &RevisionSpec(":/^commit-1:".into()),
+            &RevisionSpec(":/^commit-3:".into()),
+            HistoryMode::AncestryPath,
+        )?;
+        assert_eq!(searched.revisions, repo.commits[1..=3]);
+
+        for spec in [
+            "HEAD^{tree}",
+            "HEAD:src/main.rs",
+            ":/^no such commit$",
+            "--all",
+        ] {
             assert!(
                 adapter
                     .linearize(
