@@ -1,12 +1,16 @@
 use faultline_codes::ObservationClass;
 use faultline_ports::ProbePort;
-#[cfg(not(target_os = "linux"))]
 use faultline_types::FaultlineError;
 use faultline_types::{CheckedOutRevision, ProbeObservation, ProbeSpec, Result, ShellKind};
-use std::process::{Command, ExitStatus, Stdio};
+use std::io::Read;
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
-#[cfg(not(target_os = "linux"))]
-use std::{io::Read, process::Child, thread};
+#[cfg(target_os = "linux")]
+use std::{
+    io::IsTerminal,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 #[cfg(target_os = "linux")]
 mod unix;
@@ -39,14 +43,12 @@ fn truncate_output(output: &str, limit: usize) -> String {
     truncated
 }
 
-#[cfg(not(target_os = "linux"))]
 fn read_stream<R: Read>(mut stream: R) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
 
-#[cfg(not(target_os = "linux"))]
 fn spawn_stream_reader<R>(
     stream: R,
     stream_name: &'static str,
@@ -62,13 +64,11 @@ where
         })
 }
 
-#[cfg(not(target_os = "linux"))]
 fn terminate_after_reader_start_failure(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
 
-#[cfg(not(target_os = "linux"))]
 fn join_stream_reader(
     reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
     stream_name: &str,
@@ -84,15 +84,10 @@ fn join_stream_reader(
     }
 }
 
-#[cfg(target_os = "linux")]
-use unix::capture;
-
-#[cfg(not(target_os = "linux"))]
-fn capture(
+fn capture_foreground(
     command: &mut Command,
     started: Instant,
     timeout: Duration,
-    _cancelled: impl Fn() -> bool,
 ) -> Result<CapturedProbe> {
     let mut child = command
         .spawn()
@@ -156,36 +151,66 @@ fn capture(
 pub struct ExecProbeAdapter;
 
 #[cfg(target_os = "linux")]
-struct CancellableProbe<'a>(&'a std::sync::atomic::AtomicBool);
+struct CancellableProbe<'a>(Option<&'a AtomicBool>);
 
 #[cfg(target_os = "linux")]
 impl ProbePort for CancellableProbe<'_> {
     fn run(&self, checkout: &CheckedOutRevision, probe: &ProbeSpec) -> Result<ProbeObservation> {
-        ExecProbeAdapter.run_cancellable(checkout, probe, self.0)
+        match self.0 {
+            Some(cancelled) => ExecProbeAdapter.run_cancellable(checkout, probe, cancelled),
+            None => ExecProbeAdapter.run(checkout, probe),
+        }
     }
 }
 
 impl ExecProbeAdapter {
-    /// Bind a cooperative cancellation flag to the probe port used by the Linux CLI.
+    /// Whether inherited stdin allows Linux group cleanup without changing terminal job control.
     #[cfg(target_os = "linux")]
-    pub fn with_cancellation(cancelled: &std::sync::atomic::AtomicBool) -> impl ProbePort + '_ {
+    pub fn uses_owned_process_group() -> bool {
+        !std::io::stdin().is_terminal()
+    }
+
+    /// Bind a cancellation flag for nonterminal runs. With no flag, use normal probe dispatch.
+    #[cfg(target_os = "linux")]
+    pub fn with_cancellation(cancelled: Option<&AtomicBool>) -> impl ProbePort + '_ {
         CancellableProbe(cancelled)
     }
 
-    /// Run a local Linux probe until completion, timeout, or cooperative cancellation.
+    /// Run a Linux probe in an owned group with a cooperative cancellation flag.
     ///
-    /// The caller may set `cancelled` from another thread. Active cancellation uses
-    /// the same bounded process group shutdown as timeout and returns a probe error.
+    /// This is the explicit grouped entry point for callers with nonterminal stdin.
+    /// Use the default probe port to preserve inherited terminal input. A caller may
+    /// set `cancelled` from another thread to request the bounded shutdown path.
     #[cfg(target_os = "linux")]
     pub fn run_cancellable(
         &self,
         checkout: &CheckedOutRevision,
         probe: &ProbeSpec,
-        cancelled: &std::sync::atomic::AtomicBool,
+        cancelled: &AtomicBool,
     ) -> Result<ProbeObservation> {
-        self.run_with_limit(checkout, probe, DEFAULT_TRUNCATION_LIMIT, || {
-            cancelled.load(std::sync::atomic::Ordering::Relaxed)
-        })
+        self.run_with_limit(
+            checkout,
+            probe,
+            DEFAULT_TRUNCATION_LIMIT,
+            |command, started, timeout| {
+                unix::capture(command, started, timeout, || {
+                    cancelled.load(Ordering::Relaxed)
+                })
+            },
+        )
+    }
+
+    fn capture_default(
+        command: &mut Command,
+        started: Instant,
+        timeout: Duration,
+    ) -> Result<CapturedProbe> {
+        // A probe reading a terminal must stay in the inherited foreground group.
+        #[cfg(target_os = "linux")]
+        if Self::uses_owned_process_group() {
+            return unix::capture(command, started, timeout, || false);
+        }
+        capture_foreground(command, started, timeout)
     }
 
     /// Run a probe with a custom truncation limit. Used internally and for testing.
@@ -194,7 +219,7 @@ impl ExecProbeAdapter {
         checkout: &CheckedOutRevision,
         probe: &ProbeSpec,
         truncation_limit: usize,
-        cancelled: impl Fn() -> bool,
+        capture: impl FnOnce(&mut Command, Instant, Duration) -> Result<CapturedProbe>,
     ) -> Result<ProbeObservation> {
         let kind = probe.kind();
         let timeout = Duration::from_secs(probe.timeout_seconds());
@@ -210,7 +235,7 @@ impl ExecProbeAdapter {
             timed_out,
             stdout,
             stderr,
-        } = capture(&mut command, started, timeout, cancelled)?;
+        } = capture(&mut command, started, timeout)?;
         let exit_code = status.code();
 
         #[cfg(unix)]
@@ -246,7 +271,12 @@ impl ExecProbeAdapter {
 
 impl ProbePort for ExecProbeAdapter {
     fn run(&self, checkout: &CheckedOutRevision, probe: &ProbeSpec) -> Result<ProbeObservation> {
-        self.run_with_limit(checkout, probe, DEFAULT_TRUNCATION_LIMIT, || false)
+        self.run_with_limit(
+            checkout,
+            probe,
+            DEFAULT_TRUNCATION_LIMIT,
+            Self::capture_default,
+        )
     }
 }
 
@@ -646,7 +676,12 @@ mod tests {
 
         let small_limit: usize = 256;
         let adapter = ExecProbeAdapter;
-        let obs = adapter.run_with_limit(&checkout, &probe, small_limit, || false)?;
+        let obs = adapter.run_with_limit(
+            &checkout,
+            &probe,
+            small_limit,
+            ExecProbeAdapter::capture_default,
+        )?;
 
         assert!(
             !obs.timed_out,

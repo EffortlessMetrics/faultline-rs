@@ -1,7 +1,6 @@
 #![cfg(target_os = "linux")]
 
 use faultline_codes::{ObservationClass, ProbeKind};
-use faultline_ports::ProbePort;
 use faultline_probe_exec::ExecProbeAdapter;
 use faultline_types::{CheckedOutRevision, CommitId, ProbeSpec, ShellKind};
 use std::io;
@@ -84,7 +83,7 @@ fn timeout_and_cancellation_reap_owned_nested_probes() -> Result<(), Box<dyn std
                 ExecProbeAdapter.run_cancellable(&checkout, &probe, &cancelled)
             })
         } else {
-            ExecProbeAdapter.run(&checkout, &probe)
+            ExecProbeAdapter.run_cancellable(&checkout, &probe, &AtomicBool::new(false))
         };
         let elapsed = started.elapsed();
         let reaped = reap_fixture_descendants()?;
@@ -143,7 +142,8 @@ fn timeout_and_cancellation_reap_owned_nested_probes() -> Result<(), Box<dyn std
     assert_eq!(reap_fixture_descendants()?, 0);
     assert!(!dir.path().join("completed").exists());
 
-    let observation = ExecProbeAdapter.run(&checkout, &probe)?;
+    let observation =
+        ExecProbeAdapter.run_cancellable(&checkout, &probe, &AtomicBool::new(false))?;
     assert_eq!(observation.class, ObservationClass::Fail);
     assert_eq!(observation.exit_code, Some(7));
     assert_eq!(observation.signal_number, None);

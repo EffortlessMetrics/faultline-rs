@@ -5,8 +5,8 @@ use faultline_fixtures::{FileOp, GitRepoBuilder};
 use std::fs::File;
 use std::io::{self, Write};
 use std::os::fd::FromRawFd;
-use std::os::unix::process::CommandExt;
-use std::process::{Child, Command, Stdio};
+use std::os::unix::process::{CommandExt, ExitStatusExt};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -88,8 +88,21 @@ impl Drop for FixtureCli {
     }
 }
 
+fn wait_for_exit(cli: &mut FixtureCli, limit: Duration) -> io::Result<Option<ExitStatus>> {
+    let started = Instant::now();
+    loop {
+        if let Some(status) = cli.0.try_wait()? {
+            return Ok(Some(status));
+        }
+        if started.elapsed() >= limit {
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+}
+
 #[test]
-fn terminal_ctrl_c_reaps_owned_probe_descendants() -> anyhow::Result<()> {
+fn linux_preserves_terminal_input_and_cancels_noninteractive_groups() -> anyhow::Result<()> {
     // SAFETY: Set adoption in this dedicated fixture executable, so it can
     // reap its own orphaned grandchildren even when running in a container.
     let subreaper = unsafe {
@@ -125,59 +138,119 @@ fn terminal_ctrl_c_reaps_owned_probe_descendants() -> anyhow::Result<()> {
     let good = repo.commits.first().context("fixture good commit")?;
     let bad = repo.commits.last().context("fixture bad commit")?;
     let dir = tempfile::tempdir()?;
+    let command_for = |script| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_faultline-rs"));
+        command
+            .arg("--repo")
+            .arg(repo.dir.path())
+            .arg("--good")
+            .arg(&good.0)
+            .arg("--bad")
+            .arg(&bad.0)
+            .arg("--output-dir")
+            .arg(dir.path().join("report"))
+            .args(["--timeout-seconds", "3", "--cmd", script])
+            .stdout(Stdio::null());
+        command
+    };
+
     let ready = dir.path().join("ready");
     let survived = dir.path().join("survived");
     let stderr = dir.path().join("stderr");
-    let (mut master, slave) = terminal()?;
-    let mut command = Command::new(env!("CARGO_BIN_EXE_faultline-rs"));
+    let mut command =
+        command_for("sh -c 'sleep 2 & : > \"$READY\"; wait; : > \"$SURVIVED\"' & wait");
     command
-        .arg("--repo")
-        .arg(repo.dir.path())
-        .arg("--good")
-        .arg(&good.0)
-        .arg("--bad")
-        .arg(&bad.0)
-        .args([
-            "--timeout-seconds",
-            "8",
-            "--cmd",
-            "sh -c 'sleep 4 & : > \"$READY\"; wait; : > \"$SURVIVED\"' & wait",
-        ])
         .env("READY", &ready)
         .env("SURVIVED", &survived)
-        .stdin(Stdio::from(slave))
-        .stdout(Stdio::null())
+        .stdin(Stdio::null())
         .stderr(Stdio::from(File::create(&stderr)?));
-    attach_terminal(&mut command);
     let mut cli = FixtureCli(command.spawn()?);
     let started = Instant::now();
-    while !ready.exists() && started.elapsed() < Duration::from_secs(3) {
+    while !ready.exists() && started.elapsed() < Duration::from_secs(2) {
         thread::sleep(Duration::from_millis(5));
     }
     let was_ready = ready.exists();
-    let result = if was_ready {
-        master.write_all(b"\x03")
+    let signal = if was_ready {
+        let pid = libc::pid_t::try_from(cli.0.id())?;
+        // SAFETY: Signal only the direct CLI child while its Child handle is
+        // still owned and unreaped. No process group or unrelated PID is targeted.
+        if unsafe { libc::kill(pid, libc::SIGINT) } == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
     } else {
         Ok(())
     };
-    let interrupted_at = Instant::now();
-    let status = loop {
-        if let Some(status) = cli.0.try_wait()? {
-            break Some(status);
-        }
-        if interrupted_at.elapsed() >= Duration::from_secs(3) {
-            break None;
-        }
-        thread::sleep(Duration::from_millis(5));
-    };
+    let status = wait_for_exit(&mut cli, Duration::from_secs(3))?;
     drop(cli);
     let reaped = reap_adopted_fixture_children()?;
-    result?;
+    signal?;
     assert!(was_ready, "probe never reached its readiness marker");
-    assert!(!survived.exists(), "nested probe survived terminal Ctrl-C");
+    assert!(
+        !survived.exists(),
+        "nested probe survived noninteractive SIGINT"
+    );
     assert!(reaped > 0, "fixture should reap adopted descendants");
     assert_eq!(status.and_then(|status| status.code()), Some(130));
     let diagnostic = std::fs::read_to_string(stderr)?;
     assert!(diagnostic.contains("probe cancelled"), "{diagnostic}");
+
+    let received = dir.path().join("received");
+    let (mut master, slave) = terminal()?;
+    let mut command = command_for(
+        "IFS= read -r answer || exit 2; printf '%s\n' \"$answer\" >> \"$RECEIVED\"; grep -qx good predicate.txt",
+    );
+    command
+        .env("RECEIVED", &received)
+        .stdin(Stdio::from(slave))
+        .stderr(Stdio::null());
+    attach_terminal(&mut command);
+    let mut cli = FixtureCli(command.spawn()?);
+    let input = master.write_all(b"first input\nsecond input\n");
+    let status = wait_for_exit(&mut cli, Duration::from_secs(8))?;
+    drop(cli);
+    drop(master);
+    reap_adopted_fixture_children()?;
+    input?;
+    let actual =
+        std::fs::read_to_string(&received).context("predicate did not consume terminal input")?;
+    assert_eq!(actual, "first input\nsecond input\n");
+    assert!(status.is_some_and(|status| status.success()), "{status:?}");
+    let terminal_ready = dir.path().join("terminal-ready");
+    let terminal_sigint = dir.path().join("terminal-sigint");
+    let (mut master, slave) = terminal()?;
+    let mut command = command_for(
+        "trap '' HUP; trap ': > \"$INTERRUPTED\"; exit 130' INT; : > \"$READY\"; IFS= read -r answer",
+    );
+    command
+        .arg("--force")
+        .env("READY", &terminal_ready)
+        .env("INTERRUPTED", &terminal_sigint)
+        .stdin(Stdio::from(slave))
+        .stderr(Stdio::null());
+    attach_terminal(&mut command);
+    let mut cli = FixtureCli(command.spawn()?);
+    let started = Instant::now();
+    while !terminal_ready.exists() && started.elapsed() < Duration::from_secs(2) {
+        thread::sleep(Duration::from_millis(5));
+    }
+    let interrupt = master.write_all(b"\x03");
+    let status = wait_for_exit(&mut cli, Duration::from_secs(4))?;
+    drop(cli);
+    reap_adopted_fixture_children()?;
+    interrupt?;
+    assert!(
+        terminal_ready.exists(),
+        "terminal predicate never became ready"
+    );
+    assert_eq!(
+        status.and_then(|status| status.signal()),
+        Some(libc::SIGINT)
+    );
+    assert!(
+        terminal_sigint.exists(),
+        "foreground predicate did not receive Ctrl-C"
+    );
     Ok(())
 }

@@ -424,15 +424,20 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
     let git = GitAdapter::new(&cli.repo)?;
     let store = FileRunStore::new(cli.repo.join(".faultline").join("runs"))?;
     #[cfg(target_os = "linux")]
-    let interrupt = interrupt::Interrupt::install()?;
+    let interrupt = if ExecProbeAdapter::uses_owned_process_group() {
+        Some(interrupt::Interrupt::install()?)
+    } else {
+        None
+    };
     #[cfg(target_os = "linux")]
-    let probe = ExecProbeAdapter::with_cancellation(interrupt.flag());
+    let probe =
+        ExecProbeAdapter::with_cancellation(interrupt.as_ref().map(interrupt::Interrupt::flag));
     #[cfg(not(target_os = "linux"))]
     let probe = ExecProbeAdapter;
     let app = FaultlineApp::new(&git, &git, &probe, &store);
     let result = app.localize(request);
     #[cfg(target_os = "linux")]
-    {
+    if let Some(interrupt) = interrupt {
         let interrupted = interrupt.received();
         drop(interrupt);
         if interrupted {
