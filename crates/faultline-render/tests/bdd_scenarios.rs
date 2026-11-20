@@ -138,22 +138,21 @@ fn build_sample_report() -> AnalysisReport {
 /// End-to-end: build report → render JSON + HTML → verify artifacts exist and
 /// contain expected fields. Then render with markdown and verify dossier.md.
 #[test]
-fn scenario_report_generation_end_to_end() {
-    let tmp = TempDir::new().unwrap();
+fn scenario_report_generation_end_to_end() -> Result<()> {
+    let tmp = TempDir::new()?;
     let output_dir = tmp.path().join("output");
     let renderer = ReportRenderer::new(&output_dir);
     let report = build_sample_report();
 
     // Render JSON + HTML
-    renderer.render(&report).expect("render should succeed");
+    renderer.render(&report)?;
 
     // --- Verify analysis.json exists and contains expected fields ---
     let json_path = output_dir.join("analysis.json");
     assert!(json_path.exists(), "analysis.json must exist");
 
-    let json_content = std::fs::read_to_string(&json_path).unwrap();
-    let parsed: serde_json::Value =
-        serde_json::from_str(&json_content).expect("analysis.json must be valid JSON");
+    let json_content = std::fs::read_to_string(&json_path)?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_content)?;
 
     assert_eq!(parsed["run_id"], "bdd-e2e-run-001");
     assert_eq!(parsed["schema_version"], "0.3.0");
@@ -173,7 +172,7 @@ fn scenario_report_generation_end_to_end() {
         parsed["suspect_surface"].is_array(),
         "suspect_surface must be array"
     );
-    assert_eq!(parsed["suspect_surface"].as_array().unwrap().len(), 2);
+    assert_eq!(parsed["suspect_surface"].as_array().map(Vec::len), Some(2));
     assert!(
         parsed["reproduction_capsules"].is_array(),
         "reproduction_capsules must be array"
@@ -192,7 +191,7 @@ fn scenario_report_generation_end_to_end() {
     let html_path = output_dir.join("index.html");
     assert!(html_path.exists(), "index.html must exist");
 
-    let html_content = std::fs::read_to_string(&html_path).unwrap();
+    let html_content = std::fs::read_to_string(&html_path)?;
     assert!(
         html_content.contains("bdd-e2e-run-001"),
         "HTML must contain run_id"
@@ -209,9 +208,7 @@ fn scenario_report_generation_end_to_end() {
     // --- Render with markdown and verify dossier.md ---
     let md_dir = tmp.path().join("output_md");
     let md_renderer = ReportRenderer::new(&md_dir);
-    md_renderer
-        .render_with_markdown(&report)
-        .expect("render_with_markdown should succeed");
+    md_renderer.render_with_markdown(&report)?;
 
     let dossier_path = md_dir.join("dossier.md");
     assert!(
@@ -219,7 +216,7 @@ fn scenario_report_generation_end_to_end() {
         "dossier.md must exist after render_with_markdown"
     );
 
-    let md_content = std::fs::read_to_string(&dossier_path).unwrap();
+    let md_content = std::fs::read_to_string(&dossier_path)?;
     assert!(
         md_content.contains("FirstBad") || md_content.contains("Outcome"),
         "dossier.md must contain outcome section"
@@ -232,6 +229,7 @@ fn scenario_report_generation_end_to_end() {
     // Also verify JSON + HTML exist in the markdown output dir
     assert!(md_dir.join("analysis.json").exists());
     assert!(md_dir.join("index.html").exists());
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -242,54 +240,50 @@ fn scenario_report_generation_end_to_end() {
 /// Resume/rerender: create a report, serialize it, deserialize it back,
 /// re-render, and verify the re-rendered output matches the original.
 #[test]
-fn scenario_resume_rerender_consistency() {
+fn scenario_resume_rerender_consistency() -> Result<()> {
     let report = build_sample_report();
 
     // Serialize the report (simulating store persistence)
-    let serialized = serde_json::to_string_pretty(&report).expect("serialize should succeed");
+    let serialized = serde_json::to_string_pretty(&report)?;
 
     // Deserialize (simulating loading from store cache)
-    let deserialized: AnalysisReport =
-        serde_json::from_str(&serialized).expect("deserialize should succeed");
+    let deserialized: AnalysisReport = serde_json::from_str(&serialized)?;
 
     // Verify round-trip fidelity
     assert_eq!(report, deserialized, "round-trip must preserve report");
 
     // Render the original
-    let tmp = TempDir::new().unwrap();
+    let tmp = TempDir::new()?;
     let dir_original = tmp.path().join("original");
     let dir_rerendered = tmp.path().join("rerendered");
 
-    ReportRenderer::new(&dir_original)
-        .render_with_markdown(&report)
-        .expect("original render should succeed");
+    ReportRenderer::new(&dir_original).render_with_markdown(&report)?;
 
     // Re-render from deserialized (cached) report
-    ReportRenderer::new(&dir_rerendered)
-        .render_with_markdown(&deserialized)
-        .expect("rerender should succeed");
+    ReportRenderer::new(&dir_rerendered).render_with_markdown(&deserialized)?;
 
     // Verify JSON artifacts are identical
-    let json_original = std::fs::read_to_string(dir_original.join("analysis.json")).unwrap();
-    let json_rerendered = std::fs::read_to_string(dir_rerendered.join("analysis.json")).unwrap();
+    let json_original = std::fs::read_to_string(dir_original.join("analysis.json"))?;
+    let json_rerendered = std::fs::read_to_string(dir_rerendered.join("analysis.json"))?;
     assert_eq!(
         json_original, json_rerendered,
         "re-rendered JSON must match original"
     );
 
     // Verify HTML artifacts are identical
-    let html_original = std::fs::read_to_string(dir_original.join("index.html")).unwrap();
-    let html_rerendered = std::fs::read_to_string(dir_rerendered.join("index.html")).unwrap();
+    let html_original = std::fs::read_to_string(dir_original.join("index.html"))?;
+    let html_rerendered = std::fs::read_to_string(dir_rerendered.join("index.html"))?;
     assert_eq!(
         html_original, html_rerendered,
         "re-rendered HTML must match original"
     );
 
     // Verify Markdown dossiers are identical
-    let md_original = std::fs::read_to_string(dir_original.join("dossier.md")).unwrap();
-    let md_rerendered = std::fs::read_to_string(dir_rerendered.join("dossier.md")).unwrap();
+    let md_original = std::fs::read_to_string(dir_original.join("dossier.md"))?;
+    let md_rerendered = std::fs::read_to_string(dir_rerendered.join("dossier.md"))?;
     assert_eq!(
         md_original, md_rerendered,
         "re-rendered Markdown must match original"
     );
+    Ok(())
 }
