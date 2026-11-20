@@ -1251,6 +1251,19 @@ mod fixture_scenario_tests {
             side_ancestry.revisions,
             [CommitId(feature_sha), CommitId(merge_sha)]
         );
+
+        // With no intervening main commit, the bounded first-parent walk lists
+        // just the merge. Its second parent is good, but its first parent is not.
+        git_cmd(repo_path, &["checkout", "--detach", &good.0])?;
+        git_cmd(
+            repo_path,
+            &["merge", "--no-ff", "-m", "merge at branch point", "feature"],
+        )?;
+        let tip = RevisionSpec(git_cmd(repo_path, &["rev-parse", "HEAD"])?);
+        assert!(matches!(
+            adapter.linearize(&side_good, &tip, HistoryMode::FirstParent),
+            Err(FaultlineError::InvalidInput(message)) if message.contains("first-parent chain")
+        ));
         Ok(())
     }
 
