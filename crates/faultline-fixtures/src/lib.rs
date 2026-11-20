@@ -208,6 +208,7 @@ fn apply_file_ops(repo: &Path, ops: &[FileOp]) -> Result<(), String> {
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use proptest::test_runner::TestCaseError;
 
     #[test]
     fn push_and_build_produces_correct_sequence() {
@@ -282,10 +283,14 @@ mod tests {
             let seq = builder.build();
 
             // First element is the good commit
-            prop_assert_eq!(&seq.revisions.first().unwrap().0, &good,
+            let first = seq.revisions.first()
+                .ok_or_else(|| TestCaseError::fail("sequence must contain the good commit"))?;
+            prop_assert_eq!(&first.0, &good,
                 "first element must be the good commit");
             // Last element is the bad commit
-            prop_assert_eq!(&seq.revisions.last().unwrap().0, &bad,
+            let last = seq.revisions.last()
+                .ok_or_else(|| TestCaseError::fail("sequence must contain the bad commit"))?;
+            prop_assert_eq!(&last.0, &bad,
                 "last element must be the bad commit");
             // Length >= 2 (at minimum good + bad)
             prop_assert!(seq.revisions.len() >= 2,
@@ -298,9 +303,8 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn git_repo_builder_creates_repo_with_commits() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn git_repo_builder_creates_repo_with_commits() -> Result<(), String> {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "first",
                 vec![FileOp::Write {
@@ -315,8 +319,7 @@ mod tests {
                     content: "world".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 2);
         // Each commit SHA should be a 40-char hex string
@@ -325,12 +328,12 @@ mod tests {
         }
         // Commits should be distinct
         assert_ne!(repo.commits[0], repo.commits[1]);
+        Ok(())
     }
 
     #[test]
-    fn git_repo_builder_supports_delete() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn git_repo_builder_supports_delete() -> Result<(), String> {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "add file",
                 vec![FileOp::Write {
@@ -344,18 +347,17 @@ mod tests {
                     path: "remove_me.txt".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 2);
         // The file should no longer exist in the working tree
         assert!(!repo.dir.path().join("remove_me.txt").exists());
+        Ok(())
     }
 
     #[test]
-    fn git_repo_builder_supports_rename() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn git_repo_builder_supports_rename() -> Result<(), String> {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "add file",
                 vec![FileOp::Write {
@@ -370,25 +372,24 @@ mod tests {
                     to: "new_name.txt".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 2);
         assert!(!repo.dir.path().join("old_name.txt").exists());
         assert!(repo.dir.path().join("new_name.txt").exists());
+        Ok(())
     }
 
     #[test]
-    fn git_repo_builder_merge() {
+    fn git_repo_builder_merge() -> Result<(), String> {
         // Create a repo, branch off, then merge back
-        let builder = GitRepoBuilder::new().unwrap();
+        let builder = GitRepoBuilder::new()?;
         let dir = builder.dir.path().to_path_buf();
 
         // We need to do the branch creation manually since the builder
         // queues actions. Build a base commit first, then create a branch,
         // add a commit on it, switch back, and merge.
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial",
                 vec![FileOp::Write {
@@ -396,40 +397,40 @@ mod tests {
                     content: "main".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         let repo_path = repo.dir.path();
 
         // Create and populate a feature branch
-        run_git(repo_path, &["checkout", "-b", "feature"]).unwrap();
-        std::fs::write(repo_path.join("feature.txt"), "feature work").unwrap();
-        run_git(repo_path, &["add", "."]).unwrap();
-        run_git(repo_path, &["commit", "-m", "feature commit"]).unwrap();
-        run_git(repo_path, &["checkout", "main"]).unwrap();
+        run_git(repo_path, &["checkout", "-b", "feature"])?;
+        let feature_path = repo_path.join("feature.txt");
+        std::fs::write(&feature_path, "feature work")
+            .map_err(|e| format!("write {}: {e}", feature_path.display()))?;
+        run_git(repo_path, &["add", "."])?;
+        run_git(repo_path, &["commit", "-m", "feature commit"])?;
+        run_git(repo_path, &["checkout", "main"])?;
 
         // Now merge
         run_git(
             repo_path,
             &["merge", "--no-ff", "-m", "merge feature", "feature"],
-        )
-        .unwrap();
+        )?;
 
-        let merge_sha = rev_parse_head(repo_path).unwrap();
+        let merge_sha = rev_parse_head(repo_path)?;
         assert_eq!(merge_sha.len(), 40);
 
         // Verify it's actually a merge commit (two parents)
-        let parents = run_git(repo_path, &["rev-list", "--parents", "-1", "HEAD"]).unwrap();
-        let parent_count = parents.split_whitespace().count() - 1; // first token is the commit itself
+        let parents = run_git(repo_path, &["rev-list", "--parents", "-1", "HEAD"])?;
+        let parent_count = parents.split_whitespace().skip(1).count(); // first token is the commit itself
         assert_eq!(parent_count, 2, "merge commit should have 2 parents");
 
         drop(dir); // keep the builder's dir alive until here
+        Ok(())
     }
 
     #[test]
-    fn git_repo_builder_subdirectories() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn git_repo_builder_subdirectories() -> Result<(), String> {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "nested",
                 vec![FileOp::Write {
@@ -437,10 +438,10 @@ mod tests {
                     content: "// module".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 1);
         assert!(repo.dir.path().join("src/lib/mod.rs").exists());
+        Ok(())
     }
 }
