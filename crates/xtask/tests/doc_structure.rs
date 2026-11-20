@@ -1,15 +1,15 @@
 // Feature: repo-operating-system, Property 37: Pattern Entry Structural Completeness
 // Feature: repo-operating-system, Property 38: Scenario Entry Structural Completeness
 
+use anyhow::{Context, Result};
 use std::path::Path;
 
 /// Workspace root relative to the xtask crate directory.
-fn workspace_root() -> &'static Path {
+fn workspace_root() -> Result<&'static Path> {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent() // crates/
-        .unwrap()
-        .parent() // repo root
-        .unwrap()
+        .parent()
+        .and_then(Path::parent)
+        .context("xtask manifest directory must be two levels below the workspace root")
 }
 
 // ---------------------------------------------------------------------------
@@ -31,8 +31,8 @@ fn parse_pattern_sections(content: &str) -> Vec<(String, String)> {
 
     for line in content.lines() {
         // Pattern headers look like: ## 1. Truth Core / Translation Edge
-        if line.starts_with("## ") && line.len() > 3 {
-            let after_hash = line[3..].trim();
+        if let Some(heading) = line.strip_prefix("## ") {
+            let after_hash = heading.trim();
             // Check if it starts with a digit followed by a dot (pattern entry)
             if after_hash
                 .chars()
@@ -66,13 +66,13 @@ fn parse_pattern_sections(content: &str) -> Vec<(String, String)> {
 }
 
 #[test]
-fn pattern_entry_structural_completeness() {
+fn pattern_entry_structural_completeness() -> Result<()> {
     // Feature: repo-operating-system, Property 37: Pattern Entry Structural Completeness
     // **Validates: Requirements 1.2**
 
-    let catalog_path = workspace_root().join("docs/patterns/catalog.md");
+    let catalog_path = workspace_root()?.join("docs/patterns/catalog.md");
     let content = std::fs::read_to_string(&catalog_path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", catalog_path.display()));
+        .with_context(|| format!("failed to read {}", catalog_path.display()))?;
 
     let patterns = parse_pattern_sections(&content);
 
@@ -102,10 +102,11 @@ fn pattern_entry_structural_completeness() {
                 "Pattern '{title}' is missing required section: {section_name}\n\
                  Expected one of: {markers:?}\n\
                  Pattern body excerpt: {}",
-                &body[..body.len().min(200)]
+                body.chars().take(200).collect::<String>()
             );
         }
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -127,12 +128,14 @@ fn parse_scenario_table_rows(content: &str) -> Vec<(usize, Vec<String>)> {
         let trimmed = line.trim();
 
         // Skip non-table lines
-        if !trimmed.starts_with('|') || !trimmed.ends_with('|') {
+        let Some(inner) = trimmed
+            .strip_prefix('|')
+            .and_then(|row| row.strip_suffix('|'))
+        else {
             continue;
-        }
+        };
 
         // Skip separator rows (e.g., |---|---|---|)
-        let inner = &trimmed[1..trimmed.len() - 1];
         if inner
             .chars()
             .all(|c| c == '-' || c == '|' || c == ':' || c == ' ')
@@ -168,13 +171,13 @@ fn parse_scenario_table_rows(content: &str) -> Vec<(usize, Vec<String>)> {
 }
 
 #[test]
-fn scenario_entry_structural_completeness() {
+fn scenario_entry_structural_completeness() -> Result<()> {
     // Feature: repo-operating-system, Property 38: Scenario Entry Structural Completeness
     // **Validates: Requirements 2.2**
 
-    let index_path = workspace_root().join("docs/scenarios/scenario_index.md");
+    let index_path = workspace_root()?.join("docs/scenarios/scenario_index.md");
     let content = std::fs::read_to_string(&index_path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", index_path.display()));
+        .with_context(|| format!("failed to read {}", index_path.display()))?;
 
     let rows = parse_scenario_table_rows(&content);
 
@@ -205,9 +208,9 @@ fn scenario_entry_structural_completeness() {
             "Refs",
         ];
 
-        for (i, field_name) in field_names.iter().enumerate() {
+        for (i, (field_name, cell)) in field_names.iter().zip(cells).enumerate() {
             assert!(
-                !cells[i].is_empty(),
+                !cell.is_empty(),
                 "Line {line_num}: field '{field_name}' (column {}) is empty. Row: {cells:?}",
                 i + 1
             );
@@ -224,13 +227,14 @@ fn scenario_entry_structural_completeness() {
             "Review",
         ];
 
-        for (j, meta_name) in metadata_names.iter().enumerate() {
+        for (j, (meta_name, cell)) in metadata_names.iter().zip(cells.iter().skip(7)).enumerate() {
             let col = 7 + j;
             assert!(
-                !cells[col].is_empty(),
+                !cell.is_empty(),
                 "Line {line_num}: metadata field '{meta_name}' (column {}) is empty. Row: {cells:?}",
                 col + 1
             );
         }
     }
+    Ok(())
 }

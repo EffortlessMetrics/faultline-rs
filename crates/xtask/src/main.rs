@@ -535,17 +535,18 @@ fn impacted_evidence_args(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::Context;
     use clap::CommandFactory;
 
     // Feature: repo-operating-system, Property 43: Xtask Help Completeness
     // **Validates: Requirements 5.2, 5.5, 10.1**
 
     #[test]
-    fn xtask_help_lists_all_subcommands() {
+    fn xtask_help_lists_all_subcommands() -> Result<()> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf).context("write xtask help")?;
+        let help = String::from_utf8(buf).context("help output must be UTF-8")?;
 
         let expected_subcommands = [
             "ci-fast",
@@ -581,19 +582,23 @@ mod tests {
                 "xtask --help missing subcommand: {name}\n--- help output ---\n{help}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn scaffold_help_lists_all_kinds() {
+    fn scaffold_help_lists_all_kinds() -> Result<()> {
         let cmd = Cli::command();
         let scaffold_cmd = cmd
             .get_subcommands()
             .find(|c| c.get_name() == "scaffold")
-            .expect("scaffold subcommand not found");
+            .context("scaffold subcommand not found")?;
 
         let mut buf = Vec::new();
-        scaffold_cmd.clone().write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        scaffold_cmd
+            .clone()
+            .write_long_help(&mut buf)
+            .context("write scaffold help")?;
+        let help = String::from_utf8(buf).context("help output must be UTF-8")?;
 
         let expected_kinds = ["crate", "adr", "scenario", "doc"];
 
@@ -603,5 +608,6 @@ mod tests {
                 "scaffold --help missing kind: {kind}\n--- help output ---\n{help}"
             );
         }
+        Ok(())
     }
 }

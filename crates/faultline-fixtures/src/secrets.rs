@@ -292,7 +292,8 @@ mod tests {
     }
 
     #[test]
-    fn sentinel_values_have_correct_prefix() {
+    fn sentinel_values_have_correct_prefix() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         use proptest::test_runner::{Config, TestRunner};
 
         let mut runner = TestRunner::new(Config {
@@ -300,24 +301,24 @@ mod tests {
             ..Config::default()
         });
 
-        runner
-            .run(&arb_sentinel_value(), |val| {
-                prop_assert!(
-                    val.starts_with(SENTINEL_PREFIX),
-                    "Sentinel value '{}' should start with '{}'",
-                    val,
-                    SENTINEL_PREFIX
-                );
-                // UUID-like portion: 8-4-4-4-12 = 36 chars including hyphens
-                let suffix = &val[SENTINEL_PREFIX.len()..];
-                prop_assert_eq!(suffix.len(), 36, "UUID portion should be 36 chars");
-                Ok(())
-            })
-            .unwrap();
+        runner.run(&arb_sentinel_value(), |val| {
+            prop_assert!(
+                val.starts_with(SENTINEL_PREFIX),
+                "Sentinel value '{}' should start with '{}'",
+                val,
+                SENTINEL_PREFIX
+            );
+            // UUID-like portion: 8-4-4-4-12 = 36 chars including hyphens
+            let suffix = &val[SENTINEL_PREFIX.len()..];
+            prop_assert_eq!(suffix.len(), 36, "UUID portion should be 36 chars");
+            Ok(())
+        })?;
+        Ok(())
     }
 
     #[test]
-    fn arb_report_with_sentinels_has_non_empty_sentinels() {
+    fn arb_report_with_sentinels_has_non_empty_sentinels()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         use proptest::test_runner::{Config, TestRunner};
 
         let mut runner = TestRunner::new(Config {
@@ -325,30 +326,29 @@ mod tests {
             ..Config::default()
         });
 
-        runner
-            .run(
-                &arb_analysis_report_with_sentinels(),
-                |(report, sentinels)| {
+        runner.run(
+            &arb_analysis_report_with_sentinels(),
+            |(report, sentinels)| {
+                prop_assert!(
+                    !sentinels.is_empty(),
+                    "Should have at least one sentinel value"
+                );
+                // All sentinels should start with the prefix
+                for s in &sentinels {
                     prop_assert!(
-                        !sentinels.is_empty(),
-                        "Should have at least one sentinel value"
+                        s.starts_with(SENTINEL_PREFIX),
+                        "Sentinel '{}' missing prefix",
+                        s
                     );
-                    // All sentinels should start with the prefix
-                    for s in &sentinels {
-                        prop_assert!(
-                            s.starts_with(SENTINEL_PREFIX),
-                            "Sentinel '{}' missing prefix",
-                            s
-                        );
-                    }
-                    // Report should have reproduction capsules with env pairs
-                    prop_assert!(
-                        !report.reproduction_capsules.is_empty(),
-                        "Report should have at least one reproduction capsule"
-                    );
-                    Ok(())
-                },
-            )
-            .unwrap();
+                }
+                // Report should have reproduction capsules with env pairs
+                prop_assert!(
+                    !report.reproduction_capsules.is_empty(),
+                    "Report should have at least one reproduction capsule"
+                );
+                Ok(())
+            },
+        )?;
+        Ok(())
     }
 }

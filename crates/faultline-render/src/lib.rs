@@ -531,6 +531,8 @@ mod tests {
     use faultline_types::*;
     use std::path::PathBuf;
 
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+
     fn sample_report() -> AnalysisReport {
         AnalysisReport {
             schema_version: "0.1.0".into(),
@@ -654,31 +656,32 @@ mod tests {
 
     // Req 6.1: writes analysis.json to output directory
     #[test]
-    fn render_writes_analysis_json() {
+    fn render_writes_analysis_json() -> TestResult {
         let dir = temp_output_dir("writes-json");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
         let report = sample_report();
 
-        renderer.render(&report).expect("render should succeed");
+        renderer.render(&report)?;
 
         let json_path = dir.join("analysis.json");
         assert!(json_path.exists(), "analysis.json must be created");
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // Req 6.2: analysis.json contains all required fields
     #[test]
-    fn analysis_json_contains_all_fields() {
+    fn analysis_json_contains_all_fields() -> TestResult {
         let dir = temp_output_dir("all-fields");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
         let report = sample_report();
 
-        renderer.render(&report).expect("render should succeed");
+        renderer.render(&report)?;
 
-        let content = std::fs::read_to_string(dir.join("analysis.json")).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let content = std::fs::read_to_string(dir.join("analysis.json"))?;
+        let parsed: serde_json::Value = serde_json::from_str(&content)?;
 
         assert!(parsed.get("run_id").is_some());
         assert!(parsed.get("created_at_epoch_seconds").is_some());
@@ -689,22 +692,23 @@ mod tests {
         assert!(parsed.get("changed_paths").is_some());
         assert!(parsed.get("surface").is_some());
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // Req 6.3: deterministic output — same report produces identical JSON
     #[test]
-    fn analysis_json_is_deterministic() {
+    fn analysis_json_is_deterministic() -> TestResult {
         let dir1 = temp_output_dir("deterministic-1");
         let dir2 = temp_output_dir("deterministic-2");
         let _ = std::fs::remove_dir_all(&dir1);
         let _ = std::fs::remove_dir_all(&dir2);
 
         let report = sample_report();
-        ReportRenderer::new(&dir1).render(&report).unwrap();
-        ReportRenderer::new(&dir2).render(&report).unwrap();
+        ReportRenderer::new(&dir1).render(&report)?;
+        ReportRenderer::new(&dir2).render(&report)?;
 
-        let json1 = std::fs::read_to_string(dir1.join("analysis.json")).unwrap();
-        let json2 = std::fs::read_to_string(dir2.join("analysis.json")).unwrap();
+        let json1 = std::fs::read_to_string(dir1.join("analysis.json"))?;
+        let json2 = std::fs::read_to_string(dir2.join("analysis.json"))?;
         assert_eq!(
             json1, json2,
             "identical reports must produce identical JSON"
@@ -712,36 +716,39 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir1);
         let _ = std::fs::remove_dir_all(&dir2);
+        Ok(())
     }
 
     // Req 6.4: analysis.json is valid JSON
     #[test]
-    fn analysis_json_is_valid_json() {
+    fn analysis_json_is_valid_json() -> TestResult {
         let dir = temp_output_dir("valid-json");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
         let report = sample_report();
 
-        renderer.render(&report).unwrap();
+        renderer.render(&report)?;
 
-        let content = std::fs::read_to_string(dir.join("analysis.json")).unwrap();
+        let content = std::fs::read_to_string(dir.join("analysis.json"))?;
         let result: std::result::Result<serde_json::Value, _> = serde_json::from_str(&content);
         assert!(result.is_ok(), "analysis.json must be valid JSON");
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // Creates output directory if it doesn't exist
     #[test]
-    fn render_creates_output_directory() {
+    fn render_creates_output_directory() -> TestResult {
         let dir = temp_output_dir("creates-dir");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(!dir.exists());
 
         let renderer = ReportRenderer::new(&dir);
-        renderer.render(&sample_report()).unwrap();
+        renderer.render(&sample_report())?;
 
         assert!(dir.exists(), "output directory must be created");
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // output_dir accessor returns the configured path
@@ -754,38 +761,40 @@ mod tests {
 
     // Round-trip: deserializing the written JSON produces the redacted report
     #[test]
-    fn analysis_json_round_trips() {
+    fn analysis_json_round_trips() -> TestResult {
         let dir = temp_output_dir("round-trip");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
         let report = sample_report();
 
-        renderer.render(&report).unwrap();
+        renderer.render(&report)?;
 
-        let content = std::fs::read_to_string(dir.join("analysis.json")).unwrap();
-        let deserialized: AnalysisReport = serde_json::from_str(&content).unwrap();
+        let content = std::fs::read_to_string(dir.join("analysis.json"))?;
+        let deserialized: AnalysisReport = serde_json::from_str(&content)?;
         // render() applies redact_report() which sets provenance
         let expected = redact_report(&report, &RedactionPolicy::default_safe());
         assert_eq!(expected, deserialized);
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // --- HTML report tests (Req 7.1, 7.2, 7.3, 7.5) ---
 
     // Req 7.1: writes index.html to output directory
     #[test]
-    fn render_writes_index_html() {
+    fn render_writes_index_html() -> TestResult {
         let dir = temp_output_dir("writes-html");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
 
-        renderer.render(&sample_report()).unwrap();
+        renderer.render(&sample_report())?;
 
         assert!(
             dir.join("index.html").exists(),
             "index.html must be created"
         );
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     // Req 7.2: HTML contains run ID
@@ -1099,7 +1108,7 @@ mod tests {
 
     // Req 8.10: Observations sorted by sequence_index in HTML
     #[test]
-    fn html_observations_sorted_by_sequence_index() {
+    fn html_observations_sorted_by_sequence_index() -> TestResult {
         let renderer = ReportRenderer::new("/tmp/unused");
         let mut report = sample_report();
         // Reverse the sequence indices so commit order != sequence order
@@ -1107,14 +1116,15 @@ mod tests {
         report.observations[1].sequence_index = 2;
         let html = renderer.render_html(&report);
         // Find the tbody section to check order within the table only
-        let tbody_start = html.find("<tbody>").expect("must have tbody");
+        let tbody_start = html.find("<tbody>").ok_or("must have tbody")?;
         let tbody = &html[tbody_start..];
-        let pos_bbb = tbody.find("bbb222").expect("bbb222 must be in tbody");
-        let pos_aaa = tbody.find("aaa111").expect("aaa111 must be in tbody");
+        let pos_bbb = tbody.find("bbb222").ok_or("bbb222 must be in tbody")?;
+        let pos_aaa = tbody.find("aaa111").ok_or("aaa111 must be in tbody")?;
         assert!(
             pos_bbb < pos_aaa,
             "sequence_index=2 row must appear before sequence_index=5 row in tbody"
         );
+        Ok(())
     }
 
     // Req 8.10: Pass rows get obs-pass class
@@ -1389,30 +1399,38 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_analysis_json_structure() {
+    fn snapshot_analysis_json_structure() -> TestResult {
         let dir = temp_output_dir("snapshot-json");
         let _ = std::fs::remove_dir_all(&dir);
         let renderer = ReportRenderer::new(&dir);
         let report = canonical_fixture_report();
 
-        renderer.render(&report).expect("render should succeed");
+        renderer.render(&report)?;
 
-        let content = std::fs::read_to_string(dir.join("analysis.json")).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let content = std::fs::read_to_string(dir.join("analysis.json"))?;
+        let parsed: serde_json::Value = serde_json::from_str(&content)?;
 
         // Verify schema_version
         assert_eq!(
-            parsed["schema_version"].as_str().unwrap(),
+            parsed["schema_version"]
+                .as_str()
+                .ok_or("schema_version must be a string")?,
             "0.1.0",
             "analysis.json must contain schema_version 0.1.0"
         );
 
         // Verify run_id
-        assert_eq!(parsed["run_id"].as_str().unwrap(), "snapshot-run-001");
+        assert_eq!(
+            parsed["run_id"].as_str().ok_or("run_id must be a string")?,
+            "snapshot-run-001"
+        );
 
         // Verify observations count
         assert_eq!(
-            parsed["observations"].as_array().unwrap().len(),
+            parsed["observations"]
+                .as_array()
+                .ok_or("observations must be an array")?
+                .len(),
             4,
             "must have 4 observations"
         );
@@ -1423,36 +1441,59 @@ mod tests {
             "outcome must be FirstBad"
         );
         assert_eq!(
-            parsed["outcome"]["FirstBad"]["last_good"].as_str().unwrap(),
+            parsed["outcome"]["FirstBad"]["last_good"]
+                .as_str()
+                .ok_or("FirstBad.last_good must be a string")?,
             "bbb222"
         );
         assert_eq!(
-            parsed["outcome"]["FirstBad"]["first_bad"].as_str().unwrap(),
+            parsed["outcome"]["FirstBad"]["first_bad"]
+                .as_str()
+                .ok_or("FirstBad.first_bad must be a string")?,
             "ccc333"
         );
 
         // Verify sequence
-        let revisions = parsed["sequence"]["revisions"].as_array().unwrap();
+        let revisions = parsed["sequence"]["revisions"]
+            .as_array()
+            .ok_or("sequence.revisions must be an array")?;
         assert_eq!(revisions.len(), 4);
-        assert_eq!(revisions[0].as_str().unwrap(), "aaa111");
-        assert_eq!(revisions[3].as_str().unwrap(), "ddd444");
+        assert_eq!(
+            revisions[0]
+                .as_str()
+                .ok_or("first revision must be a string")?,
+            "aaa111"
+        );
+        assert_eq!(
+            revisions[3]
+                .as_str()
+                .ok_or("last revision must be a string")?,
+            "ddd444"
+        );
 
         // Verify changed_paths
-        let paths = parsed["changed_paths"].as_array().unwrap();
+        let paths = parsed["changed_paths"]
+            .as_array()
+            .ok_or("changed_paths must be an array")?;
         assert_eq!(paths.len(), 2);
 
         // Verify surface
-        assert_eq!(parsed["surface"]["total_changes"].as_u64().unwrap(), 2);
+        assert_eq!(
+            parsed["surface"]["total_changes"]
+                .as_u64()
+                .ok_or("surface.total_changes must be an unsigned integer")?,
+            2
+        );
         assert_eq!(
             parsed["surface"]["execution_surfaces"]
                 .as_array()
-                .unwrap()
+                .ok_or("surface.execution_surfaces must be an array")?
                 .len(),
             1
         );
 
         // Verify round-trip: deserialize back and compare against redacted version
-        let deserialized: AnalysisReport = serde_json::from_str(&content).unwrap();
+        let deserialized: AnalysisReport = serde_json::from_str(&content)?;
         let expected = redact_report(&report, &RedactionPolicy::default_safe());
         assert_eq!(
             expected, deserialized,
@@ -1460,10 +1501,11 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+        Ok(())
     }
 
     #[test]
-    fn snapshot_html_report_structure() {
+    fn snapshot_html_report_structure() -> TestResult {
         let renderer = ReportRenderer::new("/tmp/unused");
         let report = canonical_fixture_report();
         let html = renderer.render_html(&report);
@@ -1487,12 +1529,12 @@ mod tests {
         assert_eq!(tr_count, 5, "must have 1 header + 4 observation rows");
 
         // Verify observations are sorted by sequence_index in the tbody
-        let tbody_start = html.find("<tbody>").expect("must have tbody");
+        let tbody_start = html.find("<tbody>").ok_or("must have tbody")?;
         let tbody = &html[tbody_start..];
-        let pos_aaa = tbody.find("aaa111").expect("aaa111 in tbody");
-        let pos_ddd = tbody.find("ddd444").expect("ddd444 in tbody");
-        let pos_ccc = tbody.find("ccc333").expect("ccc333 in tbody");
-        let pos_bbb = tbody.find("bbb222").expect("bbb222 in tbody");
+        let pos_aaa = tbody.find("aaa111").ok_or("aaa111 in tbody")?;
+        let pos_ddd = tbody.find("ddd444").ok_or("ddd444 in tbody")?;
+        let pos_ccc = tbody.find("ccc333").ok_or("ccc333 in tbody")?;
+        let pos_bbb = tbody.find("bbb222").ok_or("bbb222 in tbody")?;
         // sequence_index order: aaa(0), ddd(1), ccc(2), bbb(3)
         assert!(pos_aaa < pos_ddd, "aaa(seq=0) before ddd(seq=1)");
         assert!(pos_ddd < pos_ccc, "ddd(seq=1) before ccc(seq=2)");
@@ -1524,16 +1566,18 @@ mod tests {
         assert!(html.contains(".obs-skip"));
         assert!(html.contains(".obs-indeterminate"));
         assert!(html.contains(".execution-surfaces"));
+        Ok(())
     }
 
     // --- Golden tests (via insta) for artifact contracts ---
     // Req 3.4, 6.5: Golden snapshot tests for analysis.json and index.html
 
     #[test]
-    fn golden_analysis_json() {
+    fn golden_analysis_json() -> TestResult {
         let report = canonical_fixture_report();
-        let json = serde_json::to_string_pretty(&report).unwrap();
+        let json = serde_json::to_string_pretty(&report)?;
         insta::assert_snapshot!("analysis_json", json);
+        Ok(())
     }
 
     #[test]
@@ -1547,6 +1591,7 @@ mod tests {
     // --- Proptest strategies for Property 16 ---
 
     use proptest::prelude::*;
+    use proptest::test_runner::TestCaseError;
 
     fn arb_commit_id() -> impl Strategy<Value = CommitId> {
         "[a-f0-9]{8,40}".prop_map(CommitId)
@@ -2050,11 +2095,17 @@ mod tests {
 
             // Find the outcome div: <div class="outcome-...">
             // We check that the correct class is used in the div (not in the <style> block)
-            let summary_start = html.find("<h2>Summary</h2>").expect("must have Summary heading");
+            let summary_start = html
+                .find("<h2>Summary</h2>")
+                .ok_or_else(|| TestCaseError::fail("must have Summary heading"))?;
             let after_summary = &html[summary_start..];
             // The outcome div follows the Summary heading
-            let div_start = after_summary.find("<div class=\"outcome-").expect("must have outcome div");
-            let div_tag_end = after_summary[div_start..].find('>').unwrap();
+            let div_start = after_summary
+                .find("<div class=\"outcome-")
+                .ok_or_else(|| TestCaseError::fail("must have outcome div"))?;
+            let div_tag_end = after_summary[div_start
+                ..].find('>')
+                .ok_or_else(|| TestCaseError::fail("outcome div must have a closing >"))?;
             let div_tag = &after_summary[div_start..div_start + div_tag_end + 1];
 
             match &report.outcome {
@@ -2123,9 +2174,15 @@ mod tests {
             let html = renderer.render_html(&report);
 
             // Extract the tbody section
-            let tbody_start = html.find("<tbody>").expect("must have tbody");
-            let tbody_end = html.find("</tbody>").expect("must have </tbody>");
-            let tbody = &html[tbody_start..tbody_end];
+            let tbody_start = html
+                .find("<tbody>")
+                .ok_or_else(|| TestCaseError::fail("must have tbody"))?;
+            let tbody_end = html
+                .find("</tbody>")
+                .ok_or_else(|| TestCaseError::fail("must have </tbody>"))?;
+            let tbody = html
+                .get(tbody_start..tbody_end)
+                .ok_or_else(|| TestCaseError::fail("tbody closing tag must follow its opening tag"))?;
 
             // Collect <tr positions and their associated commit SHAs
             let mut sorted_obs = report.observations.clone();
@@ -2342,7 +2399,9 @@ mod tests {
             ) {
                 let redacted = redact_report(&report, &RedactionPolicy::default_safe());
                 let json = serde_json::to_string(&redacted)
-                    .expect("redacted report must serialize to JSON");
+                    .map_err(|error| {
+                        TestCaseError::fail(format!("redacted report must serialize to JSON: {error}"))
+                    })?;
 
                 for sentinel in &sentinels {
                     prop_assert!(
@@ -2400,7 +2459,9 @@ mod tests {
                 // RedactionPolicy::none() simulates --unsafe-include-env + --unsafe-include-output
                 let redacted = redact_report(&report, &RedactionPolicy::none());
                 let json = serde_json::to_string(&redacted)
-                    .expect("redacted report must serialize to JSON");
+                    .map_err(|error| {
+                        TestCaseError::fail(format!("redacted report must serialize to JSON: {error}"))
+                    })?;
 
                 for sentinel in &sentinels {
                     prop_assert!(

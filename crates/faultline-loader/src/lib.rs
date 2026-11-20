@@ -110,11 +110,6 @@ mod tests {
     use proptest::prelude::*;
     use tempfile::TempDir;
 
-    /// Helper: serialize a report to JSON bytes.
-    fn report_to_json(report: &AnalysisReport) -> Vec<u8> {
-        serde_json::to_vec(report).expect("report serialization should not fail")
-    }
-
     /// Strategy that generates one of four directory layouts:
     /// 0 = only report.json
     /// 1 = only analysis.json
@@ -139,30 +134,30 @@ mod tests {
             report in arb_analysis_report(),
             layout in arb_layout(),
         ) {
-            let dir = TempDir::new().expect("failed to create temp dir");
+            let dir = TempDir::new()?;
             let dir_path = dir.path();
 
-            let report_json_bytes = report_to_json(&report);
+            let report_json_bytes = serde_json::to_vec(&report)?;
 
             // Write files based on layout
             match layout {
                 0 => {
                     // Only report.json
-                    std::fs::write(dir_path.join("report.json"), &report_json_bytes).unwrap();
+                    std::fs::write(dir_path.join("report.json"), &report_json_bytes)?;
                 }
                 1 => {
                     // Only analysis.json
-                    std::fs::write(dir_path.join("analysis.json"), &report_json_bytes).unwrap();
+                    std::fs::write(dir_path.join("analysis.json"), &report_json_bytes)?;
                 }
                 2 => {
                     // Both report.json and analysis.json
-                    std::fs::write(dir_path.join("report.json"), &report_json_bytes).unwrap();
-                    std::fs::write(dir_path.join("analysis.json"), &report_json_bytes).unwrap();
+                    std::fs::write(dir_path.join("report.json"), &report_json_bytes)?;
+                    std::fs::write(dir_path.join("analysis.json"), &report_json_bytes)?;
                 }
                 3 => {
                     // Neither — empty directory
                 }
-                _ => unreachable!(),
+                _ => return Err(TestCaseError::fail(format!("unexpected directory layout {layout}"))),
             }
 
             let result = locate_and_load_report(dir_path);
@@ -170,7 +165,7 @@ mod tests {
             match layout {
                 0 => {
                     // Only report.json → ReportJson, empty diagnostics
-                    let located = result.expect("should succeed with report.json present");
+                    let located = result?;
                     prop_assert_eq!(located.source, ArtifactSource::ReportJson,
                         "with only report.json, source must be ReportJson");
                     prop_assert!(located.diagnostics.is_empty(),
@@ -180,7 +175,7 @@ mod tests {
                 }
                 1 => {
                     // Only analysis.json → AnalysisJson, empty diagnostics
-                    let located = result.expect("should succeed with analysis.json present");
+                    let located = result?;
                     prop_assert_eq!(located.source, ArtifactSource::AnalysisJson,
                         "with only analysis.json, source must be AnalysisJson");
                     prop_assert!(located.diagnostics.is_empty(),
@@ -190,7 +185,7 @@ mod tests {
                 }
                 2 => {
                     // Both → ReportJson, non-empty diagnostics
-                    let located = result.expect("should succeed with both files present");
+                    let located = result?;
                     prop_assert_eq!(located.source, ArtifactSource::ReportJson,
                         "with both files, source must be ReportJson (precedence)");
                     prop_assert!(!located.diagnostics.is_empty(),
@@ -203,7 +198,7 @@ mod tests {
                     prop_assert!(result.is_err(),
                         "with neither file present, must return an error");
                 }
-                _ => unreachable!(),
+                _ => return Err(TestCaseError::fail(format!("unexpected directory layout {layout}"))),
             }
         }
 
@@ -212,13 +207,12 @@ mod tests {
         fn prop_direct_file_returns_direct_file_source(
             report in arb_analysis_report(),
         ) {
-            let dir = TempDir::new().expect("failed to create temp dir");
+            let dir = TempDir::new()?;
             let file_path = dir.path().join("custom_report.json");
-            let report_json_bytes = report_to_json(&report);
-            std::fs::write(&file_path, &report_json_bytes).unwrap();
+            let report_json_bytes = serde_json::to_vec(&report)?;
+            std::fs::write(&file_path, &report_json_bytes)?;
 
-            let result = locate_and_load_report(&file_path);
-            let located = result.expect("should succeed loading from direct file path");
+            let located = locate_and_load_report(&file_path)?;
 
             prop_assert_eq!(located.source, ArtifactSource::DirectFile,
                 "direct file path must return DirectFile source");

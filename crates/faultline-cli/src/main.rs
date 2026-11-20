@@ -226,20 +226,25 @@ fn exit_code_for_operator_code(code: OperatorCode) -> i32 {
     }
 }
 
-fn validate_cmd_program(cmd: &Option<String>, program: &Option<String>) -> Result<(), io::Error> {
-    if cmd.is_some() && program.is_some() {
-        return Err(io::Error::new(
+#[derive(Debug)]
+enum ProbeCommand {
+    Shell(String),
+    Exec(String),
+}
+
+fn select_probe_command(cmd: Option<String>, program: Option<String>) -> io::Result<ProbeCommand> {
+    match (cmd, program) {
+        (Some(script), None) => Ok(ProbeCommand::Shell(script)),
+        (None, Some(program)) => Ok(ProbeCommand::Exec(program)),
+        (Some(_), Some(_)) => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "only one of --cmd or --program is allowed",
-        ));
-    }
-    if cmd.is_none() && program.is_none() {
-        return Err(io::Error::new(
+        )),
+        (None, None) => Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "one of --cmd or --program is required",
-        ));
+        )),
     }
-    Ok(())
 }
 
 fn validate_run_mode(resume: bool, force: bool, fresh: bool) -> Result<(), io::Error> {
@@ -264,32 +269,33 @@ fn validate_run_mode(resume: bool, force: bool, fresh: bool) -> Result<(), io::E
     Ok(())
 }
 
-fn validate_env_vars(envs: &[String]) -> Result<(), io::Error> {
+fn parse_env_vars(envs: &[String]) -> io::Result<Vec<(String, String)>> {
+    let mut pairs = Vec::with_capacity(envs.len());
     for entry in envs {
-        if !entry.contains('=') {
-            return Err(io::Error::new(
+        let (key, value) = entry.split_once('=').ok_or_else(|| {
+            io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("invalid --env value '{}': expected KEY=VALUE format", entry),
-            ));
-        }
+            )
+        })?;
+        pairs.push((key.to_owned(), value.to_owned()));
     }
-    Ok(())
+    Ok(pairs)
 }
 
-fn validate_shell(shell: &Option<String>) -> Result<(), io::Error> {
-    if let Some(s) = shell {
-        match s.as_str() {
-            "sh" | "cmd" | "powershell" => Ok(()),
-            _ => Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "invalid --shell '{}': expected one of sh, cmd, powershell",
-                    s
-                ),
-            )),
-        }
-    } else {
-        Ok(())
+fn parse_shell(shell: Option<&str>) -> io::Result<ShellKind> {
+    match shell {
+        None => Ok(ShellKind::Default),
+        Some("sh") => Ok(ShellKind::PosixSh),
+        Some("cmd") => Ok(ShellKind::Cmd),
+        Some("powershell") => Ok(ShellKind::PowerShell),
+        Some(s) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "invalid --shell '{}': expected one of sh, cmd, powershell",
+                s
+            ),
+        )),
     }
 }
 
@@ -354,10 +360,10 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
         )
     })?;
 
-    validate_cmd_program(&cli.cmd, &cli.program)?;
+    let command = select_probe_command(cli.cmd, cli.program)?;
     validate_run_mode(cli.resume, cli.force, cli.fresh)?;
-    validate_env_vars(&cli.envs)?;
-    validate_shell(&cli.shell)?;
+    let env_pairs = parse_env_vars(&cli.envs)?;
+    let shell_kind = parse_shell(cli.shell.as_deref())?;
     validate_stability_threshold(cli.stability_threshold)?;
 
     let probe_kind = cli.kind.parse::<ProbeKind>().map_err(|_| {
@@ -370,39 +376,21 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
         )
     })?;
 
-    let env_pairs: Vec<(String, String)> = cli
-        .envs
-        .iter()
-        .map(|entry| {
-            let (key, value) = entry.split_once('=').expect("validated above");
-            (key.to_string(), value.to_string())
-        })
-        .collect();
-
-    let shell_kind = match cli.shell.as_deref() {
-        Some("sh") => ShellKind::PosixSh,
-        Some("cmd") => ShellKind::Cmd,
-        Some("powershell") => ShellKind::PowerShell,
-        None => ShellKind::Default,
-        _ => unreachable!("validated above"),
-    };
-
-    let probe = match (cli.cmd, cli.program) {
-        (Some(script), None) => ProbeSpec::Shell {
+    let probe = match command {
+        ProbeCommand::Shell(script) => ProbeSpec::Shell {
             kind: probe_kind,
             shell: shell_kind,
             script,
             env: env_pairs,
             timeout_seconds: cli.timeout_seconds,
         },
-        (None, Some(program)) => ProbeSpec::Exec {
+        ProbeCommand::Exec(program) => ProbeSpec::Exec {
             kind: probe_kind,
             program,
             args: cli.args,
             env: env_pairs,
             timeout_seconds: cli.timeout_seconds,
         },
-        _ => unreachable!("validated above"),
     };
 
     let request = AnalysisRequest {
@@ -710,12 +698,8 @@ fn run_bundle(
                 let entry = entry?;
                 let path = entry.path();
                 if path.is_file() {
-                    let file_name = path
-                        .file_name()
-                        .expect("file must have a name")
-                        .to_string_lossy()
-                        .to_string();
-                    archive.append_path_with_name(&path, &file_name)?;
+                    let file_name = entry.file_name();
+                    archive.append_path_with_name(&path, file_name.to_string_lossy().as_ref())?;
                 }
             }
 
@@ -735,8 +719,7 @@ fn copy_dir_contents(src: &std::path::Path, dst: &std::path::Path) -> std::io::R
         let entry = entry?;
         let src_path = entry.path();
         if src_path.is_file() {
-            let file_name = src_path.file_name().expect("file must have a name");
-            let dst_path = dst.join(file_name);
+            let dst_path = dst.join(entry.file_name());
             std::fs::copy(&src_path, &dst_path)?;
         }
     }
@@ -987,7 +970,7 @@ mod tests {
 
     #[test]
     fn rejects_both_cmd_and_program() {
-        let err = validate_cmd_program(&Some("echo ok".into()), &Some("./test".into()))
+        let err = select_probe_command(Some("echo ok".into()), Some("./test".into()))
             .expect_err("should reject both --cmd and --program");
         assert!(
             err.to_string().contains("only one of --cmd or --program"),
@@ -998,7 +981,7 @@ mod tests {
 
     #[test]
     fn rejects_neither_cmd_nor_program() {
-        let err = validate_cmd_program(&None, &None)
+        let err = select_probe_command(None, None)
             .expect_err("should reject neither --cmd nor --program");
         assert!(
             err.to_string()
@@ -1009,11 +992,11 @@ mod tests {
     }
 
     #[test]
-    fn help_output_describes_all_flags() {
+    fn help_output_describes_all_flags() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
 
         let expected_flags = [
             "--good",
@@ -1044,14 +1027,15 @@ mod tests {
                 "--help output missing expected flag '{flag}'.\nFull help:\n{help}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn help_output_describes_reproduce_subcommand() {
+    fn help_output_describes_reproduce_subcommand() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
 
         assert!(
             help.contains("reproduce"),
@@ -1065,16 +1049,18 @@ mod tests {
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
         );
+        Ok(())
     }
 
     // Req 3.4: Golden snapshot test for CLI --help text
     #[test]
-    fn golden_cli_help() {
+    fn golden_cli_help() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
         insta::assert_snapshot!("cli_help", help);
+        Ok(())
     }
 
     #[test]
@@ -1194,18 +1180,37 @@ mod tests {
     // --- --env validation tests ---
 
     #[test]
-    fn accepts_valid_env_vars() {
-        assert!(validate_env_vars(&["FOO=bar".into(), "BAZ=123".into()]).is_ok());
+    fn accepts_valid_env_vars() -> io::Result<()> {
+        let pairs = parse_env_vars(&[
+            "FOO=bar".into(),
+            "BAZ=123".into(),
+            "FOO=".into(),
+            "=v".into(),
+        ])?;
+        assert_eq!(
+            pairs,
+            [
+                ("FOO".into(), "bar".into()),
+                ("BAZ".into(), "123".into()),
+                ("FOO".into(), "".into()),
+                ("".into(), "v".into())
+            ]
+        );
+        Ok(())
     }
 
     #[test]
-    fn accepts_env_var_with_equals_in_value() {
-        assert!(validate_env_vars(&["FOO=bar=baz".into()]).is_ok());
+    fn accepts_env_var_with_equals_in_value() -> io::Result<()> {
+        assert_eq!(
+            parse_env_vars(&["FOO=bar=baz".into()])?,
+            [("FOO".into(), "bar=baz".into())]
+        );
+        Ok(())
     }
 
     #[test]
     fn rejects_env_var_missing_equals() {
-        let err = validate_env_vars(&["FOOBAR".into()]).expect_err("should reject --env without =");
+        let err = parse_env_vars(&["FOOBAR".into()]).expect_err("should reject --env without =");
         assert!(
             err.to_string().contains("expected KEY=VALUE format"),
             "unexpected error: {}",
@@ -1214,27 +1219,30 @@ mod tests {
     }
 
     #[test]
-    fn accepts_empty_env_list() {
-        assert!(validate_env_vars(&[]).is_ok());
+    fn accepts_empty_env_list() -> io::Result<()> {
+        assert!(parse_env_vars(&[])?.is_empty());
+        Ok(())
     }
 
     // --- --shell validation tests ---
 
     #[test]
-    fn accepts_valid_shell_kinds() {
-        assert!(validate_shell(&Some("sh".into())).is_ok());
-        assert!(validate_shell(&Some("cmd".into())).is_ok());
-        assert!(validate_shell(&Some("powershell".into())).is_ok());
+    fn accepts_valid_shell_kinds() -> io::Result<()> {
+        assert_eq!(parse_shell(Some("sh"))?, ShellKind::PosixSh);
+        assert_eq!(parse_shell(Some("cmd"))?, ShellKind::Cmd);
+        assert_eq!(parse_shell(Some("powershell"))?, ShellKind::PowerShell);
+        Ok(())
     }
 
     #[test]
-    fn accepts_no_shell() {
-        assert!(validate_shell(&None).is_ok());
+    fn accepts_no_shell() -> io::Result<()> {
+        assert_eq!(parse_shell(None)?, ShellKind::Default);
+        Ok(())
     }
 
     #[test]
     fn rejects_unknown_shell() {
-        let err = validate_shell(&Some("fish".into())).expect_err("should reject unknown shell");
+        let err = parse_shell(Some("fish")).expect_err("should reject unknown shell");
         assert!(
             err.to_string()
                 .contains("expected one of sh, cmd, powershell"),
@@ -1352,19 +1360,21 @@ mod tests {
     // --- BundleFormat parse tests (Requirement 5.5) ---
 
     #[test]
-    fn bundle_format_dir_parses_from_clap() {
+    fn bundle_format_dir_parses_from_clap() -> Result<(), String> {
         use clap::ValueEnum;
         let parsed = BundleFormat::from_str("dir", true);
         assert!(parsed.is_ok(), "BundleFormat should parse 'dir'");
-        assert_eq!(parsed.unwrap().to_string(), "dir");
+        assert_eq!(parsed?.to_string(), "dir");
+        Ok(())
     }
 
     #[test]
-    fn bundle_format_tar_gz_parses_from_clap() {
+    fn bundle_format_tar_gz_parses_from_clap() -> Result<(), String> {
         use clap::ValueEnum;
         let parsed = BundleFormat::from_str("tar-gz", true);
         assert!(parsed.is_ok(), "BundleFormat should parse 'tar-gz'");
-        assert_eq!(parsed.unwrap().to_string(), "tar-gz");
+        assert_eq!(parsed?.to_string(), "tar-gz");
+        Ok(())
     }
 
     #[test]
@@ -1386,8 +1396,8 @@ mod tests {
         fn prop_cli_help_flag_completeness(_seed in any::<u32>()) {
             let mut cmd = Cli::command();
             let mut buf = Vec::new();
-            cmd.write_long_help(&mut buf).unwrap();
-            let help = String::from_utf8(buf).unwrap();
+            cmd.write_long_help(&mut buf)?;
+            let help = String::from_utf8(buf)?;
 
             // All flags added in the hardening pass
             let hardening_flags = [

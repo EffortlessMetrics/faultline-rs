@@ -1,6 +1,7 @@
 //! Smoke test: builds a real Git repo via GitRepoBuilder,
 //! runs the CLI binary via std::process::Command, and verifies artifacts.
 
+use anyhow::Context;
 use faultline_fixtures::{FileOp, GitRepoBuilder};
 use std::process::Command;
 
@@ -30,12 +31,13 @@ fn smoke_cli_identity_matches_install_name() -> anyhow::Result<()> {
 }
 
 #[test]
-fn smoke_cli_produces_artifacts() {
+fn smoke_cli_produces_artifacts() -> anyhow::Result<()> {
     // Build a real Git repo with a clear pass→fail transition.
     // The predicate is a simple program that checks for a "PASS" file.
     // Commits 0 and 1 have the PASS file; commit 2 deletes it → fail.
     let repo = GitRepoBuilder::new()
-        .expect("create fixture repo")
+        .map_err(anyhow::Error::msg)
+        .context("create fixture repo")?
         .commit(
             "good commit",
             vec![FileOp::Write {
@@ -63,7 +65,8 @@ fn smoke_cli_produces_artifacts() {
             }],
         )
         .build()
-        .expect("build fixture repo");
+        .map_err(anyhow::Error::msg)
+        .context("build fixture repo")?;
 
     let good_sha = &repo.commits[0].0;
     let bad_sha = &repo.commits[2].0;
@@ -101,7 +104,7 @@ fn smoke_cli_produces_artifacts() {
                 &output_dir.display().to_string(),
             ])
             .output()
-            .expect("failed to execute CLI binary")
+            .context("failed to execute CLI binary")?
     } else {
         Command::new(&bin)
             .args([
@@ -121,7 +124,7 @@ fn smoke_cli_produces_artifacts() {
                 &output_dir.display().to_string(),
             ])
             .output()
-            .expect("failed to execute CLI binary")
+            .context("failed to execute CLI binary")?
     };
 
     let stdout = String::from_utf8_lossy(&result.stdout);
@@ -142,9 +145,9 @@ fn smoke_cli_produces_artifacts() {
         analysis_path.display()
     );
 
-    let analysis_content = std::fs::read_to_string(&analysis_path).expect("read analysis.json");
+    let analysis_content = std::fs::read_to_string(&analysis_path).context("read analysis.json")?;
     let parsed: serde_json::Value =
-        serde_json::from_str(&analysis_content).expect("analysis.json must be valid JSON");
+        serde_json::from_str(&analysis_content).context("analysis.json must be valid JSON")?;
     assert_eq!(
         parsed.get("schema_version").and_then(|v| v.as_str()),
         Some("0.1.0"),
@@ -158,4 +161,5 @@ fn smoke_cli_produces_artifacts() {
         "index.html must exist at {}",
         html_path.display()
     );
+    Ok(())
 }

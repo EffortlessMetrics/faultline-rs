@@ -108,20 +108,21 @@ fn report_with_suspect_surface() -> AnalysisReport {
 }
 
 #[test]
-fn scenario_export_surfaces_sarif_and_junit_consistency() {
+fn scenario_export_surfaces_sarif_and_junit_consistency()
+-> std::result::Result<(), Box<dyn std::error::Error>> {
     let report = report_with_suspect_surface();
 
     // Generate SARIF
-    let sarif_json =
-        to_sarif(&report, &RedactionPolicy::none()).expect("SARIF generation must succeed");
-    let sarif: serde_json::Value =
-        serde_json::from_str(&sarif_json).expect("SARIF must be valid JSON");
+    let sarif_json = to_sarif(&report, &RedactionPolicy::none())?;
+    let sarif: serde_json::Value = serde_json::from_str(&sarif_json)?;
 
     // Generate JUnit
-    let junit_xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+    let junit_xml = to_junit_xml(&report, &RedactionPolicy::none())?;
 
     // --- Verify SARIF contains suspect surface paths ---
-    let results = sarif["runs"][0]["results"].as_array().unwrap();
+    let results = sarif["runs"][0]["results"]
+        .as_array()
+        .ok_or("SARIF results must be an array")?;
 
     // There should be a suspect-surface result with locations for each suspect path
     let suspect_result = results
@@ -132,15 +133,14 @@ fn scenario_export_surfaces_sarif_and_junit_consistency() {
         "SARIF must contain a faultline/suspect-surface result"
     );
 
-    let suspect_locations = suspect_result.unwrap()["locations"].as_array().unwrap();
+    let suspect_locations = suspect_result.ok_or("suspect-surface result missing")?["locations"]
+        .as_array()
+        .ok_or("suspect-surface locations must be an array")?;
     let sarif_paths: Vec<&str> = suspect_locations
         .iter()
-        .map(|loc| {
-            loc["physicalLocation"]["artifactLocation"]["uri"]
-                .as_str()
-                .unwrap()
-        })
-        .collect();
+        .map(|loc| loc["physicalLocation"]["artifactLocation"]["uri"].as_str())
+        .collect::<Option<Vec<_>>>()
+        .ok_or("each suspect location must have a string URI")?;
 
     assert!(
         sarif_paths.contains(&"src/lib.rs"),
@@ -175,4 +175,5 @@ fn scenario_export_surfaces_sarif_and_junit_consistency() {
             path
         );
     }
+    Ok(())
 }

@@ -552,7 +552,29 @@ impl CheckoutPort for GitAdapter {
 }
 
 #[cfg(test)]
+mod test_support {
+    use std::path::Path;
+    use std::process::Command;
+
+    pub(super) type TestResult<T = ()> = std::result::Result<T, Box<dyn std::error::Error>>;
+
+    pub(super) fn git_cmd(dir: &Path, args: &[&str]) -> TestResult<String> {
+        let out = Command::new("git").args(args).current_dir(dir).output()?;
+        if !out.status.success() {
+            return Err(format!(
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            )
+            .into());
+        }
+        Ok(String::from_utf8(out.stdout)?.trim().to_string())
+    }
+}
+
+#[cfg(test)]
 mod tests {
+    use super::test_support::TestResult;
+    use super::test_support::git_cmd;
     use super::*;
     use proptest::prelude::*;
 
@@ -566,7 +588,7 @@ mod tests {
             sha_a in "[a-f0-9]{8,40}",
             sha_b in "[a-f0-9]{8,40}",
         ) {
-            let tmp = tempfile::tempdir().expect("create temp dir");
+            let tmp = tempfile::tempdir()?;
             let adapter = GitAdapter {
                 repo_root: tmp.path().to_path_buf(),
                 scratch_root: tmp.path().join("scratch"),
@@ -732,53 +754,35 @@ mod tests {
         assert_eq!(match_codeowners(&rules, "readme.md"), None);
     }
 
-    /// Helper: run a git command in a directory and return stdout.
-    fn git_cmd(dir: &std::path::Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .expect("git command failed to execute");
-        assert!(
-            out.status.success(),
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
-
     #[test]
-    fn changed_paths_detects_add_modify_delete_rename() {
-        let tmp = tempfile::tempdir().expect("create temp dir");
+    fn changed_paths_detects_add_modify_delete_rename() -> TestResult {
+        let tmp = tempfile::tempdir()?;
         let repo = tmp.path();
 
         // Init repo with an initial commit containing two files.
-        git_cmd(repo, &["init"]);
-        git_cmd(repo, &["config", "user.email", "test@test.com"]);
-        git_cmd(repo, &["config", "user.name", "Test"]);
+        git_cmd(repo, &["init"])?;
+        git_cmd(repo, &["config", "user.email", "test@test.com"])?;
+        git_cmd(repo, &["config", "user.name", "Test"])?;
 
-        std::fs::write(repo.join("keep.txt"), "keep").unwrap();
-        std::fs::write(repo.join("to_modify.txt"), "original").unwrap();
-        std::fs::write(repo.join("to_delete.txt"), "delete me").unwrap();
-        std::fs::write(repo.join("to_rename.txt"), "rename me").unwrap();
-        git_cmd(repo, &["add", "."]);
-        git_cmd(repo, &["commit", "-m", "initial"]);
-        let from_sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+        std::fs::write(repo.join("keep.txt"), "keep")?;
+        std::fs::write(repo.join("to_modify.txt"), "original")?;
+        std::fs::write(repo.join("to_delete.txt"), "delete me")?;
+        std::fs::write(repo.join("to_rename.txt"), "rename me")?;
+        git_cmd(repo, &["add", "."])?;
+        git_cmd(repo, &["commit", "-m", "initial"])?;
+        let from_sha = git_cmd(repo, &["rev-parse", "HEAD"])?;
 
         // Second commit: add, modify, delete, rename.
-        std::fs::write(repo.join("added.txt"), "new file").unwrap();
-        std::fs::write(repo.join("to_modify.txt"), "changed").unwrap();
-        std::fs::remove_file(repo.join("to_delete.txt")).unwrap();
-        std::fs::rename(repo.join("to_rename.txt"), repo.join("renamed.txt")).unwrap();
-        git_cmd(repo, &["add", "."]);
-        git_cmd(repo, &["commit", "-m", "changes"]);
-        let to_sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+        std::fs::write(repo.join("added.txt"), "new file")?;
+        std::fs::write(repo.join("to_modify.txt"), "changed")?;
+        std::fs::remove_file(repo.join("to_delete.txt"))?;
+        std::fs::rename(repo.join("to_rename.txt"), repo.join("renamed.txt"))?;
+        git_cmd(repo, &["add", "."])?;
+        git_cmd(repo, &["commit", "-m", "changes"])?;
+        let to_sha = git_cmd(repo, &["rev-parse", "HEAD"])?;
 
-        let adapter = GitAdapter::new(repo).expect("create adapter");
-        let changes = adapter
-            .changed_paths(&CommitId(from_sha), &CommitId(to_sha))
-            .expect("changed_paths");
+        let adapter = GitAdapter::new(repo)?;
+        let changes = adapter.changed_paths(&CommitId(from_sha), &CommitId(to_sha))?;
 
         // Verify we got the expected changes.
         let added: Vec<_> = changes
@@ -824,55 +828,57 @@ mod tests {
                 renamed
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn changed_paths_empty_diff_returns_empty_vec() {
-        let tmp = tempfile::tempdir().expect("create temp dir");
+    fn changed_paths_empty_diff_returns_empty_vec() -> TestResult {
+        let tmp = tempfile::tempdir()?;
         let repo = tmp.path();
 
-        git_cmd(repo, &["init"]);
-        git_cmd(repo, &["config", "user.email", "test@test.com"]);
-        git_cmd(repo, &["config", "user.name", "Test"]);
-        std::fs::write(repo.join("file.txt"), "content").unwrap();
-        git_cmd(repo, &["add", "."]);
-        git_cmd(repo, &["commit", "-m", "initial"]);
-        let sha = git_cmd(repo, &["rev-parse", "HEAD"]);
+        git_cmd(repo, &["init"])?;
+        git_cmd(repo, &["config", "user.email", "test@test.com"])?;
+        git_cmd(repo, &["config", "user.name", "Test"])?;
+        std::fs::write(repo.join("file.txt"), "content")?;
+        git_cmd(repo, &["add", "."])?;
+        git_cmd(repo, &["commit", "-m", "initial"])?;
+        let sha = git_cmd(repo, &["rev-parse", "HEAD"])?;
 
-        let adapter = GitAdapter::new(repo).expect("create adapter");
-        let changes = adapter
-            .changed_paths(&CommitId(sha.clone()), &CommitId(sha))
-            .expect("changed_paths");
+        let adapter = GitAdapter::new(repo)?;
+        let changes = adapter.changed_paths(&CommitId(sha.clone()), &CommitId(sha))?;
         assert!(changes.is_empty(), "same commit should yield no changes");
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod env_validation_tests {
+    use super::test_support::TestResult;
     use super::*;
     use faultline_fixtures::{FileOp, GitRepoBuilder};
     use faultline_ports::CheckoutPort;
     use faultline_types::CheckedOutRevision;
 
     #[test]
-    fn rejects_non_repo_path() {
-        let tmp = tempfile::tempdir().expect("create temp dir");
+    fn rejects_non_repo_path() -> TestResult {
+        let tmp = tempfile::tempdir()?;
         let result = GitAdapter::new(tmp.path());
-        assert!(result.is_err(), "should reject a non-git directory");
-        let err = result.unwrap_err();
+        let err = result
+            .err()
+            .ok_or("expected rejection of a non-git directory")?;
         let msg = format!("{}", err);
         assert!(
             msg.contains("not a git repository"),
             "error should mention 'not a git repository', got: {}",
             msg
         );
+        Ok(())
     }
 
     /// Validates: Requirements 4.3
     #[test]
-    fn cleans_stale_worktrees_on_construction() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn cleans_stale_worktrees_on_construction() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial",
                 vec![FileOp::Write {
@@ -880,35 +886,34 @@ mod env_validation_tests {
                     content: "hello".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         let repo_path = repo.dir.path();
         let scratch = repo_path.join(".faultline").join("scratch");
-        fs::create_dir_all(&scratch).unwrap();
+        fs::create_dir_all(&scratch)?;
 
         // Manually create a stale directory that looks like a leftover worktree.
         let stale = scratch.join("stale-worktree-12345");
-        fs::create_dir_all(&stale).unwrap();
-        fs::write(stale.join("marker.txt"), "stale").unwrap();
+        fs::create_dir_all(&stale)?;
+        fs::write(stale.join("marker.txt"), "stale")?;
         assert!(
             stale.exists(),
             "stale directory should exist before construction"
         );
 
         // Constructing a new GitAdapter should clean up the stale directory.
-        let _adapter = GitAdapter::new(repo_path).expect("create adapter");
+        let _adapter = GitAdapter::new(repo_path)?;
         assert!(
             !stale.exists(),
             "stale worktree directory should be removed after GitAdapter construction"
         );
+        Ok(())
     }
 
     /// Validates: Requirements 4.6
     #[test]
-    fn cleanup_checkout_returns_ok_on_missing_directory() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn cleanup_checkout_returns_ok_on_missing_directory() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial",
                 vec![FileOp::Write {
@@ -916,10 +921,9 @@ mod env_validation_tests {
                     content: "hello".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).expect("create adapter");
+        let adapter = GitAdapter::new(repo.dir.path())?;
 
         // Create a CheckedOutRevision pointing to a non-existent path.
         let fake_checkout = CheckedOutRevision {
@@ -933,11 +937,14 @@ mod env_validation_tests {
             "cleanup_checkout should return Ok(()) for a missing directory, got: {:?}",
             result
         );
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod fixture_scenario_tests {
+    use super::test_support::TestResult;
+    use super::test_support::git_cmd;
     use super::*;
     use faultline_codes::{ObservationClass, ProbeKind};
     use faultline_fixtures::{FileOp, GitRepoBuilder};
@@ -946,22 +953,6 @@ mod fixture_scenario_tests {
     use faultline_types::{
         Confidence, LocalizationOutcome, ProbeObservation, RevisionSpec, SearchPolicy,
     };
-
-    /// Helper: run a git command in a directory and return stdout.
-    fn git_cmd(dir: &std::path::Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .output()
-            .expect("git command failed to execute");
-        assert!(
-            out.status.success(),
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8_lossy(&out.stdout).trim().to_string()
-    }
 
     fn make_obs(commit: &CommitId, class: ObservationClass, seq_idx: u64) -> ProbeObservation {
         ProbeObservation {
@@ -991,10 +982,9 @@ mod fixture_scenario_tests {
     /// + LocalizationSession verifies FirstBad outcome with correct boundary pair.
     /// **Validates: Requirements 7.4**
     #[test]
-    fn exact_first_bad_commit_real_git() {
+    fn exact_first_bad_commit_real_git() -> TestResult {
         // Build a 5-commit linear repo; commit 3 introduces the "bug".
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "commit-0: initial good",
                 vec![FileOp::Write {
@@ -1020,28 +1010,37 @@ mod fixture_scenario_tests {
                 "commit-3: introduces bug",
                 vec![FileOp::Write {
                     path: "src/main.rs".into(),
-                    content: "fn main() { panic!(\"bug\"); }".into(),
+                    content: concat!(
+                        "// The regression starts in this revision.\n",
+                        "fn main() -> std::process::ExitCode {\n",
+                        "    std::process::ExitCode::from(1)\n",
+                        "}\n",
+                    )
+                    .into(),
                 }],
             )
             .commit(
                 "commit-4: still bad",
                 vec![FileOp::Write {
                     path: "src/main.rs".into(),
-                    content: "fn main() { panic!(\"still broken\"); }".into(),
+                    content: concat!(
+                        "// The regression persists in this revision.\n",
+                        "fn main() -> std::process::ExitCode {\n",
+                        "    std::process::ExitCode::from(1)\n",
+                        "}\n",
+                    )
+                    .into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 5);
 
         // Use GitAdapter to linearize the history from commit 0 (good) to commit 4 (bad).
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let good = RevisionSpec(repo.commits[0].0.clone());
         let bad = RevisionSpec(repo.commits[4].0.clone());
-        let sequence = adapter
-            .linearize(&good, &bad, HistoryMode::AncestryPath)
-            .expect("linearize should succeed");
+        let sequence = adapter.linearize(&good, &bad, HistoryMode::AncestryPath)?;
 
         // The sequence should contain all 5 commits in order.
         assert_eq!(
@@ -1055,7 +1054,7 @@ mod fixture_scenario_tests {
 
         // Create a LocalizationSession and simulate probing.
         let policy = SearchPolicy::default();
-        let mut session = LocalizationSession::new(sequence, policy).unwrap();
+        let mut session = LocalizationSession::new(sequence, policy)?;
 
         // Record observations: commits 0–2 pass, commits 3–4 fail.
         for i in 0..5u64 {
@@ -1064,9 +1063,7 @@ mod fixture_scenario_tests {
             } else {
                 ObservationClass::Fail
             };
-            session
-                .record(make_obs(&repo.commits[i as usize], class, i))
-                .unwrap();
+            session.record(make_obs(&repo.commits[i as usize], class, i))?;
         }
 
         // Verify the outcome is FirstBad with last_good=commit-2, first_bad=commit-3.
@@ -1084,8 +1081,9 @@ mod fixture_scenario_tests {
                     "exact boundary should have high confidence"
                 );
             }
-            other => panic!("expected FirstBad outcome, got: {other:?}"),
+            other => return Err(format!("expected FirstBad outcome, got: {other:?}").into()),
         }
+        Ok(())
     }
 
     /// Fixture scenario: first-parent-merge-history (real Git)
@@ -1094,10 +1092,9 @@ mod fixture_scenario_tests {
     /// ancestry-path but are excluded by first-parent.
     /// **Validates: Requirements 7.8**
     #[test]
-    fn first_parent_merge_history_real_git() {
+    fn first_parent_merge_history_real_git() -> TestResult {
         // Build a repo with an initial commit on main.
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial on main",
                 vec![FileOp::Write {
@@ -1105,47 +1102,42 @@ mod fixture_scenario_tests {
                     content: "v0".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         let repo_path = repo.dir.path();
         let initial_sha = repo.commits[0].0.clone();
 
         // Create a feature branch with two commits.
-        git_cmd(repo_path, &["checkout", "-b", "feature"]);
-        std::fs::write(repo_path.join("feature.txt"), "feature-1").unwrap();
-        git_cmd(repo_path, &["add", "."]);
-        git_cmd(repo_path, &["commit", "-m", "feature commit 1"]);
+        git_cmd(repo_path, &["checkout", "-b", "feature"])?;
+        std::fs::write(repo_path.join("feature.txt"), "feature-1")?;
+        git_cmd(repo_path, &["add", "."])?;
+        git_cmd(repo_path, &["commit", "-m", "feature commit 1"])?;
 
-        std::fs::write(repo_path.join("feature.txt"), "feature-2").unwrap();
-        git_cmd(repo_path, &["add", "."]);
-        git_cmd(repo_path, &["commit", "-m", "feature commit 2"]);
+        std::fs::write(repo_path.join("feature.txt"), "feature-2")?;
+        git_cmd(repo_path, &["add", "."])?;
+        git_cmd(repo_path, &["commit", "-m", "feature commit 2"])?;
 
         // Switch back to main and add a commit so the merge is non-trivial.
-        git_cmd(repo_path, &["checkout", "main"]);
-        std::fs::write(repo_path.join("main.txt"), "v1").unwrap();
-        git_cmd(repo_path, &["add", "."]);
-        git_cmd(repo_path, &["commit", "-m", "main commit after branch"]);
+        git_cmd(repo_path, &["checkout", "main"])?;
+        std::fs::write(repo_path.join("main.txt"), "v1")?;
+        git_cmd(repo_path, &["add", "."])?;
+        git_cmd(repo_path, &["commit", "-m", "main commit after branch"])?;
 
         // Merge feature into main with --no-ff to force a merge commit.
         git_cmd(
             repo_path,
             &["merge", "--no-ff", "-m", "merge feature", "feature"],
-        );
-        let merge_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+        )?;
+        let merge_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
         // Linearize with both modes.
-        let adapter = GitAdapter::new(repo_path).unwrap();
+        let adapter = GitAdapter::new(repo_path)?;
         let good = RevisionSpec(initial_sha);
         let bad = RevisionSpec(merge_sha);
 
-        let ancestry = adapter
-            .linearize(&good, &bad, HistoryMode::AncestryPath)
-            .expect("ancestry-path linearize should succeed");
+        let ancestry = adapter.linearize(&good, &bad, HistoryMode::AncestryPath)?;
 
-        let first_parent = adapter
-            .linearize(&good, &bad, HistoryMode::FirstParent)
-            .expect("first-parent linearize should succeed");
+        let first_parent = adapter.linearize(&good, &bad, HistoryMode::FirstParent)?;
 
         // Ancestry-path includes the feature branch commits; first-parent does not.
         // Therefore the two linearizations must differ.
@@ -1169,6 +1161,7 @@ mod fixture_scenario_tests {
         // Both should share the same good and bad boundaries.
         assert_eq!(ancestry.revisions.first(), first_parent.revisions.first());
         assert_eq!(ancestry.revisions.last(), first_parent.revisions.last());
+        Ok(())
     }
 
     /// Fixture scenario: rename-and-delete (real Git)
@@ -1177,10 +1170,9 @@ mod fixture_scenario_tests {
     /// with the expected statuses (Renamed, Deleted).
     /// **Validates: Requirements 7.9**
     #[test]
-    fn rename_and_delete_real_git() {
+    fn rename_and_delete_real_git() -> TestResult {
         // First commit: add several files.
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial: add files",
                 vec![
@@ -1214,15 +1206,12 @@ mod fixture_scenario_tests {
                     },
                 ],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         assert_eq!(repo.commits.len(), 2);
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
-        let changes = adapter
-            .changed_paths(&repo.commits[0], &repo.commits[1])
-            .expect("changed_paths should succeed");
+        let adapter = GitAdapter::new(repo.dir.path())?;
+        let changes = adapter.changed_paths(&repo.commits[0], &repo.commits[1])?;
 
         // Verify deleted file is detected.
         let deleted: Vec<_> = changes
@@ -1274,6 +1263,7 @@ mod fixture_scenario_tests {
             !unchanged_paths.contains(&"another.txt"),
             "another.txt should not appear in changed_paths"
         );
+        Ok(())
     }
 
     /// Fixture scenario: invalid-boundaries (real Git)
@@ -1282,10 +1272,9 @@ mod fixture_scenario_tests {
     /// Verifies `GitAdapter::linearize` returns an error.
     /// **Validates: Requirements 7.10**
     #[test]
-    fn invalid_boundaries_real_git() {
+    fn invalid_boundaries_real_git() -> TestResult {
         // Build a repo with an initial commit on main.
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial on main",
                 vec![FileOp::Write {
@@ -1293,40 +1282,38 @@ mod fixture_scenario_tests {
                     content: "main content".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
         let repo_path = repo.dir.path();
         let initial_sha = repo.commits[0].0.clone();
 
         // Create branch-a from initial and add a commit.
-        git_cmd(repo_path, &["checkout", "-b", "branch-a"]);
-        std::fs::write(repo_path.join("a.txt"), "branch-a work").unwrap();
-        git_cmd(repo_path, &["add", "."]);
-        git_cmd(repo_path, &["commit", "-m", "commit on branch-a"]);
-        let branch_a_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+        git_cmd(repo_path, &["checkout", "-b", "branch-a"])?;
+        std::fs::write(repo_path.join("a.txt"), "branch-a work")?;
+        git_cmd(repo_path, &["add", "."])?;
+        git_cmd(repo_path, &["commit", "-m", "commit on branch-a"])?;
+        let branch_a_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
         // Go back to initial and create branch-b with a divergent commit.
-        git_cmd(repo_path, &["checkout", &initial_sha]);
-        git_cmd(repo_path, &["checkout", "-b", "branch-b"]);
-        std::fs::write(repo_path.join("b.txt"), "branch-b work").unwrap();
-        git_cmd(repo_path, &["add", "."]);
-        git_cmd(repo_path, &["commit", "-m", "commit on branch-b"]);
-        let branch_b_sha = git_cmd(repo_path, &["rev-parse", "HEAD"]);
+        git_cmd(repo_path, &["checkout", &initial_sha])?;
+        git_cmd(repo_path, &["checkout", "-b", "branch-b"])?;
+        std::fs::write(repo_path.join("b.txt"), "branch-b work")?;
+        git_cmd(repo_path, &["add", "."])?;
+        git_cmd(repo_path, &["commit", "-m", "commit on branch-b"])?;
+        let branch_b_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
         // branch-a tip is NOT an ancestor of branch-b tip (and vice versa).
-        let adapter = GitAdapter::new(repo_path).unwrap();
+        let adapter = GitAdapter::new(repo_path)?;
 
         // Try linearize with branch-a as good and branch-b as bad.
         let good = RevisionSpec(branch_a_sha.clone());
         let bad = RevisionSpec(branch_b_sha.clone());
         let result = adapter.linearize(&good, &bad, HistoryMode::AncestryPath);
 
-        assert!(
-            result.is_err(),
-            "linearize should fail when good is not an ancestor of bad"
-        );
-        let err_msg = format!("{}", result.unwrap_err());
+        let err_msg = result
+            .err()
+            .ok_or("expected rejection of unrelated commits")?
+            .to_string();
         assert!(
             err_msg.contains("must be an ancestor"),
             "error should mention ancestor relationship, got: {}",
@@ -1342,19 +1329,20 @@ mod fixture_scenario_tests {
             result_rev.is_err(),
             "linearize should also fail in the reverse direction"
         );
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod codeowners_integration_tests {
+    use super::test_support::TestResult;
     use super::*;
     use faultline_fixtures::{FileOp, GitRepoBuilder};
     use faultline_ports::HistoryPort;
 
     #[test]
-    fn codeowners_from_github_dir() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn codeowners_from_github_dir() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial with CODEOWNERS",
                 vec![
@@ -1372,32 +1360,33 @@ mod codeowners_integration_tests {
                     },
                 ],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let paths = vec![
             "src/main.rs".to_string(),
             "README.md".to_string(),
             "unknown.txt".to_string(),
         ];
-        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+        let owners = adapter.codeowners_for_paths(&paths)?;
 
         assert_eq!(
-            owners.get("src/main.rs").unwrap(),
+            owners
+                .get("src/main.rs")
+                .ok_or("missing src/main.rs result")?,
             &Some("@rust-team".to_string())
         );
         assert_eq!(
-            owners.get("README.md").unwrap(),
+            owners.get("README.md").ok_or("missing README.md result")?,
             &Some("@docs-team".to_string())
         );
-        assert_eq!(owners.get("unknown.txt").unwrap(), &None);
+        assert_eq!(owners.get("unknown.txt"), Some(&None));
+        Ok(())
     }
 
     #[test]
-    fn codeowners_from_repo_root() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn codeowners_from_repo_root() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial with root CODEOWNERS",
                 vec![
@@ -1411,23 +1400,22 @@ mod codeowners_integration_tests {
                     },
                 ],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let paths = vec!["file.txt".to_string()];
-        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+        let owners = adapter.codeowners_for_paths(&paths)?;
 
         assert_eq!(
-            owners.get("file.txt").unwrap(),
+            owners.get("file.txt").ok_or("missing file.txt result")?,
             &Some("@default-owner".to_string())
         );
+        Ok(())
     }
 
     #[test]
-    fn codeowners_missing_returns_none_owners() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn codeowners_missing_returns_none_owners() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "no codeowners",
                 vec![FileOp::Write {
@@ -1435,20 +1423,19 @@ mod codeowners_integration_tests {
                     content: "content".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let paths = vec!["file.txt".to_string()];
-        let owners = adapter.codeowners_for_paths(&paths).unwrap();
+        let owners = adapter.codeowners_for_paths(&paths)?;
 
-        assert_eq!(owners.get("file.txt").unwrap(), &None);
+        assert_eq!(owners.get("file.txt"), Some(&None));
+        Ok(())
     }
 
     #[test]
-    fn blame_frequency_returns_most_frequent_author() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn blame_frequency_returns_most_frequent_author() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "first",
                 vec![FileOp::Write {
@@ -1463,23 +1450,22 @@ mod codeowners_integration_tests {
                     content: "v2".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let paths = vec!["file.txt".to_string()];
-        let result = adapter.blame_frequency(&paths).unwrap();
+        let result = adapter.blame_frequency(&paths)?;
 
         // The GitRepoBuilder uses "Fixture" as the author name
-        let owner = result.get("file.txt").unwrap();
+        let owner = result.get("file.txt").ok_or("missing file.txt result")?;
         assert!(owner.is_some(), "should find an author for file.txt");
         assert_eq!(owner.as_deref(), Some("Fixture"));
+        Ok(())
     }
 
     #[test]
-    fn blame_frequency_no_commits_returns_none() {
-        let repo = GitRepoBuilder::new()
-            .unwrap()
+    fn blame_frequency_no_commits_returns_none() -> TestResult {
+        let repo = GitRepoBuilder::new()?
             .commit(
                 "initial",
                 vec![FileOp::Write {
@@ -1487,13 +1473,13 @@ mod codeowners_integration_tests {
                     content: "content".into(),
                 }],
             )
-            .build()
-            .unwrap();
+            .build()?;
 
-        let adapter = GitAdapter::new(repo.dir.path()).unwrap();
+        let adapter = GitAdapter::new(repo.dir.path())?;
         let paths = vec!["nonexistent.txt".to_string()];
-        let result = adapter.blame_frequency(&paths).unwrap();
+        let result = adapter.blame_frequency(&paths)?;
 
-        assert_eq!(result.get("nonexistent.txt").unwrap(), &None);
+        assert_eq!(result.get("nonexistent.txt"), Some(&None));
+        Ok(())
     }
 }

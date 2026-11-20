@@ -3,11 +3,11 @@
 // Feature: repo-operating-system, Property 49: Scaffold File Generation
 // Feature: repo-operating-system, Property 50: Scaffold Input Validation
 
-use proptest::prelude::*;
+use proptest::{prelude::*, test_runner::TestCaseError};
 use tempfile::TempDir;
 
 /// Create a minimal workspace root in a temp directory with the required structure.
-fn setup_workspace(tmp: &TempDir) -> std::path::PathBuf {
+fn setup_workspace(tmp: &TempDir) -> std::io::Result<std::path::PathBuf> {
     let root = tmp.path().to_path_buf();
 
     // Minimal workspace Cargo.toml
@@ -25,12 +25,11 @@ edition = "2024"
 license = "Apache-2.0"
 authors = ["Test"]
 "#,
-    )
-    .unwrap();
+    )?;
 
     // docs/adr/ with TEMPLATE.md
     let adr_dir = root.join("docs/adr");
-    std::fs::create_dir_all(&adr_dir).unwrap();
+    std::fs::create_dir_all(&adr_dir)?;
     std::fs::write(
         adr_dir.join("TEMPLATE.md"),
         r#"# ADR-NNNN: <title>
@@ -47,24 +46,22 @@ Proposed
 
 ## Related Patterns
 "#,
-    )
-    .unwrap();
+    )?;
 
     // docs/scenarios/scenario_index.md
     let scenarios_dir = root.join("docs/scenarios");
-    std::fs::create_dir_all(&scenarios_dir).unwrap();
+    std::fs::create_dir_all(&scenarios_dir)?;
     std::fs::write(
         scenarios_dir.join("scenario_index.md"),
         "# Scenario Index\n\n| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs |\n|----------|---------|-------------------|----------|----------|-----------|------|\n",
-    )
-    .unwrap();
+    )?;
 
     // docs/book/src/SUMMARY.md with section headings
     let book_src = root.join("docs/book/src");
-    std::fs::create_dir_all(book_src.join("tutorials")).unwrap();
-    std::fs::create_dir_all(book_src.join("howto")).unwrap();
-    std::fs::create_dir_all(book_src.join("explanations")).unwrap();
-    std::fs::create_dir_all(book_src.join("reference")).unwrap();
+    std::fs::create_dir_all(book_src.join("tutorials"))?;
+    std::fs::create_dir_all(book_src.join("howto"))?;
+    std::fs::create_dir_all(book_src.join("explanations"))?;
+    std::fs::create_dir_all(book_src.join("reference"))?;
     std::fs::write(
         book_src.join("SUMMARY.md"),
         r#"# Summary
@@ -85,13 +82,12 @@ Proposed
 
 - [CLI Flags](reference/cli-flags.md)
 "#,
-    )
-    .unwrap();
+    )?;
 
     // crates/ directory
-    std::fs::create_dir_all(root.join("crates")).unwrap();
+    std::fs::create_dir_all(root.join("crates"))?;
 
-    root
+    Ok(root)
 }
 
 /// Strategy for generating valid crate name suffixes.
@@ -124,8 +120,8 @@ proptest! {
         suffix in arb_crate_suffix(),
         tier in arb_tier(),
     ) {
-        let tmp = TempDir::new().unwrap();
-        let root = setup_workspace(&tmp);
+        let tmp = TempDir::new()?;
+        let root = setup_workspace(&tmp)?;
         let name = format!("faultline-{suffix}");
 
         let result = xtask::scaffold::scaffold_crate(&root, &name, &tier);
@@ -134,7 +130,7 @@ proptest! {
         // Verify Cargo.toml exists and inherits workspace metadata
         let cargo_toml_path = root.join("crates").join(&name).join("Cargo.toml");
         prop_assert!(cargo_toml_path.exists(), "Cargo.toml not created");
-        let cargo_content = std::fs::read_to_string(&cargo_toml_path).unwrap();
+        let cargo_content = std::fs::read_to_string(&cargo_toml_path)?;
         prop_assert!(cargo_content.contains("version.workspace = true"),
             "Cargo.toml missing workspace version inheritance");
         prop_assert!(cargo_content.contains("edition.workspace = true"),
@@ -145,11 +141,11 @@ proptest! {
         // Verify src/lib.rs exists with doc comment
         let lib_rs_path = root.join("crates").join(&name).join("src/lib.rs");
         prop_assert!(lib_rs_path.exists(), "src/lib.rs not created");
-        let lib_content = std::fs::read_to_string(&lib_rs_path).unwrap();
+        let lib_content = std::fs::read_to_string(&lib_rs_path)?;
         prop_assert!(lib_content.starts_with("//!"), "src/lib.rs missing doc comment");
 
         // Verify crate name appears in workspace Cargo.toml members
-        let ws_cargo = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+        let ws_cargo = std::fs::read_to_string(root.join("Cargo.toml"))?;
         prop_assert!(ws_cargo.contains(&format!("\"crates/{name}\"")),
             "crate not added to workspace members");
     }
@@ -168,14 +164,14 @@ proptest! {
     fn prop_scaffold_adr_sequential_numbering(
         existing_count in 0u32..20,
     ) {
-        let tmp = TempDir::new().unwrap();
-        let root = setup_workspace(&tmp);
+        let tmp = TempDir::new()?;
+        let root = setup_workspace(&tmp)?;
         let adr_dir = root.join("docs/adr");
 
         // Create `existing_count` ADR files with sequential numbering
         for i in 1..=existing_count {
             let filename = format!("{:04}-existing-adr-{}.md", i, i);
-            std::fs::write(adr_dir.join(&filename), "# placeholder").unwrap();
+            std::fs::write(adr_dir.join(&filename), "# placeholder")?;
         }
 
         // Scaffold a new ADR
@@ -187,24 +183,21 @@ proptest! {
         let expected_prefix = format!("{:04}", expected_num);
 
         // Find the new ADR file
-        let entries: Vec<_> = std::fs::read_dir(&adr_dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let name = e.file_name().to_string_lossy().to_string();
-                name.starts_with(&expected_prefix) && name.ends_with(".md") && name != "TEMPLATE.md"
-            })
-            .collect();
-
-        prop_assert!(
-            entries.len() == 1,
-            "expected exactly one ADR with prefix {}, found {}",
-            expected_prefix,
-            entries.len()
-        );
+        let mut entries = std::fs::read_dir(&adr_dir)?.collect::<std::io::Result<Vec<_>>>()?;
+        entries.retain(|entry| {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            name.starts_with(&expected_prefix) && name.ends_with(".md") && name != "TEMPLATE.md"
+        });
+        let [entry] = entries.as_slice() else {
+            return Err(TestCaseError::fail(format!(
+                "expected exactly one ADR with prefix {expected_prefix}, found {}",
+                entries.len()
+            )));
+        };
 
         // Verify the file uses the template (has "## Status" section)
-        let content = std::fs::read_to_string(entries[0].path()).unwrap();
+        let content = std::fs::read_to_string(entry.path())?;
         prop_assert!(content.contains("## Status"), "ADR missing Status section from template");
         prop_assert!(content.contains("Test Decision"), "ADR missing title");
     }
@@ -223,12 +216,12 @@ proptest! {
     fn prop_scaffold_scenario_creates_stub_and_index(
         name in "[a-z][a-z0-9_]{1,10}",
     ) {
-        let tmp = TempDir::new().unwrap();
-        let root = setup_workspace(&tmp);
+        let tmp = TempDir::new()?;
+        let root = setup_workspace(&tmp)?;
 
         // Create the target crate directory
         let crate_name = "faultline-test";
-        std::fs::create_dir_all(root.join("crates").join(crate_name)).unwrap();
+        std::fs::create_dir_all(root.join("crates").join(crate_name))?;
 
         let result = xtask::scaffold::scaffold_scenario(&root, &name, crate_name);
         prop_assert!(result.is_ok(), "scaffold_scenario failed: {:?}", result.err());
@@ -241,11 +234,11 @@ proptest! {
             .join(format!("{}.rs", name.replace('-', "_")));
         prop_assert!(test_file.exists(), "test stub not created at {:?}", test_file);
 
-        let test_content = std::fs::read_to_string(&test_file).unwrap();
+        let test_content = std::fs::read_to_string(&test_file)?;
         prop_assert!(test_content.contains("#[test]"), "test stub missing #[test] attribute");
 
         // Verify scenario index entry
-        let index = std::fs::read_to_string(root.join("docs/scenarios/scenario_index.md")).unwrap();
+        let index = std::fs::read_to_string(root.join("docs/scenarios/scenario_index.md"))?;
         prop_assert!(index.contains(&name), "scenario index missing entry for {}", name);
     }
 
@@ -260,8 +253,8 @@ proptest! {
             Just("reference"),
         ],
     ) {
-        let tmp = TempDir::new().unwrap();
-        let root = setup_workspace(&tmp);
+        let tmp = TempDir::new()?;
+        let root = setup_workspace(&tmp)?;
 
         let title = "My Test Page";
         let result = xtask::scaffold::scaffold_doc(&root, title, &section);
@@ -273,7 +266,7 @@ proptest! {
             "howto" => "howto",
             "explanation" => "explanations",
             "reference" => "reference",
-            _ => unreachable!(),
+            _ => return Err(TestCaseError::fail(format!("unexpected doc section: {section}"))),
         };
 
         // Verify Markdown file exists
@@ -283,11 +276,11 @@ proptest! {
             .join("my-test-page.md");
         prop_assert!(doc_file.exists(), "doc file not created at {:?}", doc_file);
 
-        let doc_content = std::fs::read_to_string(&doc_file).unwrap();
+        let doc_content = std::fs::read_to_string(&doc_file)?;
         prop_assert!(doc_content.contains(title), "doc file missing title");
 
         // Verify SUMMARY.md entry
-        let summary = std::fs::read_to_string(root.join("docs/book/src/SUMMARY.md")).unwrap();
+        let summary = std::fs::read_to_string(root.join("docs/book/src/SUMMARY.md"))?;
         prop_assert!(
             summary.contains("My Test Page"),
             "SUMMARY.md missing entry for doc"
@@ -318,9 +311,10 @@ proptest! {
             "[0-9]{1,5}".prop_map(|s| format!("faultline-{s}")),
         ],
     ) {
-        let result = xtask::scaffold::validate_crate_name(&name);
-        prop_assert!(result.is_err(), "expected rejection for crate name: {}", name);
-        let err_msg = format!("{}", result.unwrap_err());
+        let Err(error) = xtask::scaffold::validate_crate_name(&name) else {
+            return Err(TestCaseError::fail(format!("expected rejection for crate name: {name}")));
+        };
+        let err_msg = error.to_string();
         prop_assert!(
             err_msg.contains("crate name must match"),
             "error message missing expected text, got: {}",
@@ -371,9 +365,10 @@ proptest! {
             }),
         ],
     ) {
-        let result = xtask::scaffold::validate_section(&section);
-        prop_assert!(result.is_err(), "expected rejection for section: {}", section);
-        let err_msg = format!("{}", result.unwrap_err());
+        let Err(error) = xtask::scaffold::validate_section(&section) else {
+            return Err(TestCaseError::fail(format!("expected rejection for section: {section}")));
+        };
+        let err_msg = error.to_string();
         prop_assert!(
             err_msg.contains("section must be one of"),
             "error message missing expected text, got: {}",

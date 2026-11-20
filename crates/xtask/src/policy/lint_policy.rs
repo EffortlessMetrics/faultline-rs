@@ -264,7 +264,7 @@ pub fn check(root: &Path) -> Result<LintReport> {
     // 6. Bare #[allow(...)] in source files. Anchor to line-leading
     // whitespace so we only flag actual attributes, not string literals
     // that happen to contain the substring.
-    let allow_re = regex::Regex::new(r"^\s*#!?\[allow\(").expect("static regex compiles");
+    let allow_re = regex::Regex::new(r"^\s*#!?\[allow\(")?;
     for entry in walkdir::WalkDir::new(root)
         .into_iter()
         .filter_entry(|e| !is_ignored_dir(e.path(), root))

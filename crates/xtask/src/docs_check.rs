@@ -4,7 +4,7 @@
 //! that local file links resolve to existing targets. External URLs (http/https)
 //! are skipped. Reports broken links with file path and line number.
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use regex::Regex;
 use std::path::{Path, PathBuf};
 
@@ -84,12 +84,12 @@ fn walk_dir_for_md(dir: &Path, out: &mut Vec<PathBuf>) {
 ///
 /// Matches inline links `[text](target)` and returns `(target, fragment)` pairs.
 /// Reference-style link definitions `[label]: target` are also matched.
-pub fn extract_links(line: &str) -> Vec<String> {
+pub fn extract_links(line: &str) -> Result<Vec<String>> {
     let mut links = Vec::new();
 
     // Inline links: [text](target)
     // Use a regex that handles nested brackets minimally.
-    let inline_re = Regex::new(r"\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)]+)\)").unwrap();
+    let inline_re = Regex::new(r"\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)]+)\)")?;
     for cap in inline_re.captures_iter(line) {
         if let Some(m) = cap.get(1) {
             links.push(m.as_str().to_string());
@@ -97,14 +97,14 @@ pub fn extract_links(line: &str) -> Vec<String> {
     }
 
     // Reference-style link definitions: [label]: target
-    let ref_re = Regex::new(r"^\s{0,3}\[[^\]]+\]:\s+(\S+)").unwrap();
+    let ref_re = Regex::new(r"^\s{0,3}\[[^\]]+\]:\s+(\S+)")?;
     if let Some(cap) = ref_re.captures(line)
         && let Some(m) = cap.get(1)
     {
         links.push(m.as_str().to_string());
     }
 
-    links
+    Ok(links)
 }
 
 /// Check whether a link target is external (http/https).
@@ -119,26 +119,16 @@ fn is_non_file_scheme(target: &str) -> bool {
 
 /// Strip the fragment (#anchor) from a link target, returning (path_part, fragment).
 fn split_fragment(target: &str) -> (&str, Option<&str>) {
-    if let Some(pos) = target.find('#') {
-        let path = &target[..pos];
-        let frag = &target[pos + 1..];
-        if path.is_empty() {
-            // Pure anchor link like #heading — skip file check
-            ("", Some(frag))
-        } else {
-            (path, Some(frag))
-        }
-    } else {
-        (target, None)
+    match target.split_once('#') {
+        Some((path, fragment)) => (path, Some(fragment)),
+        None => (target, None),
     }
 }
 
 /// Check all links in a single Markdown file.
-pub fn check_file(source: &Path) -> Vec<BrokenLink> {
-    let content = match std::fs::read_to_string(source) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
+pub fn check_file(source: &Path) -> Result<Vec<BrokenLink>> {
+    let content = std::fs::read_to_string(source)
+        .with_context(|| format!("failed to read {}", source.display()))?;
 
     let source_dir = source.parent().unwrap_or(Path::new("."));
     let mut broken = Vec::new();
@@ -146,7 +136,7 @@ pub fn check_file(source: &Path) -> Vec<BrokenLink> {
     for (line_idx, line) in content.lines().enumerate() {
         let line_number = line_idx + 1;
 
-        for raw_target in extract_links(line) {
+        for raw_target in extract_links(line)? {
             // Skip external URLs
             if is_external(&raw_target) || is_non_file_scheme(&raw_target) {
                 continue;
@@ -173,7 +163,7 @@ pub fn check_file(source: &Path) -> Vec<BrokenLink> {
         }
     }
 
-    broken
+    Ok(broken)
 }
 
 /// Run link checking across all Markdown files in the workspace.
@@ -184,7 +174,7 @@ pub fn check_links(root: &Path) -> Result<()> {
     let mut all_broken: Vec<BrokenLink> = Vec::new();
 
     for file in &files {
-        let broken = check_file(file);
+        let broken = check_file(file)?;
         all_broken.extend(broken);
     }
 
@@ -214,24 +204,30 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn extract_inline_links() {
-        let links = extract_links("See [foo](bar.md) and [baz](../qux.md#heading).");
-        assert_eq!(links, vec!["bar.md", "../qux.md#heading"]);
+    fn extract_inline_links() -> Result<()> {
+        let links = extract_links("See [foo](bar.md) and [baz](../qux.md#heading).")?;
+        anyhow::ensure!(
+            links == ["bar.md", "../qux.md#heading"],
+            "unexpected links: {links:?}"
+        );
+        Ok(())
     }
 
     #[test]
-    fn extract_reference_links() {
-        let links = extract_links("[label]: path/to/file.md");
-        assert_eq!(links, vec!["path/to/file.md"]);
+    fn extract_reference_links() -> Result<()> {
+        let links = extract_links("[label]: path/to/file.md")?;
+        anyhow::ensure!(links == ["path/to/file.md"], "unexpected links: {links:?}");
+        Ok(())
     }
 
     #[test]
-    fn extract_skips_external() {
-        let links = extract_links("[ext](https://example.com) and [local](foo.md)");
+    fn extract_skips_external() -> Result<()> {
+        let links = extract_links("[ext](https://example.com) and [local](foo.md)")?;
         // extract_links returns all; filtering is done in check_file
-        assert_eq!(links.len(), 2);
-        assert!(is_external("https://example.com"));
-        assert!(!is_external("foo.md"));
+        anyhow::ensure!(links.len() == 2, "unexpected links: {links:?}");
+        anyhow::ensure!(is_external("https://example.com"));
+        anyhow::ensure!(!is_external("foo.md"));
+        Ok(())
     }
 
     #[test]
@@ -242,66 +238,72 @@ mod tests {
     }
 
     #[test]
-    fn check_file_finds_broken_links() {
-        let tmp = TempDir::new().unwrap();
+    fn check_file_finds_broken_links() -> Result<()> {
+        let tmp = TempDir::new()?;
         let md = tmp.path().join("test.md");
-        fs::write(&md, "# Test\n\n[good](test.md)\n[bad](missing.md)\n").unwrap();
+        fs::write(&md, "# Test\n\n[good](test.md)\n[bad](missing.md)\n")?;
 
-        let broken = check_file(&md);
-        assert_eq!(broken.len(), 1);
-        assert_eq!(broken[0].target, "missing.md");
-        assert_eq!(broken[0].line_number, 4);
+        let broken = check_file(&md)?;
+        anyhow::ensure!(
+            matches!(broken.as_slice(), [link] if link.target == "missing.md" && link.line_number == 4),
+            "unexpected broken links: {broken:?}"
+        );
+        Ok(())
     }
 
     #[test]
-    fn check_file_skips_external_and_anchors() {
-        let tmp = TempDir::new().unwrap();
+    fn check_file_skips_external_and_anchors() -> Result<()> {
+        let tmp = TempDir::new()?;
         let md = tmp.path().join("test.md");
         fs::write(
             &md,
             "[ext](https://example.com)\n[anchor](#heading)\n[mailto](mailto:a@b.com)\n",
-        )
-        .unwrap();
+        )?;
 
-        let broken = check_file(&md);
-        assert!(broken.is_empty());
+        let broken = check_file(&md)?;
+        anyhow::ensure!(broken.is_empty(), "unexpected broken links: {broken:?}");
+        Ok(())
     }
 
     #[test]
-    fn check_links_on_clean_dir() {
-        let tmp = TempDir::new().unwrap();
+    fn check_links_on_clean_dir() -> Result<()> {
+        let tmp = TempDir::new()?;
         let docs = tmp.path().join("docs");
-        fs::create_dir_all(&docs).unwrap();
-        fs::write(docs.join("readme.md"), "# Docs\n\n[self](readme.md)\n").unwrap();
+        fs::create_dir_all(&docs)?;
+        fs::write(docs.join("readme.md"), "# Docs\n\n[self](readme.md)\n")?;
 
         // No root Cargo.toml with [workspace], but check_links just needs the root path
-        let result = check_links(tmp.path());
-        assert!(result.is_ok());
+        check_links(tmp.path())?;
+        Ok(())
     }
 
     #[test]
-    fn check_links_reports_broken() {
-        let tmp = TempDir::new().unwrap();
+    fn check_links_reports_broken() -> Result<()> {
+        let tmp = TempDir::new()?;
         let docs = tmp.path().join("docs");
-        fs::create_dir_all(&docs).unwrap();
-        fs::write(docs.join("readme.md"), "[broken](nonexistent.md)\n").unwrap();
+        fs::create_dir_all(&docs)?;
+        fs::write(docs.join("readme.md"), "[broken](nonexistent.md)\n")?;
 
-        let result = check_links(tmp.path());
-        assert!(result.is_err());
+        let error = check_links(tmp.path())
+            .err()
+            .context("expected a broken-link error")?;
+        anyhow::ensure!(error.to_string().contains("1 broken link(s)"), "{error}");
+        Ok(())
     }
 
     #[test]
-    fn collect_markdown_files_finds_root_and_docs() {
-        let tmp = TempDir::new().unwrap();
-        fs::write(tmp.path().join("README.md"), "# Hi").unwrap();
+    fn collect_markdown_files_finds_root_and_docs() -> Result<()> {
+        let tmp = TempDir::new()?;
+        fs::write(tmp.path().join("README.md"), "# Hi")?;
         let docs = tmp.path().join("docs");
-        fs::create_dir_all(docs.join("sub")).unwrap();
-        fs::write(docs.join("guide.md"), "# Guide").unwrap();
-        fs::write(docs.join("sub").join("deep.md"), "# Deep").unwrap();
+        fs::create_dir_all(docs.join("sub"))?;
+        fs::write(docs.join("guide.md"), "# Guide")?;
+        fs::write(docs.join("sub").join("deep.md"), "# Deep")?;
         // Non-md file should be ignored
-        fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
+        fs::write(tmp.path().join("Cargo.toml"), "[package]")?;
 
         let files = collect_markdown_files(tmp.path());
-        assert_eq!(files.len(), 3);
+        anyhow::ensure!(files.len() == 3, "unexpected files: {files:?}");
+        Ok(())
     }
 }

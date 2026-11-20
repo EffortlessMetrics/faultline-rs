@@ -300,6 +300,8 @@ mod tests {
     use faultline_codes::{ObservationClass, ProbeKind};
     use faultline_types::{FlakePolicy, FlakeSignal, ProbeObservation, SearchPolicy};
 
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+
     fn obs(commit: &str, class: ObservationClass) -> ProbeObservation {
         ProbeObservation {
             commit: CommitId(commit.to_string()),
@@ -343,89 +345,79 @@ mod tests {
     }
 
     #[test]
-    fn new_builds_index_by_commit() {
+    fn new_builds_index_by_commit() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert_eq!(session.index_of(&CommitId("a".into())), Some(0));
         assert_eq!(session.index_of(&CommitId("b".into())), Some(1));
         assert_eq!(session.index_of(&CommitId("c".into())), Some(2));
         assert_eq!(session.index_of(&CommitId("z".into())), None);
+        Ok(())
     }
 
     // --- record ---
 
     #[test]
-    fn record_rejects_unknown_commit() {
+    fn record_rejects_unknown_commit() -> TestResult {
         let seq = make_seq(&["a", "b"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert!(session.record(obs("z", ObservationClass::Pass)).is_err());
+        Ok(())
     }
 
     #[test]
-    fn record_accepts_known_commit() {
+    fn record_accepts_known_commit() -> TestResult {
         let seq = make_seq(&["a", "b"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert!(session.record(obs("a", ObservationClass::Pass)).is_ok());
+        Ok(())
     }
 
     // --- accessors ---
 
     #[test]
-    fn has_observation_and_get_observation() {
+    fn has_observation_and_get_observation() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert!(!session.has_observation(&CommitId("a".into())));
         assert!(session.get_observation(&CommitId("a".into())).is_none());
 
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        session.record(obs("a", ObservationClass::Pass))?;
         assert!(session.has_observation(&CommitId("a".into())));
         assert_eq!(
             session
                 .get_observation(&CommitId("a".into()))
-                .unwrap()
-                .class,
-            ObservationClass::Pass
+                .map(|o| o.class),
+            Some(ObservationClass::Pass)
         );
+        Ok(())
     }
 
     #[test]
-    fn observation_list_returns_all_in_sequence_index_order() {
+    fn observation_list_returns_all_in_sequence_index_order() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
         // Record "c" first with sequence_index=0, then "a" with sequence_index=1
-        session
-            .record(obs_with_seq("c", ObservationClass::Fail, 0))
-            .unwrap();
-        session
-            .record(obs_with_seq("a", ObservationClass::Pass, 1))
-            .unwrap();
+        session.record(obs_with_seq("c", ObservationClass::Fail, 0))?;
+        session.record(obs_with_seq("a", ObservationClass::Pass, 1))?;
         let list = session.observation_list();
         assert_eq!(list.len(), 2);
         // Ordered by sequence_index: c(0) before a(1)
         assert_eq!(list[0].commit.0, "c");
         assert_eq!(list[1].commit.0, "a");
+        Ok(())
     }
 
     #[test]
-    fn observation_list_orders_by_sequence_index_not_revision_position() {
+    fn observation_list_orders_by_sequence_index_not_revision_position() -> TestResult {
         let seq = make_seq(&["a", "b", "c", "d", "e"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
         // Simulate probing in binary-search order: e(seq=0), a(seq=1), c(seq=2), b(seq=3), d(seq=4)
-        session
-            .record(obs_with_seq("e", ObservationClass::Fail, 0))
-            .unwrap();
-        session
-            .record(obs_with_seq("a", ObservationClass::Pass, 1))
-            .unwrap();
-        session
-            .record(obs_with_seq("c", ObservationClass::Fail, 2))
-            .unwrap();
-        session
-            .record(obs_with_seq("b", ObservationClass::Pass, 3))
-            .unwrap();
-        session
-            .record(obs_with_seq("d", ObservationClass::Fail, 4))
-            .unwrap();
+        session.record(obs_with_seq("e", ObservationClass::Fail, 0))?;
+        session.record(obs_with_seq("a", ObservationClass::Pass, 1))?;
+        session.record(obs_with_seq("c", ObservationClass::Fail, 2))?;
+        session.record(obs_with_seq("b", ObservationClass::Pass, 3))?;
+        session.record(obs_with_seq("d", ObservationClass::Fail, 4))?;
         let list = session.observation_list();
         assert_eq!(list.len(), 5);
         assert_eq!(list[0].commit.0, "e"); // seq_idx=0
@@ -433,104 +425,112 @@ mod tests {
         assert_eq!(list[2].commit.0, "c"); // seq_idx=2
         assert_eq!(list[3].commit.0, "b"); // seq_idx=3
         assert_eq!(list[4].commit.0, "d"); // seq_idx=4
+        Ok(())
     }
 
     #[test]
-    fn record_preserves_preassigned_sequence_index() {
+    fn record_preserves_preassigned_sequence_index() -> TestResult {
         let seq = make_seq(&["a", "b"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session
-            .record(obs_with_seq("a", ObservationClass::Pass, 42))
-            .unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs_with_seq("a", ObservationClass::Pass, 42))?;
         let list = session.observation_list();
         assert_eq!(list[0].sequence_index, 42);
+        Ok(())
     }
 
     #[test]
-    fn sequence_accessor() {
+    fn sequence_accessor() -> TestResult {
         let seq = make_seq(&["a", "b"]);
-        let session = LocalizationSession::new(seq.clone(), SearchPolicy::default()).unwrap();
+        let session = LocalizationSession::new(seq.clone(), SearchPolicy::default())?;
         assert_eq!(session.sequence().revisions.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn max_probes_accessor() {
+    fn max_probes_accessor() -> TestResult {
         let seq = make_seq(&["a", "b"]);
         let policy = SearchPolicy {
             max_probes: 42,
             ..SearchPolicy::default()
         };
-        let session = LocalizationSession::new(seq, policy).unwrap();
+        let session = LocalizationSession::new(seq, policy)?;
         assert_eq!(session.max_probes(), 42);
+        Ok(())
     }
 
     // --- next_probe ---
 
     #[test]
-    fn next_probe_probes_first_boundary_first() {
+    fn next_probe_probes_first_boundary_first() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert_eq!(session.next_probe(), Some(CommitId("a".into())));
+        Ok(())
     }
 
     #[test]
-    fn next_probe_probes_last_boundary_second() {
+    fn next_probe_probes_last_boundary_second() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
         assert_eq!(session.next_probe(), Some(CommitId("c".into())));
+        Ok(())
     }
 
     #[test]
-    fn next_probe_binary_narrows_between_boundaries() {
+    fn next_probe_binary_narrows_between_boundaries() -> TestResult {
         let seq = make_seq(&["a", "b", "c", "d", "e"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("e", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("e", ObservationClass::Fail))?;
         // Candidates: b(1), c(2), d(3) → median is c(2)
         assert_eq!(session.next_probe(), Some(CommitId("c".into())));
+        Ok(())
     }
 
     #[test]
-    fn next_probe_returns_none_when_converged() {
+    fn next_probe_returns_none_when_converged() -> TestResult {
         let seq = make_seq(&["a", "b"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Fail))?;
         assert_eq!(session.next_probe(), None);
+        Ok(())
     }
 
     #[test]
-    fn next_probe_respects_max_probes() {
+    fn next_probe_respects_max_probes() -> TestResult {
         let seq = make_seq(&["a", "b", "c", "d", "e"]);
         let policy = SearchPolicy {
             max_probes: 2,
             ..SearchPolicy::default()
         };
-        let mut session = LocalizationSession::new(seq, policy).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("e", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, policy)?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("e", ObservationClass::Fail))?;
         // 2 observations recorded, max_probes is 2 → should return None
         assert_eq!(session.next_probe(), None);
+        Ok(())
     }
 
     #[test]
-    fn next_probe_single_element_returns_none() {
+    fn next_probe_single_element_returns_none() -> TestResult {
         let seq = make_seq(&["a"]);
-        let session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+        let session = LocalizationSession::new(seq, SearchPolicy::default())?;
         assert_eq!(session.next_probe(), None);
+        Ok(())
     }
 
     // --- outcome ---
 
     #[test]
-    fn exact_boundary_when_adjacent() {
+    fn exact_boundary_when_adjacent() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("c", ObservationClass::Fail))?;
         assert_eq!(session.next_probe(), Some(CommitId("b".into())));
-        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        session.record(obs("b", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::FirstBad {
                 first_bad,
@@ -541,17 +541,18 @@ mod tests {
                 assert_eq!(last_good.0, "a");
                 assert_eq!(confidence, Confidence::high());
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn skipped_midpoint_yields_suspect_window() {
+    fn skipped_midpoint_yields_suspect_window() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Skip)).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Skip))?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::SuspectWindow {
                 reasons,
@@ -562,19 +563,18 @@ mod tests {
                 assert_eq!(confidence, Confidence::medium());
                 assert!(confidence.score < Confidence::high().score);
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn indeterminate_midpoint_yields_suspect_window() {
+    fn indeterminate_midpoint_yields_suspect_window() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session
-            .record(obs("b", ObservationClass::Indeterminate))
-            .unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Indeterminate))?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::SuspectWindow {
                 reasons,
@@ -584,44 +584,47 @@ mod tests {
                 assert!(reasons.contains(&AmbiguityReason::IndeterminateRevision));
                 assert!(confidence.score < Confidence::high().score);
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn missing_pass_boundary_yields_inconclusive() {
+    fn missing_pass_boundary_yields_inconclusive() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::Inconclusive { reasons } => {
                 assert!(reasons.contains(&AmbiguityReason::MissingPassBoundary));
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn missing_fail_boundary_yields_inconclusive() {
+    fn missing_fail_boundary_yields_inconclusive() -> TestResult {
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
         match session.outcome() {
             LocalizationOutcome::Inconclusive { reasons } => {
                 assert!(reasons.contains(&AmbiguityReason::MissingFailBoundary));
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn non_monotonic_evidence_yields_low_confidence() {
+    fn non_monotonic_evidence_yields_low_confidence() -> TestResult {
         // Sequence: a, b, c, d — Fail at b (idx 1), Pass at c (idx 2)
         let seq = make_seq(&["a", "b", "c", "d"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("b", ObservationClass::Fail)).unwrap();
-        session.record(obs("c", ObservationClass::Pass)).unwrap();
-        session.record(obs("d", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("b", ObservationClass::Fail))?;
+        session.record(obs("c", ObservationClass::Pass))?;
+        session.record(obs("d", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::SuspectWindow {
                 reasons,
@@ -631,33 +634,35 @@ mod tests {
                 assert!(reasons.contains(&AmbiguityReason::NonMonotonicEvidence));
                 assert_eq!(confidence, Confidence::low());
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn unobserved_between_boundaries_yields_inconclusive() {
+    fn unobserved_between_boundaries_yields_inconclusive() -> TestResult {
         let seq = make_seq(&["a", "b", "c", "d"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("d", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("d", ObservationClass::Fail))?;
         // b and c are unobserved
         match session.outcome() {
             LocalizationOutcome::Inconclusive { reasons } => {
                 assert!(reasons.contains(&AmbiguityReason::NeedsMoreProbes));
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn first_bad_with_all_between_observed() {
+    fn first_bad_with_all_between_observed() -> TestResult {
         // a=Pass, b=Pass, c=Fail → FirstBad(b, c)
         let seq = make_seq(&["a", "b", "c"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Pass)).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Pass))?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::FirstBad {
                 last_good,
@@ -668,98 +673,103 @@ mod tests {
                 assert_eq!(first_bad.0, "c");
                 assert_eq!(confidence, Confidence::high());
             }
-            other => panic!("unexpected outcome: {other:?}"),
+            other => return Err(format!("unexpected outcome: {other:?}").into()),
         }
+        Ok(())
     }
 
     // --- max probes exhausted outcome ---
 
     #[test]
-    fn max_probes_exhausted_with_unobserved_between_boundaries() {
+    fn max_probes_exhausted_with_unobserved_between_boundaries() -> TestResult {
         // 5 commits, max_probes=2, observe only endpoints → Inconclusive with MaxProbesExhausted
         let seq = make_seq(&["a", "b", "c", "d", "e"]);
         let policy = SearchPolicy {
             max_probes: 2,
             ..SearchPolicy::default()
         };
-        let mut session = LocalizationSession::new(seq, policy).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("e", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, policy)?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("e", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::Inconclusive { reasons } => {
                 assert!(reasons.contains(&AmbiguityReason::NeedsMoreProbes));
                 assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
             }
-            other => panic!("expected Inconclusive, got {other:?}"),
+            other => return Err(format!("expected Inconclusive, got {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn max_probes_exhausted_with_skipped_between_boundaries() {
+    fn max_probes_exhausted_with_skipped_between_boundaries() -> TestResult {
         // 3 commits, max_probes=3, all observed but midpoint is Skip → SuspectWindow with MaxProbesExhausted
         let seq = make_seq(&["a", "b", "c"]);
         let policy = SearchPolicy {
             max_probes: 3,
             ..SearchPolicy::default()
         };
-        let mut session = LocalizationSession::new(seq, policy).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Skip)).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, policy)?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Skip))?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::SuspectWindow { reasons, .. } => {
                 assert!(reasons.contains(&AmbiguityReason::SkippedRevision));
                 assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
             }
-            other => panic!("expected SuspectWindow, got {other:?}"),
+            other => return Err(format!("expected SuspectWindow, got {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn max_probes_exhausted_missing_pass_boundary() {
+    fn max_probes_exhausted_missing_pass_boundary() -> TestResult {
         // Only fail observations, max_probes reached → Inconclusive with MissingPassBoundary + MaxProbesExhausted
         let seq = make_seq(&["a", "b", "c"]);
         let policy = SearchPolicy {
             max_probes: 1,
             ..SearchPolicy::default()
         };
-        let mut session = LocalizationSession::new(seq, policy).unwrap();
-        session.record(obs("c", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, policy)?;
+        session.record(obs("c", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::Inconclusive { reasons } => {
                 assert!(reasons.contains(&AmbiguityReason::MissingPassBoundary));
                 assert!(reasons.contains(&AmbiguityReason::MaxProbesExhausted));
             }
-            other => panic!("expected Inconclusive, got {other:?}"),
+            other => return Err(format!("expected Inconclusive, got {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn max_probes_not_exhausted_no_extra_reason() {
+    fn max_probes_not_exhausted_no_extra_reason() -> TestResult {
         // Adjacent pass-fail with plenty of budget → FirstBad, no MaxProbesExhausted
         let seq = make_seq(&["a", "b"]);
-        let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::FirstBad { confidence, .. } => {
                 assert_eq!(confidence, Confidence::high());
             }
-            other => panic!("expected FirstBad, got {other:?}"),
+            other => return Err(format!("expected FirstBad, got {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn max_probes_exhausted_but_converged_yields_first_bad() {
+    fn max_probes_exhausted_but_converged_yields_first_bad() -> TestResult {
         // Adjacent pass-fail AND max_probes reached → still FirstBad (converged)
         let seq = make_seq(&["a", "b"]);
         let policy = SearchPolicy {
             max_probes: 2,
             ..SearchPolicy::default()
         };
-        let mut session = LocalizationSession::new(seq, policy).unwrap();
-        session.record(obs("a", ObservationClass::Pass)).unwrap();
-        session.record(obs("b", ObservationClass::Fail)).unwrap();
+        let mut session = LocalizationSession::new(seq, policy)?;
+        session.record(obs("a", ObservationClass::Pass))?;
+        session.record(obs("b", ObservationClass::Fail))?;
         match session.outcome() {
             LocalizationOutcome::FirstBad {
                 last_good,
@@ -770,8 +780,9 @@ mod tests {
                 assert_eq!(first_bad.0, "b");
                 assert_eq!(confidence, Confidence::high());
             }
-            other => panic!("expected FirstBad, got {other:?}"),
+            other => return Err(format!("expected FirstBad, got {other:?}").into()),
         }
+        Ok(())
     }
 
     // Feature: v01-release-train, Property 4: Binary Narrowing Selects Valid Midpoint
@@ -797,7 +808,7 @@ mod tests {
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
 
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record observations for ALL indices so everything is observed:
                 // indices < i  → Pass
@@ -810,7 +821,7 @@ mod tests {
                     } else {
                         ObservationClass::Fail
                     };
-                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), class))?;
                 }
 
                 let outcome = session.outcome();
@@ -836,23 +847,21 @@ mod tests {
                 let seq = RevisionSequence { revisions: labels };
 
                 // Create session with default policy (max_probes=64, plenty of room)
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record Pass at first commit, Fail at last commit
-                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
-                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+                session.record(obs("commit-0", ObservationClass::Pass))?;
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail))?;
 
                 // Call next_probe
-                let probe = session.next_probe();
-
-                // Must be Some — there are unobserved candidates between index 0 and n-1
-                prop_assert!(probe.is_some(), "next_probe() should return Some for n={n}");
-                let probe_commit = probe.unwrap();
+                let probe_commit = session.next_probe().ok_or_else(|| {
+                    TestCaseError::fail(format!("next_probe() should return Some for n={n}"))
+                })?;
 
                 // Find the index of the returned commit
                 let idx = session.index_by_commit.get(&probe_commit)
                     .copied()
-                    .expect("returned commit must be in the sequence");
+                    .ok_or_else(|| TestCaseError::fail("returned commit must be in the sequence"))?;
 
                 // Index must be strictly between 0 and n-1
                 prop_assert!(idx > 0, "probe index {idx} must be > 0");
@@ -880,7 +889,7 @@ mod tests {
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
 
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record Pass for all indices <= i, Fail for all indices > i
                 // This guarantees a FirstBad outcome
@@ -890,7 +899,7 @@ mod tests {
                     } else {
                         ObservationClass::Fail
                     };
-                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), class))?;
                 }
 
                 let outcome = session.outcome();
@@ -899,15 +908,17 @@ mod tests {
                 match outcome {
                     LocalizationOutcome::FirstBad { last_good, first_bad, .. } => {
                         // Verify last_good has a direct Pass observation
-                        let last_good_obs = session.get_observation(&last_good);
-                        prop_assert!(last_good_obs.is_some(), "last_good must have a recorded observation");
-                        prop_assert_eq!(last_good_obs.unwrap().class, ObservationClass::Pass,
+                        let last_good_obs = session.get_observation(&last_good).ok_or_else(|| {
+                            TestCaseError::fail("last_good must have a recorded observation")
+                        })?;
+                        prop_assert_eq!(last_good_obs.class, ObservationClass::Pass,
                             "last_good observation must be Pass");
 
                         // Verify first_bad has a direct Fail observation
-                        let first_bad_obs = session.get_observation(&first_bad);
-                        prop_assert!(first_bad_obs.is_some(), "first_bad must have a recorded observation");
-                        prop_assert_eq!(first_bad_obs.unwrap().class, ObservationClass::Fail,
+                        let first_bad_obs = session.get_observation(&first_bad).ok_or_else(|| {
+                            TestCaseError::fail("first_bad must have a recorded observation")
+                        })?;
+                        prop_assert_eq!(first_bad_obs.class, ObservationClass::Fail,
                             "first_bad observation must be Fail");
                     }
                     other => {
@@ -952,15 +963,15 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record boundary observations: Pass at first, Fail at last
-                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
-                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+                session.record(obs("commit-0", ObservationClass::Pass))?;
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail))?;
 
                 // Record non-monotonic pair: Fail at fail_idx, Pass at pass_idx
-                session.record(obs(&format!("commit-{fail_idx}"), ObservationClass::Fail)).unwrap();
-                session.record(obs(&format!("commit-{pass_idx}"), ObservationClass::Pass)).unwrap();
+                session.record(obs(&format!("commit-{fail_idx}"), ObservationClass::Fail))?;
+                session.record(obs(&format!("commit-{pass_idx}"), ObservationClass::Pass))?;
 
                 // Fill all remaining intermediate commits with Pass or Fail to ensure convergence
                 // (no unobserved commits between boundaries)
@@ -974,7 +985,7 @@ mod tests {
                     } else {
                         ObservationClass::Fail
                     };
-                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), class))?;
                 }
 
                 let outcome = session.outcome();
@@ -992,24 +1003,12 @@ mod tests {
                             Confidence::low().score, confidence.score
                         );
                     }
-                    other => {
-                        // Could also be Inconclusive with NonMonotonicEvidence if boundaries
-                        // don't align. Check that NonMonotonicEvidence is present.
-                        match other {
-                            LocalizationOutcome::Inconclusive { reasons } => {
-                                // This can happen if the highest pass is at pass_idx and
-                                // there's no fail above it. Still must detect non-monotonic.
-                                // But we always have Fail at last commit (n-1) which is > pass_idx,
-                                // so this shouldn't happen. Fail if it does.
-                                prop_assert!(false,
-                                    "unexpected Inconclusive outcome: {:?}", reasons);
-                            }
-                            LocalizationOutcome::FirstBad { .. } => {
-                                prop_assert!(false,
-                                    "unexpected FirstBad outcome — non-monotonic evidence should prevent this");
-                            }
-                            _ => unreachable!(),
-                        }
+                    LocalizationOutcome::Inconclusive { reasons } => {
+                        prop_assert!(false, "unexpected Inconclusive outcome: {:?}", reasons);
+                    }
+                    LocalizationOutcome::FirstBad { .. } => {
+                        prop_assert!(false,
+                            "unexpected FirstBad outcome — non-monotonic evidence should prevent this");
                     }
                 }
             }
@@ -1028,7 +1027,7 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Pick num_obs distinct indices to observe, all as Pass
                 let mut indices: Vec<usize> = (0..n).collect();
@@ -1040,7 +1039,7 @@ mod tests {
                 let chosen: Vec<usize> = indices[..num_obs].to_vec();
 
                 for &idx in &chosen {
-                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Pass)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Pass))?;
                 }
 
                 let outcome = session.outcome();
@@ -1073,7 +1072,7 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Pick num_obs distinct indices to observe, all as Fail
                 let mut indices: Vec<usize> = (0..n).collect();
@@ -1084,7 +1083,7 @@ mod tests {
                 let chosen: Vec<usize> = indices[..num_obs].to_vec();
 
                 for &idx in &chosen {
-                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Fail)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), ObservationClass::Fail))?;
                 }
 
                 let outcome = session.outcome();
@@ -1129,7 +1128,7 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Helper: compute window size from current observations.
                 // Find highest-index Pass and lowest-index Fail above it.
@@ -1157,27 +1156,24 @@ mod tests {
                 };
 
                 // Record Pass at first commit and Fail at last commit (establishing boundaries)
-                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
-                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+                session.record(obs("commit-0", ObservationClass::Pass))?;
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail))?;
 
                 let mut prev_window = compute_window(&session);
 
                 // Follow the binary narrowing order: use next_probe() to pick commits,
                 // then assign the correct monotonic class based on the transition point.
-                loop {
-                    let probe = session.next_probe();
-                    if probe.is_none() {
-                        break;
-                    }
-                    let probe_commit = probe.unwrap();
-                    let idx = *session.index_by_commit.get(&probe_commit).unwrap();
+                while let Some(probe_commit) = session.next_probe() {
+                    let idx = *session.index_by_commit.get(&probe_commit).ok_or_else(|| {
+                        TestCaseError::fail(format!("probe {probe_commit} must be in the sequence"))
+                    })?;
 
                     let class = if idx <= transition {
                         ObservationClass::Pass
                     } else {
                         ObservationClass::Fail
                     };
-                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), class))?;
 
                     let new_window = compute_window(&session);
                     prop_assert!(
@@ -1207,11 +1203,11 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record Pass at first, Fail at last
-                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
-                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+                session.record(obs("commit-0", ObservationClass::Pass))?;
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail))?;
 
                 // Fill intermediates with Skip or Indeterminate to force SuspectWindow
                 for i in 1..(n - 1) {
@@ -1221,7 +1217,7 @@ mod tests {
                     } else {
                         ObservationClass::Indeterminate
                     };
-                    session.record(obs(&format!("commit-{i}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{i}"), class))?;
                 }
 
                 let outcome = session.outcome();
@@ -1252,11 +1248,11 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Record Pass at first commit, Fail at last commit
-                session.record(obs("commit-0", ObservationClass::Pass)).unwrap();
-                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail)).unwrap();
+                session.record(obs("commit-0", ObservationClass::Pass))?;
+                session.record(obs(&format!("commit-{}", n - 1), ObservationClass::Fail))?;
 
                 // For each intermediate commit (indices 1..n-1), assign Skip or Indeterminate.
                 // Using only Skip/Indeterminate guarantees no additional Pass/Fail between
@@ -1279,7 +1275,7 @@ mod tests {
                         _ => {}
                     }
                     let commit_idx = i + 1;
-                    session.record(obs(&format!("commit-{commit_idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{commit_idx}"), class))?;
                 }
 
                 let outcome = session.outcome();
@@ -1336,9 +1332,9 @@ mod tests {
 
                 // Record in natural order to get the reference outcome
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session_ref = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session_ref = LocalizationSession::new(seq, SearchPolicy::default())?;
                 for o in &observations {
-                    session_ref.record(o.clone()).unwrap();
+                    session_ref.record(o.clone())?;
                 }
                 let reference_outcome = session_ref.outcome();
 
@@ -1353,9 +1349,9 @@ mod tests {
                     }
 
                     let seq = RevisionSequence { revisions: labels.clone() };
-                    let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                    let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
                     for o in &permuted {
-                        session.record(o.clone()).unwrap();
+                        session.record(o.clone())?;
                     }
                     let outcome = session.outcome();
 
@@ -1382,7 +1378,7 @@ mod tests {
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
                 let policy = SearchPolicy { max_probes, flake_policy: FlakePolicy::default() };
-                let mut session = LocalizationSession::new(seq, policy).unwrap();
+                let mut session = LocalizationSession::new(seq, policy)?;
 
                 // Record exactly max_probes observations that do NOT converge.
                 // Strategy: record only Pass or only Fail observations so there
@@ -1402,7 +1398,7 @@ mod tests {
                 let chosen: Vec<usize> = indices[..max_probes].to_vec();
 
                 for &idx in &chosen {
-                    session.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session.record(obs(&format!("commit-{idx}"), class))?;
                 }
 
                 // Verify we recorded exactly max_probes observations
@@ -1443,7 +1439,7 @@ mod tests {
                     .map(|idx| CommitId(format!("commit-{idx}")))
                     .collect();
                 let seq = RevisionSequence { revisions: labels.clone() };
-                let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+                let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
                 // Assign distinct sequence_index values to each observation.
                 // Take the first n values from seq_indices and deduplicate by
@@ -1479,7 +1475,7 @@ mod tests {
                         &format!("commit-{i}"),
                         class,
                         seq_idx_for_commit[i],
-                    )).unwrap();
+                    ))?;
                 }
 
                 // Verify observation_list() returns observations sorted by sequence_index ascending
@@ -1513,7 +1509,7 @@ mod tests {
 
                 // Build a stable session (no flake signals)
                 let seq_stable = RevisionSequence { revisions: labels.clone() };
-                let mut session_stable = LocalizationSession::new(seq_stable, SearchPolicy::default()).unwrap();
+                let mut session_stable = LocalizationSession::new(seq_stable, SearchPolicy::default())?;
 
                 for idx in 0..n {
                     let class = if idx <= transition {
@@ -1521,14 +1517,14 @@ mod tests {
                     } else {
                         ObservationClass::Fail
                     };
-                    session_stable.record(obs(&format!("commit-{idx}"), class)).unwrap();
+                    session_stable.record(obs(&format!("commit-{idx}"), class))?;
                 }
 
                 let outcome_stable = session_stable.outcome();
 
                 // Build an unstable session (same observations, but one has unstable flake signal)
                 let seq_unstable = RevisionSequence { revisions: labels.clone() };
-                let mut session_unstable = LocalizationSession::new(seq_unstable, SearchPolicy::default()).unwrap();
+                let mut session_unstable = LocalizationSession::new(seq_unstable, SearchPolicy::default())?;
 
                 // Pick which observation gets the unstable flake signal
                 let unstable_idx = (unstable_frac * (n - 1) as f64).floor() as usize;
@@ -1551,7 +1547,7 @@ mod tests {
                             is_stable: false,
                         });
                     }
-                    session_unstable.record(observation).unwrap();
+                    session_unstable.record(observation)?;
                 }
 
                 let outcome_unstable = session_unstable.outcome();
@@ -1592,7 +1588,7 @@ mod tests {
                 prop_assert_eq!(policy.flake_policy.retries, 0,
                     "default FlakePolicy must have retries=0");
 
-                let mut session = LocalizationSession::new(seq, policy).unwrap();
+                let mut session = LocalizationSession::new(seq, policy)?;
 
                 // Record observations without flake_signal (as the app layer would with retries=0)
                 for idx in 0..n {
@@ -1603,7 +1599,7 @@ mod tests {
                         _ => ObservationClass::Indeterminate,
                     };
                     let observation = obs(&format!("commit-{idx}"), class);
-                    session.record(observation).unwrap();
+                    session.record(observation)?;
                 }
 
                 // Verify all observations have flake_signal == None
@@ -1630,13 +1626,13 @@ mod tests {
         /// A 3-commit sequence where the midpoint is classified as Skip.
         /// Expected: SuspectWindow with SkippedRevision reason, medium confidence.
         #[test]
-        fn fixture_skipped_midpoint_yields_suspect_window() {
+        fn fixture_skipped_midpoint_yields_suspect_window() -> TestResult {
             let seq = RevisionSequenceBuilder::with_labels(&["good", "mid", "bad"]);
-            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
-            session.record(obs("good", ObservationClass::Pass)).unwrap();
-            session.record(obs("mid", ObservationClass::Skip)).unwrap();
-            session.record(obs("bad", ObservationClass::Fail)).unwrap();
+            session.record(obs("good", ObservationClass::Pass))?;
+            session.record(obs("mid", ObservationClass::Skip))?;
+            session.record(obs("bad", ObservationClass::Fail))?;
 
             match session.outcome() {
                 LocalizationOutcome::SuspectWindow {
@@ -1650,23 +1646,22 @@ mod tests {
                     assert!(reasons.contains(&AmbiguityReason::SkippedRevision));
                     assert_eq!(confidence, Confidence::medium());
                 }
-                other => panic!("expected SuspectWindow, got: {other:?}"),
+                other => return Err(format!("expected SuspectWindow, got: {other:?}").into()),
             }
+            Ok(())
         }
 
         /// Fixture: Timed-out-midpoint
         /// A 3-commit sequence where the midpoint is classified as Indeterminate.
         /// Expected: SuspectWindow with IndeterminateRevision reason.
         #[test]
-        fn fixture_timed_out_midpoint_yields_suspect_window() {
+        fn fixture_timed_out_midpoint_yields_suspect_window() -> TestResult {
             let seq = RevisionSequenceBuilder::with_labels(&["good", "mid", "bad"]);
-            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
-            session.record(obs("good", ObservationClass::Pass)).unwrap();
-            session
-                .record(obs("mid", ObservationClass::Indeterminate))
-                .unwrap();
-            session.record(obs("bad", ObservationClass::Fail)).unwrap();
+            session.record(obs("good", ObservationClass::Pass))?;
+            session.record(obs("mid", ObservationClass::Indeterminate))?;
+            session.record(obs("bad", ObservationClass::Fail))?;
 
             match session.outcome() {
                 LocalizationOutcome::SuspectWindow {
@@ -1680,8 +1675,9 @@ mod tests {
                     assert!(reasons.contains(&AmbiguityReason::IndeterminateRevision));
                     assert!(confidence.score < Confidence::high().score);
                 }
-                other => panic!("expected SuspectWindow, got: {other:?}"),
+                other => return Err(format!("expected SuspectWindow, got: {other:?}").into()),
             }
+            Ok(())
         }
 
         /// Fixture: Non-monotonic evidence
@@ -1689,14 +1685,14 @@ mod tests {
         /// Pass at idx 2), violating the expected monotonic pass→fail transition.
         /// Expected: SuspectWindow with NonMonotonicEvidence, low confidence.
         #[test]
-        fn fixture_non_monotonic_yields_low_confidence() {
+        fn fixture_non_monotonic_yields_low_confidence() -> TestResult {
             let seq = RevisionSequenceBuilder::with_labels(&["a", "b", "c", "d"]);
-            let mut session = LocalizationSession::new(seq, SearchPolicy::default()).unwrap();
+            let mut session = LocalizationSession::new(seq, SearchPolicy::default())?;
 
             // b (idx 1) = Fail, c (idx 2) = Pass → non-monotonic
-            session.record(obs("b", ObservationClass::Fail)).unwrap();
-            session.record(obs("c", ObservationClass::Pass)).unwrap();
-            session.record(obs("d", ObservationClass::Fail)).unwrap();
+            session.record(obs("b", ObservationClass::Fail))?;
+            session.record(obs("c", ObservationClass::Pass))?;
+            session.record(obs("d", ObservationClass::Fail))?;
 
             match session.outcome() {
                 LocalizationOutcome::SuspectWindow {
@@ -1707,8 +1703,14 @@ mod tests {
                     assert!(reasons.contains(&AmbiguityReason::NonMonotonicEvidence));
                     assert_eq!(confidence, Confidence::low());
                 }
-                other => panic!("expected SuspectWindow with NonMonotonicEvidence, got: {other:?}"),
+                other => {
+                    return Err(format!(
+                        "expected SuspectWindow with NonMonotonicEvidence, got: {other:?}"
+                    )
+                    .into());
+                }
             }
+            Ok(())
         }
     }
 }

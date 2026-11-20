@@ -179,6 +179,7 @@ mod tests {
     use super::*;
     use faultline_types::{ChangeStatus, PathChange};
     use proptest::prelude::*;
+    use proptest::test_runner::TestCaseError;
     use std::collections::HashMap;
 
     fn pc(path: &str) -> PathChange {
@@ -311,20 +312,29 @@ mod tests {
     }
 
     #[test]
-    fn summarize_groups_by_top_level_directory() {
+    fn summarize_groups_by_top_level_directory() -> Result<(), &'static str> {
         let analyzer = SurfaceAnalyzer;
         let summary =
             analyzer.summarize(&[pc("src/lib.rs"), pc("src/main.rs"), pc("tests/basic.rs")]);
         assert_eq!(summary.total_changes, 3);
         assert_eq!(summary.buckets.len(), 2);
 
-        let src_bucket = summary.buckets.iter().find(|b| b.name == "src").unwrap();
+        let src_bucket = summary
+            .buckets
+            .iter()
+            .find(|b| b.name == "src")
+            .ok_or("src bucket must be present")?;
         assert_eq!(src_bucket.change_count, 2);
         assert_eq!(src_bucket.paths, vec!["src/lib.rs", "src/main.rs"]);
         assert!(src_bucket.surface_kinds.contains(&"source".to_string()));
 
-        let test_bucket = summary.buckets.iter().find(|b| b.name == "tests").unwrap();
+        let test_bucket = summary
+            .buckets
+            .iter()
+            .find(|b| b.name == "tests")
+            .ok_or("tests bucket must be present")?;
         assert_eq!(test_bucket.change_count, 1);
+        Ok(())
     }
 
     #[test]
@@ -351,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    fn summarize_assigns_multiple_surface_kinds_per_bucket() {
+    fn summarize_assigns_multiple_surface_kinds_per_bucket() -> Result<(), &'static str> {
         let analyzer = SurfaceAnalyzer;
         let summary = analyzer.summarize(&[
             pc("crates/foo/src/lib.rs"),
@@ -359,11 +369,16 @@ mod tests {
             pc("crates/foo/build.rs"),
         ]);
         assert_eq!(summary.total_changes, 3);
-        let bucket = summary.buckets.iter().find(|b| b.name == "crates").unwrap();
+        let bucket = summary
+            .buckets
+            .iter()
+            .find(|b| b.name == "crates")
+            .ok_or("crates bucket must be present")?;
         assert_eq!(bucket.change_count, 3);
         assert!(bucket.surface_kinds.contains(&"source".to_string()));
         assert!(bucket.surface_kinds.contains(&"tests".to_string()));
         assert!(bucket.surface_kinds.contains(&"build-script".to_string()));
+        Ok(())
     }
 
     #[test]
@@ -460,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn rank_suspect_surface_owner_hints() {
+    fn rank_suspect_surface_owner_hints() -> Result<(), &'static str> {
         let analyzer = SurfaceAnalyzer;
         let mut owners = HashMap::new();
         owners.insert("src/main.rs".to_string(), Some("alice".to_string()));
@@ -472,12 +487,22 @@ mod tests {
         ];
         let result = analyzer.rank_suspect_surface(&changes, &owners);
         assert_eq!(result.len(), 3);
-        let main_entry = result.iter().find(|e| e.path == "src/main.rs").unwrap();
+        let main_entry = result
+            .iter()
+            .find(|e| e.path == "src/main.rs")
+            .ok_or("src/main.rs entry must be present")?;
         assert_eq!(main_entry.owner_hint, Some("alice".to_string()));
-        let lib_entry = result.iter().find(|e| e.path == "src/lib.rs").unwrap();
+        let lib_entry = result
+            .iter()
+            .find(|e| e.path == "src/lib.rs")
+            .ok_or("src/lib.rs entry must be present")?;
         assert_eq!(lib_entry.owner_hint, None);
-        let other_entry = result.iter().find(|e| e.path == "src/other.rs").unwrap();
+        let other_entry = result
+            .iter()
+            .find(|e| e.path == "src/other.rs")
+            .ok_or("src/other.rs entry must be present")?;
         assert_eq!(other_entry.owner_hint, None);
+        Ok(())
     }
 
     #[test]
@@ -679,14 +704,14 @@ mod tests {
             let ordinary_score = result
                 .iter()
                 .find(|e| e.path == "src/ordinary.rs")
-                .expect("ordinary source must be present")
+                .ok_or_else(|| TestCaseError::fail("ordinary source must be present"))?
                 .priority_score;
 
             // Execution surface must score higher
             let exec_score = result
                 .iter()
                 .find(|e| e.path == ".github/workflows/ci.yml")
-                .expect("execution surface must be present")
+                .ok_or_else(|| TestCaseError::fail("execution surface must be present"))?
                 .priority_score;
             prop_assert!(
                 exec_score > ordinary_score,
@@ -698,7 +723,7 @@ mod tests {
             let renamed_score = result
                 .iter()
                 .find(|e| e.path == "src/renamed.rs")
-                .expect("renamed file must be present")
+                .ok_or_else(|| TestCaseError::fail("renamed file must be present"))?
                 .priority_score;
             prop_assert!(
                 renamed_score > ordinary_score,
@@ -710,7 +735,7 @@ mod tests {
             let deleted_score = result
                 .iter()
                 .find(|e| e.path == "src/deleted.rs")
-                .expect("deleted file must be present")
+                .ok_or_else(|| TestCaseError::fail("deleted file must be present"))?
                 .priority_score;
             prop_assert!(
                 deleted_score > ordinary_score,

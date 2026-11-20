@@ -222,20 +222,19 @@ mod tests {
     }
 
     #[test]
-    fn sarif_first_bad_produces_error_level() {
+    fn sarif_first_bad_produces_error_level() -> serde_json::Result<()> {
         let report = sample_report(LocalizationOutcome::FirstBad {
             last_good: CommitId("abc123".into()),
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none())?;
+        let v: serde_json::Value = serde_json::from_str(&json)?;
         assert_eq!(v["version"], "2.1.0");
         assert!(
             v["$schema"]
                 .as_str()
-                .unwrap()
-                .contains("sarif-schema-2.1.0")
+                .is_some_and(|text| text.contains("sarif-schema-2.1.0"))
         );
         assert_eq!(v["runs"][0]["tool"]["driver"]["name"], "faultline");
         assert_eq!(v["runs"][0]["tool"]["driver"]["version"], "0.1.0");
@@ -243,71 +242,70 @@ mod tests {
         assert!(
             v["runs"][0]["results"][0]["message"]["text"]
                 .as_str()
-                .unwrap()
-                .contains("FirstBad")
+                .is_some_and(|text| text.contains("FirstBad"))
         );
         assert_eq!(
             v["runs"][0]["results"][0]["locations"]
                 .as_array()
-                .unwrap()
-                .len(),
-            2
+                .map(Vec::len),
+            Some(2)
         );
         assert_eq!(
             v["runs"][0]["results"][0]["locations"][0]["physicalLocation"]["artifactLocation"]["uri"],
             "src/main.rs"
         );
+        Ok(())
     }
 
     #[test]
-    fn sarif_suspect_window_produces_warning_level() {
+    fn sarif_suspect_window_produces_warning_level() -> serde_json::Result<()> {
         let report = sample_report(LocalizationOutcome::SuspectWindow {
             lower_bound_exclusive: CommitId("aaa".into()),
             upper_bound_inclusive: CommitId("bbb".into()),
             confidence: Confidence::medium(),
             reasons: vec![AmbiguityReason::SkippedRevision],
         });
-        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none())?;
+        let v: serde_json::Value = serde_json::from_str(&json)?;
         assert_eq!(v["runs"][0]["results"][0]["level"], "warning");
         assert!(
             v["runs"][0]["results"][0]["message"]["text"]
                 .as_str()
-                .unwrap()
-                .contains("SuspectWindow")
+                .is_some_and(|text| text.contains("SuspectWindow"))
         );
+        Ok(())
     }
 
     #[test]
-    fn sarif_inconclusive_produces_note_level() {
+    fn sarif_inconclusive_produces_note_level() -> serde_json::Result<()> {
         let report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingPassBoundary],
         });
-        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none())?;
+        let v: serde_json::Value = serde_json::from_str(&json)?;
         assert_eq!(v["runs"][0]["results"][0]["level"], "note");
         assert!(
             v["runs"][0]["results"][0]["message"]["text"]
                 .as_str()
-                .unwrap()
-                .contains("Inconclusive")
+                .is_some_and(|text| text.contains("Inconclusive"))
         );
+        Ok(())
     }
 
     #[test]
-    fn sarif_empty_changed_paths_produces_empty_locations() {
+    fn sarif_empty_changed_paths_produces_empty_locations() -> serde_json::Result<()> {
         let mut report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingFailBoundary],
         });
         report.changed_paths = vec![];
-        let json = to_sarif(&report, &RedactionPolicy::none()).unwrap();
-        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = to_sarif(&report, &RedactionPolicy::none())?;
+        let v: serde_json::Value = serde_json::from_str(&json)?;
         assert!(
             v["runs"][0]["results"][0]["locations"]
                 .as_array()
-                .unwrap()
-                .is_empty()
+                .is_some_and(Vec::is_empty)
         );
+        Ok(())
     }
 
     // Feature: repo-operating-system, Property 41: SARIF Export Structural Validity
@@ -323,16 +321,15 @@ mod tests {
 
             #[test]
             fn prop_sarif_export_structural_validity(report in arb_analysis_report()) {
-                let json_str = to_sarif(&report, &RedactionPolicy::none()).expect("to_sarif must not fail");
+                let json_str = to_sarif(&report, &RedactionPolicy::none())?;
 
                 // (a) Valid JSON
-                let v: serde_json::Value = serde_json::from_str(&json_str)
-                    .expect("SARIF output must be valid JSON");
+                let v: serde_json::Value = serde_json::from_str(&json_str)?;
 
                 // (b) version == "2.1.0"
                 prop_assert_eq!(
-                    v["version"].as_str().unwrap(),
-                    "2.1.0",
+                    v["version"].as_str(),
+                    Some("2.1.0"),
                     "SARIF version must be 2.1.0"
                 );
 
@@ -345,15 +342,15 @@ mod tests {
                 // (d) Tool name "faultline"
                 let tool_name = &v["runs"][0]["tool"]["driver"]["name"];
                 prop_assert_eq!(
-                    tool_name.as_str().unwrap(),
-                    "faultline",
+                    tool_name.as_str(),
+                    Some("faultline"),
                     "tool name must be faultline"
                 );
 
                 // (e) Result level matches outcome type
                 let level = v["runs"][0]["results"][0]["level"]
                     .as_str()
-                    .expect("level must be a string");
+                    .ok_or_else(|| TestCaseError::fail("level must be a string"))?;
                 let expected_level = match &report.outcome {
                     LocalizationOutcome::FirstBad { .. } => "error",
                     LocalizationOutcome::SuspectWindow { .. } => "warning",
@@ -383,8 +380,7 @@ mod tests {
             fn prop_env_redaction_completeness_in_sarif(
                 (report, sentinels) in arb_analysis_report_with_sentinels()
             ) {
-                let sarif_str = to_sarif(&report, &RedactionPolicy::default_safe())
-                    .expect("to_sarif must not fail on report");
+                let sarif_str = to_sarif(&report, &RedactionPolicy::default_safe())?;
 
                 for sentinel in &sentinels {
                     prop_assert!(
