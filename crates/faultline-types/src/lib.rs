@@ -1179,11 +1179,12 @@ mod tests {
     }
 
     #[test]
-    fn redaction_policy_serialization_roundtrip() {
+    fn redaction_policy_serialization_roundtrip() -> serde_json::Result<()> {
         let policy = RedactionPolicy::default_safe();
-        let json = serde_json::to_string(&policy).unwrap();
-        let deserialized: RedactionPolicy = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&policy)?;
+        let deserialized: RedactionPolicy = serde_json::from_str(&json)?;
         assert_eq!(policy, deserialized);
+        Ok(())
     }
 
     // --- stable_hash ---
@@ -1352,23 +1353,27 @@ mod tests {
     // --- FaultlineError variants and From impls ---
 
     #[test]
-    fn faultline_error_from_io() {
+    fn faultline_error_from_io() -> std::result::Result<(), &'static str> {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
         let err = FaultlineError::from(io_err);
         match err {
             FaultlineError::Io(msg) => assert!(msg.contains("not found")),
-            _ => panic!("expected Io variant"),
+            _ => return Err("expected Io variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn faultline_error_from_serde_json() {
-        let json_err = serde_json::from_str::<String>("not json").unwrap_err();
+    fn faultline_error_from_serde_json() -> std::result::Result<(), &'static str> {
+        let json_err = serde_json::from_str::<String>("not json")
+            .err()
+            .ok_or("invalid JSON unexpectedly deserialized")?;
         let err = FaultlineError::from(json_err);
         match err {
             FaultlineError::Serde(msg) => assert!(!msg.is_empty()),
-            _ => panic!("expected Serde variant"),
+            _ => return Err("expected Serde variant"),
         }
+        Ok(())
     }
 
     #[test]
@@ -2052,13 +2057,13 @@ mod tests {
             // Verify schema contains $schema draft identifier
             let schema_draft = schema_json.get("$schema").expect("schema must have $schema field");
             prop_assert!(
-                schema_draft.as_str().unwrap().contains("json-schema.org"),
+                schema_draft.as_str().is_some_and(|draft| draft.contains("json-schema.org")),
                 "schema $schema field must reference json-schema.org draft"
             );
 
             // Verify schema contains title field
             let title = schema_json.get("title").expect("schema must have title field");
-            prop_assert_eq!(title.as_str().unwrap(), "AnalysisReport");
+            prop_assert_eq!(title.as_str(), Some("AnalysisReport"));
 
             // Serialize the generated report to JSON
             let report_json = serde_json::to_string(&report).expect("report serializes to JSON");
@@ -2083,7 +2088,8 @@ mod tests {
                 .and_then(|r| r.as_array())
                 .expect("schema must have required array");
             for req_field in required {
-                let field_name = req_field.as_str().unwrap();
+                let field_name = req_field.as_str()
+                    .ok_or_else(|| TestCaseError::fail("required field name must be a string"))?;
                 prop_assert!(
                     obj.contains_key(field_name),
                     "report JSON must contain required field '{}'",
@@ -2417,7 +2423,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn schema_evolution_old_version_deserializes_with_defaults() {
+    fn schema_evolution_old_version_deserializes_with_defaults() -> serde_json::Result<()> {
         // A JSON string representing a v0.1.0 report WITHOUT the new fields:
         // suspect_surface, reproduction_capsules, and flake_signal on observations.
         let old_json = r#"{
@@ -2513,9 +2519,10 @@ mod tests {
         );
 
         // Verify the report can be re-serialized and re-deserialized
-        let reserialized = serde_json::to_string_pretty(&report).unwrap();
-        let roundtrip: AnalysisReport = serde_json::from_str(&reserialized).unwrap();
+        let reserialized = serde_json::to_string_pretty(&report)?;
+        let roundtrip: AnalysisReport = serde_json::from_str(&reserialized)?;
         assert_eq!(report, roundtrip, "round-trip must preserve the report");
+        Ok(())
     }
 
     // --- SecretScrubber tests ---
@@ -2706,7 +2713,7 @@ mod tests {
     }
 
     #[test]
-    fn redact_report_redacts_request_probe_env() {
+    fn redact_report_redacts_request_probe_env() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Exec {
             kind: ProbeKind::Test,
@@ -2722,12 +2729,13 @@ mod tests {
                 assert_eq!(env[0].0, "SECRET_KEY");
                 assert_eq!(env[0].1, "[REDACTED]");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn redact_report_redacts_shell_probe_env() {
+    fn redact_report_redacts_shell_probe_env() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Shell {
             kind: ProbeKind::Custom,
@@ -2743,12 +2751,13 @@ mod tests {
                 assert_eq!(env[0].0, "DB_PASSWORD");
                 assert_eq!(env[0].1, "[REDACTED]");
             }
-            _ => panic!("expected Shell variant"),
+            _ => return Err("expected Shell variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn redact_report_redacts_reproduction_capsule_env() {
+    fn redact_report_redacts_reproduction_capsule_env() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.reproduction_capsules = vec![ReproductionCapsule {
             commit: CommitId("abc123".into()),
@@ -2773,8 +2782,9 @@ mod tests {
                 assert_eq!(env[0].0, "PROBE_TOKEN");
                 assert_eq!(env[0].1, "[REDACTED]");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
+        Ok(())
     }
 
     #[test]
@@ -2791,7 +2801,7 @@ mod tests {
     }
 
     #[test]
-    fn redact_report_scrubs_exec_program_and_args() {
+    fn redact_report_scrubs_exec_program_and_args() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Exec {
             kind: ProbeKind::Test,
@@ -2805,12 +2815,13 @@ mod tests {
             ProbeSpec::Exec { args, .. } => {
                 assert_eq!(args[0], "--token=Bearer [REDACTED]");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn redact_report_scrubs_shell_script() {
+    fn redact_report_scrubs_shell_script() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Shell {
             kind: ProbeKind::Custom,
@@ -2825,12 +2836,13 @@ mod tests {
                 assert!(script.contains("Bearer [REDACTED]"));
                 assert!(!script.contains("eyJtoken"));
             }
-            _ => panic!("expected Shell variant"),
+            _ => return Err("expected Shell variant"),
         }
+        Ok(())
     }
 
     #[test]
-    fn redact_report_no_redaction_with_none_policy() {
+    fn redact_report_no_redaction_with_none_policy() -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Exec {
             kind: ProbeKind::Test,
@@ -2846,14 +2858,16 @@ mod tests {
             ProbeSpec::Exec { env, .. } => {
                 assert_eq!(env[0].1, "value123");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
         // Stdout should NOT be scrubbed
         assert_eq!(redacted.observations[0].stdout, "password=hunter2");
+        Ok(())
     }
 
     #[test]
-    fn redact_report_env_exposed_policy_preserves_env_scrubs_secrets() {
+    fn redact_report_env_exposed_policy_preserves_env_scrubs_secrets()
+    -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Exec {
             kind: ProbeKind::Test,
@@ -2869,18 +2883,20 @@ mod tests {
             ProbeSpec::Exec { env, .. } => {
                 assert_eq!(env[0].1, "value123");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
         // Stdout SHOULD be scrubbed
         assert_eq!(redacted.observations[0].stdout, "password=[REDACTED]");
-        let prov = redacted.provenance.unwrap();
+        let prov = redacted.provenance.ok_or("expected redaction provenance")?;
         assert_eq!(prov.redaction_policy, "env-exposed");
         assert!(!prov.env_values_redacted);
         assert!(prov.output_scrubbed);
+        Ok(())
     }
 
     #[test]
-    fn redact_report_secrets_exposed_policy_redacts_env_preserves_output() {
+    fn redact_report_secrets_exposed_policy_redacts_env_preserves_output()
+    -> std::result::Result<(), &'static str> {
         let mut report = sample_report();
         report.request.probe = ProbeSpec::Exec {
             kind: ProbeKind::Test,
@@ -2896,14 +2912,15 @@ mod tests {
             ProbeSpec::Exec { env, .. } => {
                 assert_eq!(env[0].1, "[REDACTED]");
             }
-            _ => panic!("expected Exec variant"),
+            _ => return Err("expected Exec variant"),
         }
         // Stdout should NOT be scrubbed
         assert_eq!(redacted.observations[0].stdout, "password=hunter2");
-        let prov = redacted.provenance.unwrap();
+        let prov = redacted.provenance.ok_or("expected redaction provenance")?;
         assert_eq!(prov.redaction_policy, "secrets-exposed");
         assert!(prov.env_values_redacted);
         assert!(!prov.output_scrubbed);
+        Ok(())
     }
 
     // Feature: v01-artifact-hardening, Property 6: Env Redaction Completeness in Shell Scripts
