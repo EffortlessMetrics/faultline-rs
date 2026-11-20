@@ -619,6 +619,12 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `prop_report_locator_precedence` | report.json takes precedence over analysis.json when both present | TempDir + both files | faultline-loader | — | Locator precedence | Req 6.1 | domain | Req 6.1 | — | faultline-loader | P0 | faultline-loader | yes |
 | `prop_direct_file_returns_direct_file_source` | Direct file path load reports direct-file source | TempDir + file | faultline-loader | — | Source detection | Req 6.1 | domain | Req 6.1 | — | faultline-loader | P1 | faultline-loader | no |
 
+### Late qualification pilot
+
+| Scenario | Problem | Fixture/Generator | Crate(s) | Artifact | Invariant | Refs | Tier | Req IDs | Contract | Mutation Surface | Crit | Owner | Review |
+|----------|---------|-------------------|----------|----------|-----------|------|------|---------|----------|------------------|------|-------|--------|
+| Python: `test_live_merge_ready_label_on_both_entry_points` | Manual retry or delayed label event finds the PR unlabeled | Workflow Bash steps, PR and Check fixtures, resolved threads | SDLC tooling | Preflight exit and admitted head SHA | Both entry points require the live merge-ready label | Issue #66 | tooling | — | Late qualification | `.github/workflows/late-qualification.yml`, `tools/sdlc/github_preflight.py` | P1 | SDLC | yes |
+
 ### Mixed-source scoped publication contracts
 
 These standard-library Python contracts run through the normal Release Check test step. Their archives are generated; Git, Cargo, registry and clock boundaries are explicit test doubles. They do not qualify actual Cargo archives or authorize a release.

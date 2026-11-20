@@ -12,8 +12,8 @@ existing push and pull-request workflows.
    limitations and independent review in an evidence manifest.
 3. A GitHub App installation token publishes that manifest as a candidate-bound
    `Warm evidence` Check. Publishing the Check does not launch GitHub Actions.
-4. Applying `merge-ready` (or manually dispatching the pilot with an exact head
-   SHA) requests late qualification.
+4. Applying `merge-ready` requests late qualification. A maintainer can retry
+   an already labeled candidate by manually dispatching the pilot.
 5. Preflight rejects a moved head, Draft PR, missing label, stale/failed evidence
    Check, or any unresolved review thread, including paginated and outdated
    threads.
@@ -93,12 +93,14 @@ python3 -m unittest discover -s tools/sdlc/tests -p 'test_*.py'
 
 ## Qualification request
 
-After this workflow is merged, the pilot can be requested in either form:
+Apply `merge-ready` to an open, non-draft PR once its exact head has a
+successful `Warm evidence` Check and its review threads are resolved. Applying
+the label starts **Late Qualification Pilot**.
 
-- apply `merge-ready` to a non-Draft PR whose exact head already has a successful
-  `Warm evidence` Check; or
-- manually dispatch **Late Qualification Pilot** with the PR number and exact
-  expected head SHA.
+To retry an already labeled candidate, manually dispatch **Late Qualification
+Pilot** with the PR number and exact expected head SHA. Both entry points check
+the PR's current labels. Removing `merge-ready` before preflight blocks either
+request with `missing merge-ready label`.
 
 The label is an admission request, not merge approval. Moving the head after the
 request invalidates admission. Re-publishing evidence on a new candidate is an
