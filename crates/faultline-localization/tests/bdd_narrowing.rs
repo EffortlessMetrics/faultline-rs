@@ -3,6 +3,8 @@
 //! Each scenario follows Given / When / Then structure to document the
 //! behavioral contract of the narrowing algorithm.
 
+use std::error::Error;
+
 use faultline_codes::{AmbiguityReason, ObservationClass, ProbeKind};
 use faultline_localization::LocalizationSession;
 use faultline_types::{
@@ -12,6 +14,8 @@ use faultline_types::{
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+type TestResult<T> = Result<T, Box<dyn Error>>;
 
 fn commit(name: &str) -> CommitId {
     CommitId(name.to_string())
@@ -45,17 +49,27 @@ fn obs(name: &str, class: ObservationClass) -> ProbeObservation {
     }
 }
 
+fn commit_index(commit: &CommitId) -> TestResult<usize> {
+    let number = commit
+        .0
+        .strip_prefix('c')
+        .ok_or_else(|| format!("expected a commit label starting with 'c', got {commit:?}"))?;
+    number
+        .parse()
+        .map_err(|err| format!("invalid commit index in {commit:?}: {err}").into())
+}
+
 /// Drive the session to completion: repeatedly ask for the next probe, record
 /// the observation using the provided classifier, and return the final outcome.
 fn run_narrowing(
     session: &mut LocalizationSession,
-    classify: impl Fn(&CommitId) -> ObservationClass,
-) -> LocalizationOutcome {
+    classify: impl Fn(&CommitId) -> TestResult<ObservationClass>,
+) -> TestResult<LocalizationOutcome> {
     while let Some(probe) = session.next_probe() {
-        let class = classify(&probe);
-        session.record(obs(&probe.0, class)).unwrap();
+        let class = classify(&probe)?;
+        session.record(obs(&probe.0, class))?;
     }
-    session.outcome()
+    Ok(session.outcome())
 }
 
 fn policy_default() -> SearchPolicy {
@@ -74,22 +88,22 @@ fn policy_with_max_probes(max: usize) -> SearchPolicy {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_binary_search_on_8_commits_finds_exact_midpoint() {
+fn scenario_binary_search_on_8_commits_finds_exact_midpoint() -> TestResult<()> {
     // Given: 8 commits [c0..c7], c0-c3 pass, c4-c7 fail
     let labels: Vec<String> = (0..8).map(|i| format!("c{i}")).collect();
     let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let seq = make_seq(&label_refs);
-    let mut session = LocalizationSession::new(seq, policy_default()).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_default())?;
 
     // When: run full narrowing loop
     let outcome = run_narrowing(&mut session, |c| {
-        let idx: usize = c.0[1..].parse().unwrap();
-        if idx <= 3 {
+        let idx = commit_index(c)?;
+        Ok(if idx <= 3 {
             ObservationClass::Pass
         } else {
             ObservationClass::Fail
-        }
-    });
+        })
+    })?;
 
     // Then: FirstBad with first_bad=c4, last_good=c3
     match outcome {
@@ -102,8 +116,9 @@ fn scenario_binary_search_on_8_commits_finds_exact_midpoint() {
             assert_eq!(last_good, commit("c3"), "last_good should be c3");
             assert_eq!(confidence, Confidence::high());
         }
-        other => panic!("expected FirstBad, got {other:?}"),
+        other => return Err(format!("expected FirstBad, got {other:?}").into()),
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -111,19 +126,19 @@ fn scenario_binary_search_on_8_commits_finds_exact_midpoint() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_two_commits_narrows_immediately() {
+fn scenario_two_commits_narrows_immediately() -> TestResult<()> {
     // Given: 2 commits [good, bad]
     let seq = make_seq(&["good", "bad"]);
-    let mut session = LocalizationSession::new(seq, policy_default()).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_default())?;
 
     // When: probes both
     let outcome = run_narrowing(&mut session, |c| {
-        if c.0 == "good" {
+        Ok(if c.0 == "good" {
             ObservationClass::Pass
         } else {
             ObservationClass::Fail
-        }
-    });
+        })
+    })?;
 
     // Then: FirstBad with first_bad=bad
     match outcome {
@@ -136,8 +151,9 @@ fn scenario_two_commits_narrows_immediately() {
             assert_eq!(last_good, commit("good"), "last_good should be 'good'");
             assert_eq!(confidence, Confidence::high());
         }
-        other => panic!("expected FirstBad, got {other:?}"),
+        other => return Err(format!("expected FirstBad, got {other:?}").into()),
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -145,21 +161,21 @@ fn scenario_two_commits_narrows_immediately() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_all_pass_except_last_still_finds_it() {
+fn scenario_all_pass_except_last_still_finds_it() -> TestResult<()> {
     // Given: 5 commits, only last fails
     let labels: Vec<String> = (0..5).map(|i| format!("c{i}")).collect();
     let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let seq = make_seq(&label_refs);
-    let mut session = LocalizationSession::new(seq, policy_default()).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_default())?;
 
     // When: run narrowing
     let outcome = run_narrowing(&mut session, |c| {
-        if c.0 == "c4" {
+        Ok(if c.0 == "c4" {
             ObservationClass::Fail
         } else {
             ObservationClass::Pass
-        }
-    });
+        })
+    })?;
 
     // Then: FirstBad with first_bad=last (c4)
     match outcome {
@@ -172,8 +188,9 @@ fn scenario_all_pass_except_last_still_finds_it() {
             assert_eq!(last_good, commit("c3"), "last_good should be c3");
             assert_eq!(confidence, Confidence::high());
         }
-        other => panic!("expected FirstBad, got {other:?}"),
+        other => return Err(format!("expected FirstBad, got {other:?}").into()),
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -181,10 +198,10 @@ fn scenario_all_pass_except_last_still_finds_it() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_non_monotonic_evidence_produces_suspect_window() {
+fn scenario_non_monotonic_evidence_produces_suspect_window() -> TestResult<()> {
     // Given: 5 commits, c0=pass, c1=fail, c2=pass, c3=fail, c4=fail
     let seq = make_seq(&["c0", "c1", "c2", "c3", "c4"]);
-    let mut session = LocalizationSession::new(seq, policy_default()).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_default())?;
 
     // When: session records all observations manually
     let classes = [
@@ -195,7 +212,7 @@ fn scenario_non_monotonic_evidence_produces_suspect_window() {
         ("c4", ObservationClass::Fail),
     ];
     for (name, class) in &classes {
-        session.record(obs(name, *class)).unwrap();
+        session.record(obs(name, *class))?;
     }
 
     // Then: outcome contains NonMonotonicEvidence
@@ -207,8 +224,9 @@ fn scenario_non_monotonic_evidence_produces_suspect_window() {
                 "expected NonMonotonicEvidence in reasons, got {reasons:?}"
             );
         }
-        other => panic!("expected SuspectWindow, got {other:?}"),
+        other => return Err(format!("expected SuspectWindow, got {other:?}").into()),
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -216,23 +234,23 @@ fn scenario_non_monotonic_evidence_produces_suspect_window() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_max_probes_exhausted_limits_narrowing() {
+fn scenario_max_probes_exhausted_limits_narrowing() -> TestResult<()> {
     // Given: 100 commits, max_probes=3
     let labels: Vec<String> = (0..100).map(|i| format!("c{i}")).collect();
     let label_refs: Vec<&str> = labels.iter().map(|s| s.as_str()).collect();
     let seq = make_seq(&label_refs);
-    let mut session = LocalizationSession::new(seq, policy_with_max_probes(3)).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_with_max_probes(3))?;
 
     // When: 3 probes recorded via the narrowing loop
     let mut probes_issued = 0;
     while let Some(probe) = session.next_probe() {
-        let idx: usize = probe.0[1..].parse().unwrap();
+        let idx = commit_index(&probe)?;
         let class = if idx < 50 {
             ObservationClass::Pass
         } else {
             ObservationClass::Fail
         };
-        session.record(obs(&probe.0, class)).unwrap();
+        session.record(obs(&probe.0, class))?;
         probes_issued += 1;
     }
 
@@ -253,8 +271,9 @@ fn scenario_max_probes_exhausted_limits_narrowing() {
                 "expected MaxProbesExhausted or NeedsMoreProbes in reasons, got {reasons:?}"
             );
         }
-        other => panic!("expected Inconclusive, got {other:?}"),
+        other => return Err(format!("expected Inconclusive, got {other:?}").into()),
     }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -262,13 +281,13 @@ fn scenario_max_probes_exhausted_limits_narrowing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn scenario_skip_only_sequence_produces_inconclusive() {
+fn scenario_skip_only_sequence_produces_inconclusive() -> TestResult<()> {
     // Given: 5 commits, all probes return Skip
     let seq = make_seq(&["c0", "c1", "c2", "c3", "c4"]);
-    let mut session = LocalizationSession::new(seq, policy_default()).unwrap();
+    let mut session = LocalizationSession::new(seq, policy_default())?;
 
     // When: run narrowing where every probe is Skip
-    let outcome = run_narrowing(&mut session, |_| ObservationClass::Skip);
+    let outcome = run_narrowing(&mut session, |_| Ok(ObservationClass::Skip))?;
 
     // Then: Inconclusive
     match outcome {
@@ -280,6 +299,7 @@ fn scenario_skip_only_sequence_produces_inconclusive() {
                 "expected missing boundary reasons for skip-only, got {reasons:?}"
             );
         }
-        other => panic!("expected Inconclusive, got {other:?}"),
+        other => return Err(format!("expected Inconclusive, got {other:?}").into()),
     }
+    Ok(())
 }
