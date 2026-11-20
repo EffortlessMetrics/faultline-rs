@@ -72,10 +72,10 @@ esac
     tar -xJf "$archive"
     mv -T -- "$node_dir" "$tools_dir/$node_dir"
   fi
+  "$tools_dir/$node_dir/bin/node" --version
   ln -sfnT -- "$node_dir" "$tools_dir/node-current"
 )
 
-"$tools_dir/node-current/bin/node" --version
 download https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL="$tools_dir/uv" sh
 ```
 
