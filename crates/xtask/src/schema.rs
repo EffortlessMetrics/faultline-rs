@@ -67,12 +67,12 @@ mod tests {
     // Feature: repo-operating-system, Property 45: Schema Drift Detection
     // **Validates: Requirements 8.3**
     #[test]
-    fn prop_schema_drift_detection() {
+    fn prop_schema_drift_detection() -> Result<()> {
         // Generate the correct schema
-        let correct_schema = generate_schema_json().expect("schema generation must succeed");
+        let correct_schema = generate_schema_json().context("schema generation must succeed")?;
 
         // Write the correct schema to a temp file, then modify it
-        let tmp_dir = tempfile::tempdir().expect("create temp dir");
+        let tmp_dir = tempfile::tempdir().context("create temp dir")?;
         let tmp_schema_path = tmp_dir.path().join("analysis-report.schema.json");
 
         // Write a modified version (inject extra field to simulate drift)
@@ -84,24 +84,23 @@ mod tests {
         );
 
         std::fs::write(&tmp_schema_path, &modified_schema)
-            .expect("write modified schema to temp file");
+            .context("write modified schema to temp file")?;
 
         // Read back the modified schema and compare against freshly generated
-        let on_disk =
-            std::fs::read_to_string(&tmp_schema_path).expect("read modified schema from temp file");
-        let freshly_generated = generate_schema_json().expect("regenerate schema");
+        let on_disk = std::fs::read_to_string(&tmp_schema_path)
+            .context("read modified schema from temp file")?;
+        let freshly_generated = generate_schema_json().context("regenerate schema")?;
 
         // Simulate the check_schema logic: if they differ, it's drift
-        if on_disk != freshly_generated {
-            // This is the expected path — drift detected
-            let err_msg = "schema drift detected: regenerate schemas/analysis-report.schema.json";
-            assert!(
-                err_msg.contains("schema drift detected"),
-                "error message must contain 'schema drift detected'"
-            );
-        } else {
-            panic!("modified schema should differ from freshly generated schema");
-        }
+        anyhow::ensure!(
+            on_disk != freshly_generated,
+            "modified schema should differ from freshly generated schema"
+        );
+        let err_msg = "schema drift detected: regenerate schemas/analysis-report.schema.json";
+        assert!(
+            err_msg.contains("schema drift detected"),
+            "error message must contain 'schema drift detected'"
+        );
 
         // Also verify that the real check_schema function detects drift
         // by confirming the current on-disk schema matches (no drift in the repo)
@@ -111,14 +110,15 @@ mod tests {
             "check_schema should pass when on-disk schema matches generated schema: {:?}",
             result.err()
         );
+        Ok(())
     }
 
     #[test]
-    fn schema_drift_error_message_format() {
+    fn schema_drift_error_message_format() -> Result<()> {
         // Verify the error message format from check_schema when drift exists
         // We test the comparison logic directly: different strings must produce
         // an error containing "schema drift detected"
-        let correct = generate_schema_json().expect("generate schema");
+        let correct = generate_schema_json().context("generate schema")?;
         let modified = correct.replace("AnalysisReport", "DriftedReport");
         assert_ne!(correct, modified);
 
@@ -134,5 +134,6 @@ mod tests {
                 msg
             );
         }
+        Ok(())
     }
 }
