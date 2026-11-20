@@ -28,6 +28,9 @@ faultline-sarif = { path = "../faultline-sarif", version = "0.0.1" }
 faultline-store = { path = "../faultline-store", version = "0.0.1" }
 faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+libc.workspace = true
+
 [dev-dependencies]
 proptest.workspace = true
 faultline-fixtures = { path = "../faultline-fixtures" }

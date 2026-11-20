@@ -155,7 +155,23 @@ fn capture(
 #[derive(Debug, Default, Clone)]
 pub struct ExecProbeAdapter;
 
+#[cfg(target_os = "linux")]
+struct CancellableProbe<'a>(&'a std::sync::atomic::AtomicBool);
+
+#[cfg(target_os = "linux")]
+impl ProbePort for CancellableProbe<'_> {
+    fn run(&self, checkout: &CheckedOutRevision, probe: &ProbeSpec) -> Result<ProbeObservation> {
+        ExecProbeAdapter.run_cancellable(checkout, probe, self.0)
+    }
+}
+
 impl ExecProbeAdapter {
+    /// Bind a cooperative cancellation flag to the probe port used by the Linux CLI.
+    #[cfg(target_os = "linux")]
+    pub fn with_cancellation(cancelled: &std::sync::atomic::AtomicBool) -> impl ProbePort + '_ {
+        CancellableProbe(cancelled)
+    }
+
     /// Run a local POSIX probe until completion, timeout, or cooperative cancellation.
     ///
     /// The caller may set `cancelled` from another thread. Active cancellation uses

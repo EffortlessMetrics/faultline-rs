@@ -333,6 +333,7 @@ dependencies = [
  "faultline-types",
  "flate2",
  "insta",
+ "libc",
  "proptest",
  "serde",
  "serde_json",

@@ -4,7 +4,8 @@ use std::io::{self, Read};
 use std::os::fd::AsRawFd;
 use std::os::unix::process::CommandExt;
 use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus};
-use std::thread;
+use std::sync::mpsc::{self, Sender};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -175,6 +176,7 @@ fn shutdown(
     child: &mut Child,
     mut pipes: Option<&mut Pipes>,
     terminate_group: impl FnOnce(&Child) -> io::Result<()>,
+    limit: Duration,
 ) -> io::Result<ExitStatus> {
     let started = Instant::now();
     let mut failure = terminate_group(child).err().map(|err| {
@@ -208,7 +210,7 @@ fn shutdown(
         {
             return failure.map_or(Ok(status), Err);
         }
-        let remaining = SHUTDOWN_LIMIT.saturating_sub(started.elapsed());
+        let remaining = limit.saturating_sub(started.elapsed());
         if remaining.is_zero() {
             return Err(io::Error::other(format!(
                 "shutdown deadline elapsed (child reaped: {}, output drained: {}, error: {failure:?})",
@@ -240,6 +242,10 @@ pub(super) fn capture(
             "probe cancelled before launch".into(),
         ));
     }
+    // Reserve a waiter before launching a probe so a failed thread start cannot
+    // leave a live child without an owner at the shutdown deadline.
+    let (reaper, _worker) = start_reaper()
+        .map_err(|err| FaultlineError::Probe(format!("failed to start probe reaper: {err}")))?;
     let mut child = command
         .process_group(0)
         .spawn()
@@ -248,7 +254,7 @@ pub(super) fn capture(
     let mut pipes = match Pipes::new(&mut child) {
         Ok(pipes) => pipes,
         Err(err) => {
-            cleanup(&mut child, None, "output setup failure")?;
+            cleanup(child, None, "output setup failure", reaper)?;
             return Err(FaultlineError::Probe(format!(
                 "probe output setup failed: {err}"
             )));
@@ -256,9 +262,9 @@ pub(super) fn capture(
     };
     let (status, timed_out) = match observe(&mut child, &mut pipes, started, timeout, cancelled) {
         Ok(Outcome::Exited(status)) => (status, false),
-        Ok(Outcome::TimedOut) => (cleanup(&mut child, Some(&mut pipes), "timeout")?, true),
+        Ok(Outcome::TimedOut) => (cleanup(child, Some(&mut pipes), "timeout", reaper)?, true),
         Ok(Outcome::Cancelled) => {
-            cleanup(&mut child, Some(&mut pipes), "cancellation")?;
+            cleanup(child, Some(&mut pipes), "cancellation", reaper)?;
             return Err(FaultlineError::Probe("probe cancelled".into()));
         }
         Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {
@@ -268,7 +274,7 @@ pub(super) fn capture(
             )));
         }
         Err(err) => {
-            cleanup(&mut child, None, "observation failure")?;
+            cleanup(child, None, "observation failure", reaper)?;
             return Err(FaultlineError::Probe(format!(
                 "probe observation failed: {err}"
             )));
@@ -282,8 +288,48 @@ pub(super) fn capture(
     })
 }
 
-fn cleanup(child: &mut Child, pipes: Option<&mut Pipes>, reason: &str) -> Result<ExitStatus> {
-    shutdown(child, pipes, kill_group).map_err(|err| {
+fn start_reaper() -> io::Result<(Sender<Child>, JoinHandle<io::Result<()>>)> {
+    let (sender, receiver) = mpsc::channel::<Child>();
+    let worker = thread::Builder::new()
+        .name("faultline-probe-reaper".into())
+        .spawn(move || {
+            if let Ok(mut child) = receiver.recv() {
+                child.wait()?;
+            }
+            Ok(())
+        })?;
+    Ok((sender, worker))
+}
+
+fn finish_shutdown(
+    mut child: Child,
+    pipes: Option<&mut Pipes>,
+    terminate_group: impl FnOnce(&Child) -> io::Result<()>,
+    limit: Duration,
+    reaper: Sender<Child>,
+) -> io::Result<ExitStatus> {
+    let result = shutdown(&mut child, pipes, terminate_group, limit);
+    if result.is_err() {
+        match child.try_wait() {
+            Ok(Some(_)) => {}
+            Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {}
+            // The waiter owns only the original Child handle. It never issues a signal
+            // or waits on another process, and the caller still returns the shutdown error.
+            _ => reaper
+                .send(child)
+                .map_err(|_| io::Error::other("probe reaper stopped before accepting the child"))?,
+        }
+    }
+    result
+}
+
+fn cleanup(
+    child: Child,
+    pipes: Option<&mut Pipes>,
+    reason: &str,
+    reaper: Sender<Child>,
+) -> Result<ExitStatus> {
+    finish_shutdown(child, pipes, kill_group, SHUTDOWN_LIMIT, reaper).map_err(|err| {
         FaultlineError::Probe(format!("incomplete probe cleanup after {reason}: {err}"))
     })
 }
@@ -293,20 +339,76 @@ mod tests {
     use super::*;
     use std::os::unix::process::ExitStatusExt;
 
+    fn require_already_reaped(pid: u32) -> io::Result<()> {
+        let pid = libc::pid_t::try_from(pid).map_err(io::Error::other)?;
+        // SAFETY: pid is from the test-owned child. The wait is nonblocking,
+        // and passing a null status pointer requests no exit status.
+        let waited = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+        if waited == -1 && io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
+            return Ok(());
+        }
+        Err(io::Error::other(format!(
+            "child was not already reaped; waitpid returned {waited}"
+        )))
+    }
+
     #[test]
     fn shutdown_reports_failed_group_signal() -> io::Result<()> {
         let mut child = Command::new("sleep").arg("2").process_group(0).spawn()?;
-        let result = shutdown(&mut child, None, |_| {
-            Err(io::Error::from_raw_os_error(libc::EPERM))
-        });
+        let result = shutdown(
+            &mut child,
+            None,
+            |_| Err(io::Error::from_raw_os_error(libc::EPERM)),
+            SHUTDOWN_LIMIT,
+        );
+        let reaped = require_already_reaped(child.id());
+        // Clean up the finite fixture even if a regression leaves the child live.
+        let status = child.wait();
+        reaped?;
         assert!(matches!(
             result,
             Err(err) if err.to_string().contains("group termination failed")
         ));
-        let status = child
-            .try_wait()?
-            .ok_or_else(|| io::Error::other("direct child was not reaped"))?;
-        assert_eq!(status.signal(), Some(libc::SIGKILL));
+        assert_eq!(status?.signal(), Some(libc::SIGKILL));
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_shutdown_transfers_child_to_reaper() -> io::Result<()> {
+        let (reaper, worker) = start_reaper()?;
+        let mut child = Command::new("sh")
+            .args(["-c", "read line"])
+            .stdin(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()?;
+        let input = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("fixture stdin missing"))?;
+        let pid = child.id();
+        // Simulate a child that remains alive after group signalling. The held stdin
+        // keeps it live until this test releases it, independent of scheduling.
+        let result = finish_shutdown(child, None, |_| Ok(()), Duration::ZERO, reaper);
+        drop(input);
+        worker
+            .join()
+            .map_err(|_| io::Error::other("probe reaper panicked"))??;
+        let reaped = require_already_reaped(pid);
+        if reaped.is_err() {
+            // Reclaim the finite fixture even when testing a missing handoff.
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let pid = libc::pid_t::try_from(pid).map_err(io::Error::other)?;
+            while Instant::now() < deadline {
+                // SAFETY: pid identifies the same test-owned child. WNOHANG
+                // limits every wait, and its exit status is not needed.
+                if unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } != 0 {
+                    break;
+                }
+                thread::sleep(POLL_INTERVAL);
+            }
+        }
+        reaped?;
+        assert!(matches!(result, Err(err) if err.to_string().contains("child reaped: false")));
         Ok(())
     }
 }

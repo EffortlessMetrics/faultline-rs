@@ -131,9 +131,9 @@ fn timeout_and_cancellation_reap_owned_nested_probes() -> Result<(), Box<dyn std
     let probe = ProbeSpec::Shell {
         kind: ProbeKind::Custom,
         shell: ShellKind::PosixSh,
-        script: "sleep 0.75; : > completed; exit 7".into(),
+        script: ": > completed; exit 7".into(),
         env: vec![],
-        timeout_seconds: 1,
+        timeout_seconds: 5,
     };
     let cancelled = AtomicBool::new(true);
     assert!(matches!(

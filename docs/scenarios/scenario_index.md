@@ -250,6 +250,7 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `probe_output_exceeding_limit_is_truncated` | Real probe output exceeding limit is truncated | Shell probe with large output | faultline-probe-exec | — | Integration truncation | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
 | `timeout_and_cancellation_reap_owned_nested_probes` | Timeout and cancellation terminate owned descendants and bound pipe drainage | Native Linux shell and nested subprocesses | faultline-probe-exec | — | Group shutdown and reaping | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 | `shutdown_reports_failed_group_signal` | Group signal errors are surfaced and the direct child is reaped | Native quiet child and injected group error | faultline-probe-exec | — | Incomplete shutdown | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
+| `incomplete_shutdown_transfers_child_to_reaper` | A child still alive at the shutdown deadline is kept until reaped | Native child blocked on a test-owned pipe | faultline-probe-exec | — | Bounded shutdown and late reap | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 
 ### faultline-store
 
@@ -449,6 +450,7 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `prop_operator_code_exit_code_mapping` | Exit code mapping is consistent for all outcomes | `arb_localization_outcome()` | faultline-rs | — | P19: Exit code mapping | — | app | — | — | faultline-rs | P0 | faultline-rs | yes |
 | `prop_cli_help_flag_completeness` | CLI --help lists all expected flags | Random seed | faultline-rs | — | P20: Flag completeness | — | app | — | — | faultline-rs | P0 | faultline-rs | yes |
 | `smoke_cli_identity_matches_install_name` | Cargo-selected executable reports the published package name in help and version | CARGO_BIN_EXE_faultline-rs + real CLI process | faultline-rs | Help and version output | Package/executable identity cannot be satisfied by a stale inferred binary | Issue #52 | integration | — | CLI identity | faultline-rs | P0 | faultline-rs | yes |
+| `terminal_ctrl_c_reaps_owned_probe_descendants` | A terminal interrupt cancels a running probe and reaps its descendants | Linux pseudoterminal and finite fixture probe | faultline-rs | — | Terminal cancellation | #59 | adapter | #59 | — | faultline-rs | P0 | faultline-rs | no |
 | `smoke_cli_produces_artifacts` | End-to-end CLI run produces analysis.json and index.html | GitRepoBuilder + real CLI binary | faultline-rs | analysis.json, index.html | Smoke test | — | integration | — | analysis.json, index.html | faultline-rs | P0 | faultline-rs | yes |
 | `bundle_format_dir_parses_from_clap` | bundle --format dir parses correctly from clap | CLI args | faultline-rs | — | Input parsing | — | app | — | — | faultline-rs | P1 | faultline-rs | no |
 | `bundle_format_tar_gz_parses_from_clap` | bundle --format tar.gz parses correctly from clap | CLI args | faultline-rs | — | Input parsing | — | app | — | — | faultline-rs | P1 | faultline-rs | no |
