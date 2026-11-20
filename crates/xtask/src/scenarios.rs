@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::LazyLock;
 
 use regex::Regex;
 
@@ -25,6 +26,22 @@ impl ScenarioCheckResult {
     }
 }
 
+struct TestPatterns {
+    test_fn: Regex,
+    proptest_block: Regex,
+    inner_fn: Regex,
+}
+
+impl TestPatterns {
+    fn compile() -> Result<Self, regex::Error> {
+        Ok(Self {
+            test_fn: Regex::new(r"#\[test\](?:\s*\n\s*#\[[^\]]*\])*\s*\n\s*fn\s+(\w+)\s*\(")?,
+            proptest_block: Regex::new(r"(?s)proptest!\s*\{(.*?)\}")?,
+            inner_fn: Regex::new(r"fn\s+(\w+)\s*\(")?,
+        })
+    }
+}
+
 /// Extract `#[test]` function names from Rust source content.
 ///
 /// Looks for patterns like:
@@ -34,10 +51,18 @@ impl ScenarioCheckResult {
 pub fn extract_test_names(source: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
 
-    // Match #[test] fn <name>( — allows additional attributes (e.g. #[cfg(...)]) between #[test] and fn
-    let test_fn_re =
-        Regex::new(r"#\[test\](?:\s*\n\s*#\[[^\]]*\])*\s*\n\s*fn\s+(\w+)\s*\(").unwrap();
-    for cap in test_fn_re.captures_iter(source) {
+    static PATTERNS: LazyLock<Result<TestPatterns, regex::Error>> =
+        LazyLock::new(TestPatterns::compile);
+    // This xtask helper returns the set directly. A broken built-in pattern
+    // must fail the command even when the scenario index is empty.
+    let patterns = match &*PATTERNS {
+        Ok(patterns) => patterns,
+        Err(error) => {
+            eprintln!("error compiling scenario patterns: {error}");
+            std::process::exit(1);
+        }
+    };
+    for cap in patterns.test_fn.captures_iter(source) {
         if let Some(m) = cap.get(1) {
             names.insert(m.as_str().to_string());
         }
@@ -46,11 +71,9 @@ pub fn extract_test_names(source: &str) -> BTreeSet<String> {
     // Match fn <name> inside proptest! blocks — these look like:
     //   fn name(  (inside a proptest! { ... } macro)
     // We detect proptest blocks and extract fn names within them.
-    let proptest_fn_re = Regex::new(r"(?s)proptest!\s*\{(.*?)\}").unwrap();
-    let inner_fn_re = Regex::new(r"fn\s+(\w+)\s*\(").unwrap();
-    for block in proptest_fn_re.captures_iter(source) {
+    for block in patterns.proptest_block.captures_iter(source) {
         if let Some(body) = block.get(1) {
-            for cap in inner_fn_re.captures_iter(body.as_str()) {
+            for cap in patterns.inner_fn.captures_iter(body.as_str()) {
                 if let Some(m) = cap.get(1) {
                     names.insert(m.as_str().to_string());
                 }

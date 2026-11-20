@@ -25,7 +25,7 @@
 //! on errors. `propose` emits `target/policy/no-panic-proposed-allowlist.toml`
 //! and never mutates the source-of-truth allowlist.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -182,10 +182,10 @@ pub fn check(root: &Path) -> Result<NoPanicReport> {
 pub fn propose(root: &Path) -> Result<()> {
     println!("=== no-panic propose ===\n");
     let findings = scan_workspace(root)?;
-    let mut grouped: BTreeMap<(String, String, String), Vec<&Finding>> = BTreeMap::new();
+    let mut grouped: BTreeMap<(String, String, String), &Finding> = BTreeMap::new();
     for f in &findings {
         let key = (f.path.clone(), f.family.clone(), f.container.clone());
-        grouped.entry(key).or_default().push(f);
+        grouped.entry(key).or_insert(f);
     }
 
     let dir = report_dir(root)?;
@@ -201,9 +201,8 @@ pub fn propose(root: &Path) -> Result<()> {
     let _ = writeln!(s, "schema_version = \"0.3\"");
     let _ = writeln!(s);
     let mut idx = 0usize;
-    for ((path, family, container), entries) in &grouped {
+    for ((path, family, container), representative) in &grouped {
         idx += 1;
-        let representative = entries.first().expect("non-empty group");
         let _ = writeln!(s, "[[allow]]");
         let _ = writeln!(s, "id = \"panic-proposed-{idx:04}\"");
         let _ = writeln!(s, "path = \"{path}\"");
@@ -310,12 +309,12 @@ fn load_allowlist(root: &Path) -> Result<AllowlistFile> {
 
 fn scan_workspace(root: &Path) -> Result<Vec<Finding>> {
     let mut findings = Vec::new();
-    let unwrap_re = regex::Regex::new(r"\.unwrap\s*\(\s*\)").expect("static regex");
-    let expect_re = regex::Regex::new(r"\.expect\s*\(").expect("static regex");
-    let macro_re = regex::Regex::new(r"\b(panic|todo|unimplemented|unreachable)\s*!\s*[\(\[\{]")
-        .expect("static regex");
-    let get_unwrap_re =
-        regex::Regex::new(r"\.get\s*\([^)]*\)\s*\.unwrap\s*\(\s*\)").expect("static regex");
+    let unwrap_re = regex::Regex::new(r"\.unwrap\s*\(\s*\)")?;
+    let expect_re = regex::Regex::new(r"\.expect\s*\(")?;
+    let macro_re = regex::Regex::new(r"\b(panic|todo|unimplemented|unreachable)\s*!\s*[\(\[\{]")?;
+    let get_unwrap_re = regex::Regex::new(r"\.get\s*\([^)]*\)\s*\.unwrap\s*\(\s*\)")?;
+
+    let fn_re = regex::Regex::new(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)")?;
 
     for entry in walkdir::WalkDir::new(root)
         .into_iter()
@@ -337,8 +336,6 @@ fn scan_workspace(root: &Path) -> Result<Vec<Finding>> {
             .replace('\\', "/");
 
         let mut current_container = String::from("<file>");
-        let fn_re = regex::Regex::new(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?fn\s+(\w+)")
-            .expect("static regex");
 
         for (i, raw_line) in text.lines().enumerate() {
             let line_num = i + 1;
@@ -399,7 +396,7 @@ fn scan_workspace(root: &Path) -> Result<Vec<Finding>> {
                     "unreachable" => "unreachable",
                     _ => "panic_macro",
                 };
-                let m = caps.get(0).expect("group 0 always present");
+                let m = caps.get(0).context("missing full panic macro match")?;
                 findings.push(Finding {
                     path: rel.clone(),
                     line: line_num,

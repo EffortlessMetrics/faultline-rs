@@ -30,7 +30,7 @@ pub fn workspace_root() -> Result<PathBuf> {
 
 /// Validate that a crate name matches `faultline-[a-z][a-z0-9-]*`.
 pub fn validate_crate_name(name: &str) -> Result<()> {
-    let re = Regex::new(r"^faultline-[a-z][a-z0-9-]*$").unwrap();
+    let re = Regex::new(r"^faultline-[a-z][a-z0-9-]*$")?;
     if !re.is_match(name) {
         bail!("error: crate name must match faultline-[a-z][a-z0-9-]*");
     }
@@ -257,10 +257,10 @@ fn {fn_name}() {{
 }
 
 fn append_scenario_index(root: &Path, name: &str, crate_name: &str) -> Result<()> {
-    let index_path = root.join("docs/scenarios/scenario_index.md");
+    let dir = root.join("docs/scenarios");
+    let index_path = dir.join("scenario_index.md");
     if !index_path.exists() {
         // Create a minimal index if it doesn't exist
-        let dir = index_path.parent().unwrap();
         std::fs::create_dir_all(dir)?;
         std::fs::write(&index_path, "# Scenario Index\n\n")?;
     }
