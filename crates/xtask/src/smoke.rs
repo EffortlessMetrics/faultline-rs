@@ -117,46 +117,24 @@ pub fn run_smoke() -> Result<()> {
 
     // Step 3: Run the CLI against the fixture repo
     println!("=> running faultline CLI");
-    let cmd_args = if cfg!(windows) {
-        vec![
-            "--repo",
-            repo_path.to_str().unwrap(),
-            "--good",
-            &good_sha,
-            "--bad",
-            &bad_sha,
+    let mut command = Command::new(&bin);
+    command.arg("--repo").arg(repo_path);
+    command.args(["--good", &good_sha, "--bad", &bad_sha]);
+    if cfg!(windows) {
+        command.args([
             "--shell",
             "cmd",
             "--cmd",
             "if exist PASS (exit /b 0) else (exit /b 1)",
-            "--kind",
-            "test",
-            "--timeout-seconds",
-            "30",
-            "--output-dir",
-            output_dir.to_str().unwrap(),
-        ]
+        ]);
     } else {
-        vec![
-            "--repo",
-            repo_path.to_str().unwrap(),
-            "--good",
-            &good_sha,
-            "--bad",
-            &bad_sha,
-            "--cmd",
-            "test -f PASS",
-            "--kind",
-            "test",
-            "--timeout-seconds",
-            "30",
-            "--output-dir",
-            output_dir.to_str().unwrap(),
-        ]
-    };
+        command.args(["--cmd", "test -f PASS"]);
+    }
+    command
+        .args(["--kind", "test", "--timeout-seconds", "30", "--output-dir"])
+        .arg(&output_dir);
 
-    let result = Command::new(&bin)
-        .args(&cmd_args)
+    let result = command
         .output()
         .map_err(|e| anyhow::anyhow!("failed to execute CLI: {e}"))?;
 
@@ -213,8 +191,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fixture_repo_has_three_commits() {
-        let (dir, good, bad) = build_fixture_repo().expect("build fixture repo");
+    fn fixture_repo_has_three_commits() -> Result<()> {
+        let (dir, good, bad) = build_fixture_repo()?;
         // good and bad should be 40-char hex SHAs
         assert_eq!(good.len(), 40, "good SHA should be 40 chars: {good}");
         assert_eq!(bad.len(), 40, "bad SHA should be 40 chars: {bad}");
@@ -224,5 +202,6 @@ mod tests {
         assert!(!dir.path().join("PASS").exists());
         // other.txt should exist
         assert!(dir.path().join("other.txt").exists());
+        Ok(())
     }
 }
