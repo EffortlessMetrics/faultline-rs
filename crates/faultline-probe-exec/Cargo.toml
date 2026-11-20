@@ -15,7 +15,7 @@ faultline-codes = { path = "../faultline-codes", version = "0.0.1" }
 faultline-ports = { path = "../faultline-ports", version = "0.0.1" }
 faultline-types = { path = "../faultline-types", version = "0.0.1" }
 
-[target.'cfg(unix)'.dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
 
 [dev-dependencies]

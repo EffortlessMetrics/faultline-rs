@@ -1,14 +1,14 @@
 use faultline_codes::ObservationClass;
 use faultline_ports::ProbePort;
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 use faultline_types::FaultlineError;
 use faultline_types::{CheckedOutRevision, ProbeObservation, ProbeSpec, Result, ShellKind};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 use std::{io::Read, process::Child, thread};
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 mod unix;
 
 struct CapturedProbe {
@@ -39,14 +39,14 @@ fn truncate_output(output: &str, limit: usize) -> String {
     truncated
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn read_stream<R: Read>(mut stream: R) -> std::io::Result<Vec<u8>> {
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes)?;
     Ok(bytes)
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn spawn_stream_reader<R>(
     stream: R,
     stream_name: &'static str,
@@ -62,13 +62,13 @@ where
         })
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn terminate_after_reader_start_failure(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
 }
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn join_stream_reader(
     reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
     stream_name: &str,
@@ -84,10 +84,10 @@ fn join_stream_reader(
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 use unix::capture;
 
-#[cfg(not(unix))]
+#[cfg(not(target_os = "linux"))]
 fn capture(
     command: &mut Command,
     started: Instant,
@@ -172,11 +172,11 @@ impl ExecProbeAdapter {
         CancellableProbe(cancelled)
     }
 
-    /// Run a local POSIX probe until completion, timeout, or cooperative cancellation.
+    /// Run a local Linux probe until completion, timeout, or cooperative cancellation.
     ///
     /// The caller may set `cancelled` from another thread. Active cancellation uses
     /// the same bounded process group shutdown as timeout and returns a probe error.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     pub fn run_cancellable(
         &self,
         checkout: &CheckedOutRevision,
