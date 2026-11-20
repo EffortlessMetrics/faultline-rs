@@ -12,6 +12,9 @@ use faultline_types::{
 use std::io;
 use std::path::PathBuf;
 
+#[cfg(target_os = "linux")]
+mod interrupt;
+
 #[derive(Debug, Parser)]
 #[command(name = "faultline-rs")]
 #[command(version)]
@@ -420,9 +423,32 @@ fn try_main() -> Result<i32, Box<dyn std::error::Error>> {
 
     let git = GitAdapter::new(&cli.repo)?;
     let store = FileRunStore::new(cli.repo.join(".faultline").join("runs"))?;
+    #[cfg(target_os = "linux")]
+    let interrupt = if ExecProbeAdapter::uses_owned_process_group() {
+        Some(interrupt::Interrupt::install()?)
+    } else {
+        None
+    };
+    #[cfg(target_os = "linux")]
+    let probe =
+        ExecProbeAdapter::with_cancellation(interrupt.as_ref().map(interrupt::Interrupt::flag));
+    #[cfg(not(target_os = "linux"))]
     let probe = ExecProbeAdapter;
     let app = FaultlineApp::new(&git, &git, &probe, &store);
-    let localized = match app.localize(request) {
+    let result = app.localize(request);
+    #[cfg(target_os = "linux")]
+    if let Some(interrupt) = interrupt {
+        let interrupted = interrupt.received();
+        drop(interrupt);
+        if interrupted {
+            match result {
+                Ok(_) => eprintln!("faultline-rs: interrupted"),
+                Err(ref err) => eprintln!("faultline-rs: interrupted: {err}"),
+            }
+            return Ok(128 + libc::SIGINT);
+        }
+    }
+    let localized = match result {
         Ok(result) => result,
         Err(err) => {
             if let FaultlineError::InvalidBoundary(msg) = &err {

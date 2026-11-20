@@ -1,12 +1,26 @@
 use faultline_codes::ObservationClass;
 use faultline_ports::ProbePort;
-use faultline_types::{
-    CheckedOutRevision, FaultlineError, ProbeObservation, ProbeSpec, Result, ShellKind,
-};
+use faultline_types::FaultlineError;
+use faultline_types::{CheckedOutRevision, ProbeObservation, ProbeSpec, Result, ShellKind};
 use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+#[cfg(target_os = "linux")]
+use std::{
+    io::IsTerminal,
+    sync::atomic::{AtomicBool, Ordering},
+};
+
+#[cfg(target_os = "linux")]
+mod unix;
+
+struct CapturedProbe {
+    status: ExitStatus,
+    timed_out: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
 
 const DEFAULT_TRUNCATION_LIMIT: usize = 64 * 1024; // 64 KiB
 const TRUNCATION_MARKER: &str = "[truncated]";
@@ -70,16 +84,142 @@ fn join_stream_reader(
     }
 }
 
+fn capture_foreground(
+    command: &mut Command,
+    started: Instant,
+    timeout: Duration,
+) -> Result<CapturedProbe> {
+    let mut child = command
+        .spawn()
+        .map_err(|err| FaultlineError::Probe(err.to_string()))?;
+
+    // Drain both pipes while the child is running. Waiting for the child before
+    // reading can deadlock once either operating-system pipe buffer fills.
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| FaultlineError::Probe("failed to capture probe stdout".to_string()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| FaultlineError::Probe("failed to capture probe stderr".to_string()))?;
+    let stdout_reader = match spawn_stream_reader(stdout, "stdout") {
+        Ok(reader) => reader,
+        Err(err) => {
+            terminate_after_reader_start_failure(&mut child);
+            return Err(err);
+        }
+    };
+    let stderr_reader = match spawn_stream_reader(stderr, "stderr") {
+        Ok(reader) => reader,
+        Err(err) => {
+            terminate_after_reader_start_failure(&mut child);
+            let _ = join_stream_reader(stdout_reader, "stdout");
+            return Err(err);
+        }
+    };
+
+    let mut timed_out = false;
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| FaultlineError::Probe(err.to_string()))?
+        {
+            break status;
+        }
+        if started.elapsed() >= timeout {
+            timed_out = true;
+            let _ = child.kill();
+            break child
+                .wait()
+                .map_err(|err| FaultlineError::Probe(err.to_string()))?;
+        }
+        thread::sleep(Duration::from_millis(50));
+    };
+
+    let stdout_bytes = join_stream_reader(stdout_reader, "stdout")?;
+    let stderr_bytes = join_stream_reader(stderr_reader, "stderr")?;
+    Ok(CapturedProbe {
+        status,
+        timed_out,
+        stdout: stdout_bytes,
+        stderr: stderr_bytes,
+    })
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct ExecProbeAdapter;
 
+#[cfg(target_os = "linux")]
+struct CancellableProbe<'a>(Option<&'a AtomicBool>);
+
+#[cfg(target_os = "linux")]
+impl ProbePort for CancellableProbe<'_> {
+    fn run(&self, checkout: &CheckedOutRevision, probe: &ProbeSpec) -> Result<ProbeObservation> {
+        match self.0 {
+            Some(cancelled) => ExecProbeAdapter.run_cancellable(checkout, probe, cancelled),
+            None => ExecProbeAdapter.run(checkout, probe),
+        }
+    }
+}
+
 impl ExecProbeAdapter {
+    /// Whether inherited stdin allows Linux group cleanup without changing terminal job control.
+    #[cfg(target_os = "linux")]
+    pub fn uses_owned_process_group() -> bool {
+        !std::io::stdin().is_terminal()
+    }
+
+    /// Bind a cancellation flag for nonterminal runs. With no flag, use normal probe dispatch.
+    #[cfg(target_os = "linux")]
+    pub fn with_cancellation(cancelled: Option<&AtomicBool>) -> impl ProbePort + '_ {
+        CancellableProbe(cancelled)
+    }
+
+    /// Run a Linux probe in an owned group with a cooperative cancellation flag.
+    ///
+    /// This is the explicit grouped entry point for callers with nonterminal stdin.
+    /// Use the default probe port to preserve inherited terminal input. A caller may
+    /// set `cancelled` from another thread to request the bounded shutdown path.
+    #[cfg(target_os = "linux")]
+    pub fn run_cancellable(
+        &self,
+        checkout: &CheckedOutRevision,
+        probe: &ProbeSpec,
+        cancelled: &AtomicBool,
+    ) -> Result<ProbeObservation> {
+        self.run_with_limit(
+            checkout,
+            probe,
+            DEFAULT_TRUNCATION_LIMIT,
+            |command, started, timeout| {
+                unix::capture(command, started, timeout, || {
+                    cancelled.load(Ordering::Relaxed)
+                })
+            },
+        )
+    }
+
+    fn capture_default(
+        command: &mut Command,
+        started: Instant,
+        timeout: Duration,
+    ) -> Result<CapturedProbe> {
+        // A probe reading a terminal must stay in the inherited foreground group.
+        #[cfg(target_os = "linux")]
+        if Self::uses_owned_process_group() {
+            return unix::capture(command, started, timeout, || false);
+        }
+        capture_foreground(command, started, timeout)
+    }
+
     /// Run a probe with a custom truncation limit. Used internally and for testing.
     fn run_with_limit(
         &self,
         checkout: &CheckedOutRevision,
         probe: &ProbeSpec,
         truncation_limit: usize,
+        capture: impl FnOnce(&mut Command, Instant, Duration) -> Result<CapturedProbe>,
     ) -> Result<ProbeObservation> {
         let kind = probe.kind();
         let timeout = Duration::from_secs(probe.timeout_seconds());
@@ -90,56 +230,12 @@ impl ExecProbeAdapter {
             .stderr(Stdio::piped());
 
         let started = Instant::now();
-        let mut child = command
-            .spawn()
-            .map_err(|err| FaultlineError::Probe(err.to_string()))?;
-
-        // Drain both pipes while the child is running. Waiting for the child before
-        // reading can deadlock once either operating-system pipe buffer fills.
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| FaultlineError::Probe("failed to capture probe stdout".to_string()))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| FaultlineError::Probe("failed to capture probe stderr".to_string()))?;
-        let stdout_reader = match spawn_stream_reader(stdout, "stdout") {
-            Ok(reader) => reader,
-            Err(err) => {
-                terminate_after_reader_start_failure(&mut child);
-                return Err(err);
-            }
-        };
-        let stderr_reader = match spawn_stream_reader(stderr, "stderr") {
-            Ok(reader) => reader,
-            Err(err) => {
-                terminate_after_reader_start_failure(&mut child);
-                let _ = join_stream_reader(stdout_reader, "stdout");
-                return Err(err);
-            }
-        };
-
-        let mut timed_out = false;
-        let status = loop {
-            if let Some(status) = child
-                .try_wait()
-                .map_err(|err| FaultlineError::Probe(err.to_string()))?
-            {
-                break status;
-            }
-            if started.elapsed() >= timeout {
-                timed_out = true;
-                let _ = child.kill();
-                break child
-                    .wait()
-                    .map_err(|err| FaultlineError::Probe(err.to_string()))?;
-            }
-            thread::sleep(Duration::from_millis(50));
-        };
-
-        let stdout_bytes = join_stream_reader(stdout_reader, "stdout")?;
-        let stderr_bytes = join_stream_reader(stderr_reader, "stderr")?;
+        let CapturedProbe {
+            status,
+            timed_out,
+            stdout,
+            stderr,
+        } = capture(&mut command, started, timeout)?;
         let exit_code = status.code();
 
         #[cfg(unix)]
@@ -152,8 +248,8 @@ impl ExecProbeAdapter {
 
         let class = classify(exit_code, timed_out, signal_number);
 
-        let raw_stdout = String::from_utf8_lossy(&stdout_bytes).into_owned();
-        let raw_stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
+        let raw_stdout = String::from_utf8_lossy(&stdout);
+        let raw_stderr = String::from_utf8_lossy(&stderr);
 
         Ok(ProbeObservation {
             commit: checkout.commit.clone(),
@@ -175,7 +271,12 @@ impl ExecProbeAdapter {
 
 impl ProbePort for ExecProbeAdapter {
     fn run(&self, checkout: &CheckedOutRevision, probe: &ProbeSpec) -> Result<ProbeObservation> {
-        self.run_with_limit(checkout, probe, DEFAULT_TRUNCATION_LIMIT)
+        self.run_with_limit(
+            checkout,
+            probe,
+            DEFAULT_TRUNCATION_LIMIT,
+            Self::capture_default,
+        )
     }
 }
 
@@ -575,7 +676,12 @@ mod tests {
 
         let small_limit: usize = 256;
         let adapter = ExecProbeAdapter;
-        let obs = adapter.run_with_limit(&checkout, &probe, small_limit)?;
+        let obs = adapter.run_with_limit(
+            &checkout,
+            &probe,
+            small_limit,
+            ExecProbeAdapter::capture_default,
+        )?;
 
         assert!(
             !obs.timed_out,

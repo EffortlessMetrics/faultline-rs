@@ -1,0 +1,499 @@
+use super::CapturedProbe;
+use faultline_types::{FaultlineError, Result};
+use std::io::{self, Read};
+use std::os::fd::AsRawFd;
+use std::os::unix::process::CommandExt;
+use std::process::{Child, ChildStderr, ChildStdout, Command, ExitStatus};
+use std::sync::mpsc::{self, Sender};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+const POLL_INTERVAL: Duration = Duration::from_millis(5);
+const SHUTDOWN_LIMIT: Duration = Duration::from_secs(1);
+
+struct Pipe<R> {
+    reader: R,
+    bytes: Vec<u8>,
+    eof: bool,
+}
+
+impl<R: AsRawFd + Read> Pipe<R> {
+    fn new(reader: R) -> io::Result<Self> {
+        let fd = reader.as_raw_fd();
+        // SAFETY: The reader owns a live pipe descriptor. F_GETFL takes no extra argument.
+        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        if flags < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: The descriptor is still live. F_SETFL takes an integer flags argument.
+        if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self {
+            reader,
+            bytes: Vec::new(),
+            eof: false,
+        })
+    }
+
+    fn poll_fd(&self) -> libc::pollfd {
+        libc::pollfd {
+            fd: if self.eof {
+                -1
+            } else {
+                self.reader.as_raw_fd()
+            },
+            events: libc::POLLIN,
+            revents: 0,
+        }
+    }
+
+    fn drain_chunk(&mut self) -> io::Result<bool> {
+        if self.eof {
+            return Ok(false);
+        }
+        // Read one chunk per pipe so active writers cannot starve each other or the deadline.
+        let mut buffer = [0; 16 * 1024];
+        match self.reader.read(&mut buffer) {
+            Ok(0) => self.eof = true,
+            Ok(size) => {
+                self.bytes.extend(buffer.into_iter().take(size));
+                return Ok(true);
+            }
+            Err(err)
+                if matches!(
+                    err.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) => {}
+            Err(err) => return Err(err),
+        }
+        Ok(false)
+    }
+}
+
+struct Pipes {
+    stdout: Pipe<ChildStdout>,
+    stderr: Pipe<ChildStderr>,
+}
+
+impl Pipes {
+    fn new(child: &mut Child) -> io::Result<Self> {
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| io::Error::other("probe stdout pipe missing"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or_else(|| io::Error::other("probe stderr pipe missing"))?;
+        Ok(Self {
+            stdout: Pipe::new(stdout)?,
+            stderr: Pipe::new(stderr)?,
+        })
+    }
+}
+
+trait DrainOutput {
+    fn drain_chunk(&mut self) -> io::Result<bool>;
+    fn wait_for_output(&self, remaining: Duration) -> io::Result<()>;
+    fn finished(&self) -> bool;
+}
+
+impl DrainOutput for Pipes {
+    fn drain_chunk(&mut self) -> io::Result<bool> {
+        let stdout_progress = self.stdout.drain_chunk()?;
+        let stderr_progress = self.stderr.drain_chunk()?;
+        Ok(stdout_progress || stderr_progress)
+    }
+
+    fn wait_for_output(&self, remaining: Duration) -> io::Result<()> {
+        let interval = remaining.min(POLL_INTERVAL);
+        let mut fds = [self.stdout.poll_fd(), self.stderr.poll_fd()];
+        let millis = i32::try_from(interval.as_millis()).unwrap_or(0);
+        // SAFETY: The array contains two initialized descriptors and remains live
+        // throughout poll. Negative descriptors are ignored.
+        if unsafe { libc::poll(fds.as_mut_ptr(), 2, millis) } < 0 {
+            let err = io::Error::last_os_error();
+            if err.kind() != io::ErrorKind::Interrupted {
+                return Err(err);
+            }
+        }
+        Ok(())
+    }
+
+    fn finished(&self) -> bool {
+        self.stdout.eof && self.stderr.eof
+    }
+}
+
+enum Outcome {
+    Exited(ExitStatus),
+    TimedOut,
+    Cancelled,
+}
+
+fn observe(
+    child: &mut Child,
+    pipes: &mut Pipes,
+    started: Instant,
+    timeout: Duration,
+    cancelled: impl Fn() -> bool,
+) -> io::Result<Outcome> {
+    loop {
+        let progress = pipes.drain_chunk()?;
+        // Keep the group leader unreaped while the pipes are open. Even if it exits,
+        // its PID continues to identify this group until we signal it or finish.
+        if pipes.finished()
+            && let Some(status) = child.try_wait()?
+        {
+            return Ok(Outcome::Exited(status));
+        }
+        if cancelled() {
+            return Ok(Outcome::Cancelled);
+        }
+        let remaining = timeout.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Ok(Outcome::TimedOut);
+        }
+        if !progress {
+            pipes.wait_for_output(remaining)?;
+        }
+    }
+}
+
+fn kill_group(child: &Child) -> io::Result<()> {
+    let leader = libc::pid_t::try_from(child.id())
+        .ok()
+        .filter(|pid| *pid > 1)
+        .ok_or_else(|| io::Error::other("invalid probe group leader PID"))?;
+    // SAFETY: process_group(0) created this group. We haven't reaped its leader,
+    // so its PID can't be recycled in this runner. Values below 2 are rejected
+    // because kill(0, ...) and kill(-1, ...) would signal outside the probe group.
+    if unsafe { libc::kill(-leader, libc::SIGKILL) } == 0 {
+        return Ok(());
+    }
+    let err = io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        // The leader and any remaining group members have already exited.
+        return Ok(());
+    }
+    Err(err)
+}
+
+fn shutdown(
+    child: &mut Child,
+    mut pipes: Option<&mut dyn DrainOutput>,
+    terminate_group: impl FnOnce(&Child) -> io::Result<()>,
+    limit: Duration,
+) -> io::Result<ExitStatus> {
+    let started = Instant::now();
+    let mut failure = terminate_group(child).err().map(|err| {
+        // Still try to reap the immediate child when the group signal fails.
+        let fallback = child.kill();
+        match fallback {
+            Ok(()) => io::Error::other(format!("group termination failed: {err}")),
+            Err(direct) => io::Error::other(format!(
+                "group termination failed ({err}); direct termination failed ({direct})"
+            )),
+        }
+    });
+
+    let mut status = None;
+    let mut abandoned = false;
+    loop {
+        if status.is_none() {
+            status = match child.try_wait() {
+                Ok(status) => status,
+                Err(err) => return Err(with_abandoned_output(failure.unwrap_or(err), abandoned)),
+            };
+        }
+        let mut progress = false;
+        if let Some(active) = pipes.as_mut() {
+            match active.drain_chunk() {
+                Ok(drained) => progress = drained,
+                Err(err) => {
+                    failure.get_or_insert(err);
+                    pipes = None;
+                    abandoned = true;
+                }
+            }
+        }
+        if let Some(status) = status
+            && pipes.as_ref().is_none_or(|pipes| pipes.finished())
+        {
+            return match failure {
+                Some(err) => Err(with_abandoned_output(err, abandoned)),
+                None => Ok(status),
+            };
+        }
+        let remaining = limit.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            let output = match pipes.as_ref() {
+                Some(pipes) if pipes.finished() => "drained",
+                Some(_) => "incomplete",
+                None if abandoned => "abandoned",
+                None => "unavailable",
+            };
+            return Err(io::Error::other(format!(
+                "shutdown deadline elapsed (child reaped: {}, output: {output}, error: {failure:?})",
+                status.is_some()
+            )));
+        }
+        if !progress {
+            if let Some(active) = pipes.as_ref() {
+                if let Err(err) = active.wait_for_output(remaining) {
+                    failure.get_or_insert(err);
+                    pipes = None;
+                    abandoned = true;
+                }
+            } else {
+                thread::sleep(POLL_INTERVAL.min(remaining));
+            }
+        }
+    }
+}
+
+fn with_abandoned_output(err: io::Error, abandoned: bool) -> io::Error {
+    if abandoned {
+        io::Error::other(format!("{err}; output abandoned before EOF"))
+    } else {
+        err
+    }
+}
+
+pub(super) fn capture(
+    command: &mut Command,
+    started: Instant,
+    timeout: Duration,
+    cancelled: impl Fn() -> bool,
+) -> Result<CapturedProbe> {
+    if cancelled() {
+        return Err(FaultlineError::Probe(
+            "probe cancelled before launch".into(),
+        ));
+    }
+    // Reserve a waiter before launching a probe so a failed thread start cannot
+    // leave a live child without an owner at the shutdown deadline.
+    let (reaper, _worker) = start_reaper()
+        .map_err(|err| FaultlineError::Probe(format!("failed to start probe reaper: {err}")))?;
+    let mut child = command
+        .process_group(0)
+        .spawn()
+        .map_err(|err| FaultlineError::Probe(err.to_string()))?;
+
+    let mut pipes = match Pipes::new(&mut child) {
+        Ok(pipes) => pipes,
+        Err(err) => {
+            cleanup(child, None, "output setup failure", reaper)?;
+            return Err(FaultlineError::Probe(format!(
+                "probe output setup failed: {err}"
+            )));
+        }
+    };
+    let (status, timed_out) = match observe(&mut child, &mut pipes, started, timeout, cancelled) {
+        Ok(Outcome::Exited(status)) => (status, false),
+        Ok(Outcome::TimedOut) => (cleanup(child, Some(&mut pipes), "timeout", reaper)?, true),
+        Ok(Outcome::Cancelled) => {
+            cleanup(child, Some(&mut pipes), "cancellation", reaper)?;
+            return Err(FaultlineError::Probe("probe cancelled".into()));
+        }
+        Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {
+            // A foreign child reaper invalidates the leader PID as an ownership anchor.
+            return Err(FaultlineError::Probe(format!(
+                "incomplete probe cleanup: lost child ownership: {err}"
+            )));
+        }
+        Err(err) => {
+            cleanup(child, None, "observation failure", reaper)?;
+            return Err(FaultlineError::Probe(format!(
+                "probe observation failed: {err}"
+            )));
+        }
+    };
+    Ok(CapturedProbe {
+        status,
+        timed_out,
+        stdout: pipes.stdout.bytes,
+        stderr: pipes.stderr.bytes,
+    })
+}
+
+fn start_reaper() -> io::Result<(Sender<Child>, JoinHandle<io::Result<()>>)> {
+    let (sender, receiver) = mpsc::channel::<Child>();
+    let worker = thread::Builder::new()
+        .name("faultline-probe-reaper".into())
+        .spawn(move || {
+            if let Ok(mut child) = receiver.recv() {
+                child.wait()?;
+            }
+            Ok(())
+        })?;
+    Ok((sender, worker))
+}
+
+fn finish_shutdown(
+    mut child: Child,
+    pipes: Option<&mut dyn DrainOutput>,
+    terminate_group: impl FnOnce(&Child) -> io::Result<()>,
+    limit: Duration,
+    reaper: Sender<Child>,
+) -> io::Result<ExitStatus> {
+    let result = shutdown(&mut child, pipes, terminate_group, limit);
+    if result.is_err() {
+        match child.try_wait() {
+            Ok(Some(_)) => {}
+            Err(err) if err.raw_os_error() == Some(libc::ECHILD) => {}
+            // The waiter owns only the original Child handle. It never issues a signal
+            // or waits on another process, and the caller still returns the shutdown error.
+            _ => reaper
+                .send(child)
+                .map_err(|_| io::Error::other("probe reaper stopped before accepting the child"))?,
+        }
+    }
+    result
+}
+
+fn cleanup(
+    child: Child,
+    pipes: Option<&mut dyn DrainOutput>,
+    reason: &str,
+    reaper: Sender<Child>,
+) -> Result<ExitStatus> {
+    finish_shutdown(child, pipes, kill_group, SHUTDOWN_LIMIT, reaper).map_err(|err| {
+        FaultlineError::Probe(format!("incomplete probe cleanup after {reason}: {err}"))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::process::ExitStatusExt;
+
+    fn require_already_reaped(pid: u32) -> io::Result<()> {
+        let pid = libc::pid_t::try_from(pid).map_err(io::Error::other)?;
+        // SAFETY: pid is from the test-owned child. The wait is nonblocking,
+        // and passing a null status pointer requests no exit status.
+        let waited = unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) };
+        if waited == -1 && io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
+            return Ok(());
+        }
+        Err(io::Error::other(format!(
+            "child was not already reaped; waitpid returned {waited}"
+        )))
+    }
+
+    #[test]
+    fn shutdown_reports_failed_group_signal() -> io::Result<()> {
+        let mut child = Command::new("sleep").arg("2").process_group(0).spawn()?;
+        let result = shutdown(
+            &mut child,
+            None,
+            |_| Err(io::Error::from_raw_os_error(libc::EPERM)),
+            SHUTDOWN_LIMIT,
+        );
+        let reaped = require_already_reaped(child.id());
+        // Clean up the finite fixture even if a regression leaves the child live.
+        let status = child.wait();
+        reaped?;
+        assert!(matches!(
+            result,
+            Err(err) if err.to_string().contains("group termination failed")
+        ));
+        assert_eq!(status?.signal(), Some(libc::SIGKILL));
+        Ok(())
+    }
+
+    #[test]
+    fn incomplete_shutdown_transfers_child_to_reaper() -> io::Result<()> {
+        let (reaper, worker) = start_reaper()?;
+        let mut child = Command::new("sh")
+            .args(["-c", "read line"])
+            .stdin(std::process::Stdio::piped())
+            .process_group(0)
+            .spawn()?;
+        let input = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("fixture stdin missing"))?;
+        let pid = child.id();
+        // Simulate a child that remains alive after group signalling. The held stdin
+        // keeps it live until this test releases it, independent of scheduling.
+        let result = finish_shutdown(child, None, |_| Ok(()), Duration::ZERO, reaper);
+        drop(input);
+        worker
+            .join()
+            .map_err(|_| io::Error::other("probe reaper panicked"))??;
+        let reaped = require_already_reaped(pid);
+        if reaped.is_err() {
+            // Reclaim the finite fixture even when testing a missing handoff.
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let pid = libc::pid_t::try_from(pid).map_err(io::Error::other)?;
+            while Instant::now() < deadline {
+                // SAFETY: pid identifies the same test-owned child. WNOHANG
+                // limits every wait, and its exit status is not needed.
+                if unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } != 0 {
+                    break;
+                }
+                thread::sleep(POLL_INTERVAL);
+            }
+        }
+        reaped?;
+        assert!(matches!(result, Err(err) if err.to_string().contains("child reaped: false")));
+        Ok(())
+    }
+
+    struct BrokenOutput {
+        fail_on_read: bool,
+    }
+
+    impl DrainOutput for BrokenOutput {
+        fn drain_chunk(&mut self) -> io::Result<bool> {
+            if self.fail_on_read {
+                Err(io::Error::other("fixture read error"))
+            } else {
+                Ok(false)
+            }
+        }
+
+        fn wait_for_output(&self, _: Duration) -> io::Result<()> {
+            Err(io::Error::other("fixture poll error"))
+        }
+
+        fn finished(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn shutdown_distinguishes_abandoned_output_from_eof() -> io::Result<()> {
+        let mut child = Command::new("sh").args(["-c", "exit 0"]).spawn()?;
+        child.wait()?;
+        let mut output = BrokenOutput {
+            fail_on_read: false,
+        };
+        let result = shutdown(&mut child, Some(&mut output), |_| Ok(()), SHUTDOWN_LIMIT);
+        assert!(matches!(
+            result,
+            Err(err) if err.to_string() == "fixture poll error; output abandoned before EOF"
+        ));
+
+        let mut child = Command::new("sh")
+            .args(["-c", "read line"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        let input = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("fixture stdin missing"))?;
+        let mut output = BrokenOutput { fail_on_read: true };
+        let result = shutdown(&mut child, Some(&mut output), |_| Ok(()), Duration::ZERO);
+        drop(input);
+        child.wait()?;
+        assert!(matches!(
+            result,
+            Err(err) if err.to_string().contains("output: abandoned")
+                && err.to_string().contains("fixture read error")
+        ));
+        Ok(())
+    }
+}
