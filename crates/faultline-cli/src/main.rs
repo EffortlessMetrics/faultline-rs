@@ -1009,11 +1009,11 @@ mod tests {
     }
 
     #[test]
-    fn help_output_describes_all_flags() {
+    fn help_output_describes_all_flags() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
 
         let expected_flags = [
             "--good",
@@ -1044,14 +1044,15 @@ mod tests {
                 "--help output missing expected flag '{flag}'.\nFull help:\n{help}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn help_output_describes_reproduce_subcommand() {
+    fn help_output_describes_reproduce_subcommand() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
 
         assert!(
             help.contains("reproduce"),
@@ -1065,16 +1066,18 @@ mod tests {
             help.contains("export-markdown"),
             "--help output missing 'export-markdown' subcommand.\nFull help:\n{help}"
         );
+        Ok(())
     }
 
     // Req 3.4: Golden snapshot test for CLI --help text
     #[test]
-    fn golden_cli_help() {
+    fn golden_cli_help() -> Result<(), Box<dyn std::error::Error>> {
         let mut cmd = Cli::command();
         let mut buf = Vec::new();
-        cmd.write_long_help(&mut buf).unwrap();
-        let help = String::from_utf8(buf).unwrap();
+        cmd.write_long_help(&mut buf)?;
+        let help = String::from_utf8(buf)?;
         insta::assert_snapshot!("cli_help", help);
+        Ok(())
     }
 
     #[test]
@@ -1352,19 +1355,21 @@ mod tests {
     // --- BundleFormat parse tests (Requirement 5.5) ---
 
     #[test]
-    fn bundle_format_dir_parses_from_clap() {
+    fn bundle_format_dir_parses_from_clap() -> Result<(), String> {
         use clap::ValueEnum;
         let parsed = BundleFormat::from_str("dir", true);
         assert!(parsed.is_ok(), "BundleFormat should parse 'dir'");
-        assert_eq!(parsed.unwrap().to_string(), "dir");
+        assert_eq!(parsed?.to_string(), "dir");
+        Ok(())
     }
 
     #[test]
-    fn bundle_format_tar_gz_parses_from_clap() {
+    fn bundle_format_tar_gz_parses_from_clap() -> Result<(), String> {
         use clap::ValueEnum;
         let parsed = BundleFormat::from_str("tar-gz", true);
         assert!(parsed.is_ok(), "BundleFormat should parse 'tar-gz'");
-        assert_eq!(parsed.unwrap().to_string(), "tar-gz");
+        assert_eq!(parsed?.to_string(), "tar-gz");
+        Ok(())
     }
 
     #[test]
@@ -1386,8 +1391,8 @@ mod tests {
         fn prop_cli_help_flag_completeness(_seed in any::<u32>()) {
             let mut cmd = Cli::command();
             let mut buf = Vec::new();
-            cmd.write_long_help(&mut buf).unwrap();
-            let help = String::from_utf8(buf).unwrap();
+            cmd.write_long_help(&mut buf)?;
+            let help = String::from_utf8(buf)?;
 
             // All flags added in the hardening pass
             let hardening_flags = [
