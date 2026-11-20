@@ -3,8 +3,8 @@ use faultline_localization::LocalizationSession;
 use faultline_ports::{CheckoutPort, HistoryPort, ProbePort, RunStorePort};
 use faultline_surface::SurfaceAnalyzer;
 use faultline_types::{
-    AnalysisReport, AnalysisRequest, FaultlineError, ReproductionCapsule, Result, RunHandle,
-    compute_flake_signal, now_epoch_seconds,
+    AnalysisReport, AnalysisRequest, FaultlineError, ProbeObservation, ReproductionCapsule, Result,
+    RunHandle, compute_flake_signal, now_epoch_seconds,
 };
 
 /// Options controlling the behavior of `FaultlineApp::localize`.
@@ -130,17 +130,7 @@ impl<'a> FaultlineApp<'a> {
                     results.push(obs);
                 }
 
-                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
-                let flake_signal = compute_flake_signal(&classes, stability_threshold);
-
-                // Majority vote: pick the most-frequent class
-                let majority_class = Self::majority_class(&classes);
-
-                // Use the first probe result as the base, override class and attach signal
-                let mut observation = results.into_iter().next().unwrap();
-                observation.class = majority_class;
-                observation.flake_signal = Some(flake_signal);
-                observation
+                Self::aggregate_retries(results, stability_threshold)?
             } else {
                 // Default: single probe, no FlakeSignal
                 self.probe_commit(&request, &commit)?
@@ -258,14 +248,7 @@ impl<'a> FaultlineApp<'a> {
                     results.push(obs);
                 }
 
-                let classes: Vec<ObservationClass> = results.iter().map(|o| o.class).collect();
-                let flake_signal = compute_flake_signal(&classes, stability_threshold);
-                let majority_class = Self::majority_class(&classes);
-
-                let mut observation = results.into_iter().next().unwrap();
-                observation.class = majority_class;
-                observation.flake_signal = Some(flake_signal);
-                observation
+                Self::aggregate_retries(results, stability_threshold)?
             } else {
                 self.probe_commit(request, &commit)?
             };
@@ -331,6 +314,22 @@ impl<'a> FaultlineApp<'a> {
         }
     }
 
+    fn aggregate_retries(
+        results: Vec<ProbeObservation>,
+        stability_threshold: f64,
+    ) -> Result<ProbeObservation> {
+        let classes: Vec<_> = results
+            .iter()
+            .map(|observation| observation.class)
+            .collect();
+        let mut observation = results.into_iter().next().ok_or_else(|| {
+            FaultlineError::Domain("retry batch contained no observations".into())
+        })?;
+        observation.class = Self::majority_class(&classes);
+        observation.flake_signal = Some(compute_flake_signal(&classes, stability_threshold));
+        Ok(observation)
+    }
+
     /// Determine the majority class from a set of observation classes.
     /// Ties are broken by preferring Fail > Pass > Skip > Indeterminate.
     fn majority_class(classes: &[ObservationClass]) -> ObservationClass {
@@ -375,6 +374,16 @@ mod tests {
     use proptest::prelude::*;
     use std::cell::Cell;
     use std::path::PathBuf;
+
+    type TestResult = std::result::Result<(), Box<dyn std::error::Error>>;
+
+    #[test]
+    fn empty_retry_batch_returns_domain_error() {
+        assert!(matches!(
+            FaultlineApp::aggregate_retries(Vec::new(), 1.0),
+            Err(FaultlineError::Domain(message)) if message == "retry batch contained no observations"
+        ));
+    }
 
     // ── Mock HistoryPort ──────────────────────────────────────────────
     struct MockHistory {
@@ -750,7 +759,7 @@ mod tests {
     // - The localization loop only probes uncached commits
     // - The final outcome is FirstBad with the correct boundary pair
     #[test]
-    fn integration_cached_resume_skips_cached_commits() {
+    fn integration_cached_resume_skips_cached_commits() -> TestResult {
         // Sequence: c0, c1, c2, c3, c4 (5 commits)
         let sequence = make_sequence(5);
         let history = MockHistory {
@@ -825,7 +834,7 @@ mod tests {
         let app = FaultlineApp::new(&history, &checkout, &probe, &store);
         let request = make_request_for_sequence(5, 20);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
 
         // Verify cached commits were NOT re-probed
         let probed_commits = probe.probed.borrow();
@@ -852,7 +861,7 @@ mod tests {
                 assert_eq!(last_good.0, "c1", "last_good should be c1");
                 assert_eq!(first_bad.0, "c2", "first_bad should be c2");
             }
-            other => panic!("expected FirstBad outcome, got: {:?}", other),
+            other => return Err(format!("expected FirstBad outcome, got: {other:?}").into()),
         }
 
         // Verify schema_version is set on the report (Task 13.9)
@@ -870,7 +879,7 @@ mod tests {
             .observations
             .iter()
             .find(|o| o.commit.0 == "c0")
-            .expect("c0 must be in observations");
+            .ok_or("c0 must be in observations")?;
         assert_eq!(
             obs_c0.sequence_index, 0,
             "cached c0 sequence_index must be preserved as 0"
@@ -880,7 +889,7 @@ mod tests {
             .observations
             .iter()
             .find(|o| o.commit.0 == "c4")
-            .expect("c4 must be in observations");
+            .ok_or("c4 must be in observations")?;
         assert_eq!(
             obs_c4.sequence_index, 1,
             "cached c4 sequence_index must be preserved as 1"
@@ -890,7 +899,7 @@ mod tests {
             .observations
             .iter()
             .find(|o| o.commit.0 == "c2")
-            .expect("c2 must be in observations");
+            .ok_or("c2 must be in observations")?;
         assert_eq!(
             obs_c2.sequence_index, 2,
             "cached c2 sequence_index must be preserved as 2"
@@ -902,19 +911,20 @@ mod tests {
             .observations
             .iter()
             .find(|o| o.commit.0 == "c1")
-            .expect("c1 must be in observations");
+            .ok_or("c1 must be in observations")?;
         assert!(
             obs_c1.sequence_index > 2,
             "newly probed c1 sequence_index ({}) must be > max cached index (2)",
             obs_c1.sequence_index
         );
+        Ok(())
     }
 
     // ── Integration tests: boundary validation with mock ports ──────
     // Validates: Requirements 10.1, 10.2, 10.3, 10.4, 10.5
 
     #[test]
-    fn integration_good_boundary_fail_yields_invalid_boundary() {
+    fn integration_good_boundary_fail_yields_invalid_boundary() -> TestResult {
         let sequence = make_sequence(5);
         let history = MockHistory {
             sequence: sequence.clone(),
@@ -945,12 +955,13 @@ mod tests {
                     "error should mention expected Pass and actual Fail, got: {msg}"
                 );
             }
-            other => panic!("expected InvalidBoundary error, got: {other:?}"),
+            other => return Err(format!("expected InvalidBoundary error, got: {other:?}").into()),
         }
+        Ok(())
     }
 
     #[test]
-    fn integration_bad_boundary_pass_yields_invalid_boundary() {
+    fn integration_bad_boundary_pass_yields_invalid_boundary() -> TestResult {
         let sequence = make_sequence(5);
         let history = MockHistory {
             sequence: sequence.clone(),
@@ -981,8 +992,9 @@ mod tests {
                     "error should mention expected Fail and actual Pass, got: {msg}"
                 );
             }
-            other => panic!("expected InvalidBoundary error, got: {other:?}"),
+            other => return Err(format!("expected InvalidBoundary error, got: {other:?}").into()),
         }
+        Ok(())
     }
 
     // Validates: Requirement 10.5
@@ -991,7 +1003,7 @@ mod tests {
     // Uses TrackingProbe to verify that boundaries are NOT re-probed when cached.
     // The localization should complete successfully using the cached boundary data.
     #[test]
-    fn integration_cached_boundary_observations_reused_no_reprobe() {
+    fn integration_cached_boundary_observations_reused_no_reprobe() -> TestResult {
         // Sequence: c0, c1, c2, c3, c4 (5 commits)
         let sequence = make_sequence(5);
         let history = MockHistory {
@@ -1052,7 +1064,7 @@ mod tests {
         let app = FaultlineApp::new(&history, &checkout, &probe, &store);
         let request = make_request_for_sequence(5, 20);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
 
         // Verify boundary commits were NOT re-probed
         let probed_commits = probe.probed.borrow();
@@ -1081,7 +1093,7 @@ mod tests {
                 assert_eq!(last_good.0, "c1", "last_good should be c1");
                 assert_eq!(first_bad.0, "c2", "first_bad should be c2");
             }
-            other => panic!("expected FirstBad outcome, got: {other:?}"),
+            other => return Err(format!("expected FirstBad outcome, got: {other:?}").into()),
         }
 
         // Verify schema_version is set on the report (Task 13.9)
@@ -1089,6 +1101,7 @@ mod tests {
             result.report.schema_version, "0.1.0",
             "schema_version should be 0.1.0"
         );
+        Ok(())
     }
 
     // Feature: v01-release-train, Property 9: Probe Count Respects Max Probes
@@ -1223,7 +1236,7 @@ mod tests {
     //   2. Report contains all expected fields
     //   3. Observation count is reasonable (≤ log2(10) + 2 boundary probes)
     #[test]
-    fn integration_full_localization_loop_with_mock_ports() {
+    fn integration_full_localization_loop_with_mock_ports() -> TestResult {
         let n = 10;
         let sequence = make_sequence(n);
         let history = MockHistory {
@@ -1250,7 +1263,7 @@ mod tests {
         let app = FaultlineApp::new(&history, &checkout, &probe, &store);
         let request = make_request_for_sequence(n, 30);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
         let report = &result.report;
 
         // 1. Verify FirstBad outcome with correct boundary pair
@@ -1278,7 +1291,7 @@ mod tests {
                     "confidence score should be positive for FirstBad"
                 );
             }
-            other => panic!("expected FirstBad outcome, got: {:?}", other),
+            other => return Err(format!("expected FirstBad outcome, got: {other:?}").into()),
         }
 
         // 2. Verify report contains all expected fields
@@ -1318,6 +1331,7 @@ mod tests {
             "observation count ({}) should be ≤ {max_expected}",
             report.observations.len(),
         );
+        Ok(())
     }
 
     // ── Flake retry loop tests ──────────────────────────────────────
@@ -1408,7 +1422,7 @@ mod tests {
     // Validates: Requirements 3.1, 3.4, 3.5
     // When retries > 0, each observation should have a FlakeSignal attached.
     #[test]
-    fn integration_flake_retries_attach_flake_signal() {
+    fn integration_flake_retries_attach_flake_signal() -> TestResult {
         let n = 5;
         let sequence = make_sequence(n);
         let history = MockHistory {
@@ -1435,7 +1449,7 @@ mod tests {
         let app = FaultlineApp::new(&history, &checkout, &probe, &store);
         let request = make_request_with_flake_policy(n, 20, 2, 1.0);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
 
         // All observations should have flake_signal attached (boundaries + interior)
         for obs in &result.report.observations {
@@ -1444,7 +1458,10 @@ mod tests {
                 "observation for {} should have flake_signal when retries > 0",
                 obs.commit.0
             );
-            let signal = obs.flake_signal.as_ref().unwrap();
+            let signal = obs
+                .flake_signal
+                .as_ref()
+                .ok_or("retried observation must have a flake signal")?;
             assert_eq!(
                 signal.total_runs, 3,
                 "total_runs should be 3 (1 + 2 retries) for {}",
@@ -1456,12 +1473,13 @@ mod tests {
                 obs.commit.0
             );
         }
+        Ok(())
     }
 
     // Validates: Requirements 3.6
     // When retries == 0 (default), no FlakeSignal should be attached.
     #[test]
-    fn integration_default_retries_no_flake_signal() {
+    fn integration_default_retries_no_flake_signal() -> TestResult {
         let n = 5;
         let sequence = make_sequence(n);
         let history = MockHistory {
@@ -1486,7 +1504,7 @@ mod tests {
         // retries=0 (default)
         let request = make_request_for_sequence(n, 20);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
 
         // No observation should have flake_signal
         for obs in &result.report.observations {
@@ -1496,13 +1514,14 @@ mod tests {
                 obs.commit.0
             );
         }
+        Ok(())
     }
 
     // Validates: Requirements 3.1, 3.4
     // When a commit is flaky (mixed results), majority vote determines the class
     // and FlakeSignal.is_stable should be false when below threshold.
     #[test]
-    fn integration_flaky_commit_majority_vote() {
+    fn integration_flaky_commit_majority_vote() -> TestResult {
         let n = 5;
         let sequence = make_sequence(n);
         let history = MockHistory {
@@ -1536,7 +1555,7 @@ mod tests {
         // retries=2, stability_threshold=1.0 (requires unanimity)
         let request = make_request_with_flake_policy(n, 20, 2, 1.0);
 
-        let result = app.localize(request).expect("localize should succeed");
+        let result = app.localize(request)?;
 
         // Find the observation for c2
         let obs_c2 = result
@@ -1544,7 +1563,7 @@ mod tests {
             .observations
             .iter()
             .find(|o| o.commit.0 == "c2")
-            .expect("c2 must be in observations");
+            .ok_or("c2 must be in observations")?;
 
         // Majority vote: 2 Fail vs 1 Pass → Fail
         assert_eq!(
@@ -1556,7 +1575,7 @@ mod tests {
         let signal = obs_c2
             .flake_signal
             .as_ref()
-            .expect("c2 should have flake_signal");
+            .ok_or("c2 should have flake_signal")?;
         assert_eq!(signal.total_runs, 3);
         assert_eq!(signal.fail_count, 2);
         assert_eq!(signal.pass_count, 1);
@@ -1565,5 +1584,6 @@ mod tests {
             !signal.is_stable,
             "c2 should be unstable (2/3 < 1.0 threshold)"
         );
+        Ok(())
     }
 }
