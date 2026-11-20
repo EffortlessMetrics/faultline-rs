@@ -133,34 +133,6 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0013"
-path = "crates/faultline-junit/src/lib.rs"
-family = "expect"
-classification = "baseline"
-owner = "unassigned"
-explanation = "16 pre-policy expect call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0014"
-path = "crates/faultline-junit/src/lib.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "1 pre-policy unwrap call site(s) at policy adoption; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
 id = "panic-baseline-0021"
 path = "crates/faultline-render/src/lib.rs"
 family = "expect"

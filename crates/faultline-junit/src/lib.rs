@@ -203,13 +203,14 @@ mod tests {
     }
 
     #[test]
-    fn junit_first_bad_has_failure_element() {
+    fn junit_first_bad_has_failure_element() -> std::result::Result<(), Box<dyn std::error::Error>>
+    {
         let report = sample_report(LocalizationOutcome::FirstBad {
             last_good: CommitId("abc123".into()),
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+        let xml = to_junit_xml(&report, &RedactionPolicy::none())?;
         assert!(xml.contains("<testsuites>"));
         assert!(xml.contains(r#"name="faultline""#));
         assert!(xml.contains(r#"tests="1""#));
@@ -219,53 +220,60 @@ mod tests {
         assert!(xml.contains("abc123"));
         assert!(xml.contains("def456"));
         assert!(xml.contains("<system-out>"));
+        Ok(())
     }
 
     #[test]
-    fn junit_suspect_window_has_failure_element() {
+    fn junit_suspect_window_has_failure_element()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let report = sample_report(LocalizationOutcome::SuspectWindow {
             lower_bound_exclusive: CommitId("aaa".into()),
             upper_bound_inclusive: CommitId("bbb".into()),
             confidence: Confidence::medium(),
             reasons: vec![AmbiguityReason::SkippedRevision],
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+        let xml = to_junit_xml(&report, &RedactionPolicy::none())?;
         assert!(xml.contains("SuspectWindow:"));
         assert!(xml.contains("aaa"));
         assert!(xml.contains("bbb"));
+        Ok(())
     }
 
     #[test]
-    fn junit_inconclusive_has_failure_element() {
+    fn junit_inconclusive_has_failure_element()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
         let report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingPassBoundary],
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+        let xml = to_junit_xml(&report, &RedactionPolicy::none())?;
         assert!(xml.contains("Inconclusive:"));
         assert!(xml.contains("missing pass boundary"));
+        Ok(())
     }
 
     #[test]
-    fn junit_observations_in_system_out() {
+    fn junit_observations_in_system_out() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let report = sample_report(LocalizationOutcome::FirstBad {
             last_good: CommitId("abc123".into()),
             first_bad: CommitId("def456".into()),
             confidence: Confidence::high(),
         });
-        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+        let xml = to_junit_xml(&report, &RedactionPolicy::none())?;
         assert!(xml.contains("Observations:"));
         assert!(xml.contains("abc123"));
         assert!(xml.contains("duration=150ms"));
+        Ok(())
     }
 
     #[test]
-    fn junit_empty_observations() {
+    fn junit_empty_observations() -> std::result::Result<(), Box<dyn std::error::Error>> {
         let mut report = sample_report(LocalizationOutcome::Inconclusive {
             reasons: vec![AmbiguityReason::MissingFailBoundary],
         });
         report.observations = vec![];
-        let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+        let xml = to_junit_xml(&report, &RedactionPolicy::none())?;
         assert!(xml.contains("No observations recorded."));
+        Ok(())
     }
 
     // Feature: repo-operating-system, Property 42: JUnit XML Export Structural Validity
@@ -281,7 +289,8 @@ mod tests {
 
             #[test]
             fn prop_junit_xml_export_structural_validity(report in arb_analysis_report()) {
-                let xml = to_junit_xml(&report, &RedactionPolicy::none()).expect("junit generation");
+                let xml = to_junit_xml(&report, &RedactionPolicy::none())
+                    .map_err(|err| TestCaseError::fail(format!("JUnit generation failed: {err}")))?;
 
                 // (a) Well-formed XML (contains <?xml declaration)
                 prop_assert!(
@@ -313,13 +322,22 @@ mod tests {
                     "JUnit output must contain a <failure> element"
                 );
                 // Verify the message attribute is non-empty
-                let failure_idx = xml.find("<failure").unwrap();
-                let after_failure = &xml[failure_idx..];
-                let msg_start = after_failure.find(r#"message=""#).expect("failure must have message attr");
-                let msg_value_start = msg_start + r#"message=""#.len();
-                let msg_end = after_failure[msg_value_start..].find('"').expect("message attr must be closed");
+                let mut reader = quick_xml::Reader::from_str(&xml);
+                let mut message_len = None;
+                loop {
+                    match reader.read_event()? {
+                        Event::Start(tag) | Event::Empty(tag) if tag.name().as_ref() == b"failure" => {
+                            let message = tag.try_get_attribute("message")?
+                                .ok_or_else(|| TestCaseError::fail("failure must have message attr"))?;
+                            message_len.get_or_insert(message.value.len());
+                        }
+                        Event::Eof => break,
+                        _ => {}
+                    }
+                }
+                let message_len = message_len.ok_or_else(|| TestCaseError::fail("missing failure element"))?;
                 prop_assert!(
-                    msg_end > 0,
+                    message_len > 0,
                     "failure message attribute must be non-empty"
                 );
             }
@@ -341,7 +359,8 @@ mod tests {
             fn prop_env_redaction_completeness_in_junit_xml(
                 (report, sentinels) in arb_analysis_report_with_sentinels()
             ) {
-                let xml = to_junit_xml(&report, &RedactionPolicy::default_safe()).expect("junit generation");
+                let xml = to_junit_xml(&report, &RedactionPolicy::default_safe())
+                    .map_err(|err| TestCaseError::fail(format!("JUnit generation failed: {err}")))?;
 
                 for sentinel in &sentinels {
                     prop_assert!(
