@@ -24,7 +24,7 @@ impl GitAdapter {
     pub fn new(repo_root: impl Into<PathBuf>) -> Result<Self> {
         let repo_root = repo_root.into();
         Self::verify_git_available()?;
-        Self::verify_git_repo(&repo_root)?;
+        let repo_root = Self::repository_root(&repo_root)?;
         let scratch_root = repo_root.join(".faultline").join("scratch");
         fs::create_dir_all(&scratch_root)?;
         Self::cleanup_stale_worktrees(&repo_root, &scratch_root);
@@ -100,21 +100,29 @@ impl GitAdapter {
         Ok(())
     }
 
-    fn verify_git_repo(path: &PathBuf) -> Result<()> {
+    fn repository_root(path: &std::path::Path) -> Result<PathBuf> {
         let output = Command::new("git")
-            .args(["rev-parse", "--git-dir"])
+            .args(["rev-parse", "--is-inside-work-tree", "--show-cdup"])
             .current_dir(path)
             .output()
             .map_err(|_| {
                 FaultlineError::Git(format!("not a git repository: {}", path.display()))
             })?;
-        if !output.status.success() {
+        // Git prints only "../" components for --show-cdup, so even non-UTF-8
+        // repository names stay in the original OS path.
+        let stdout = std::str::from_utf8(&output.stdout)
+            .map_err(|err| FaultlineError::Git(err.to_string()))?;
+        let mut lines = stdout.lines();
+        if !output.status.success() || lines.next() != Some("true") {
             return Err(FaultlineError::Git(format!(
                 "not a git repository: {}",
                 path.display()
             )));
         }
-        Ok(())
+        let ascent = lines.next().ok_or_else(|| {
+            FaultlineError::Git("git did not return the path to the worktree root".into())
+        })?;
+        Ok(path.join(ascent).canonicalize()?)
     }
 
     fn git_output(&self, args: Vec<OsString>) -> Result<String> {
@@ -148,12 +156,18 @@ impl GitAdapter {
     }
 
     fn resolve_revision(&self, spec: &RevisionSpec) -> Result<CommitId> {
-        let resolved = self.git_output(vec![
-            OsString::from("rev-parse"),
-            OsString::from("--verify"),
-            OsString::from(spec.0.clone()),
-        ])?;
-        Ok(CommitId(resolved))
+        let verify = |expression: &str| {
+            self.git_output(vec![
+                OsString::from("rev-parse"),
+                OsString::from("--verify"),
+                OsString::from("--end-of-options"),
+                OsString::from(expression),
+            ])
+        };
+        // Suffixes on a :/message search are part of the search pattern.
+        let object_id = verify(&spec.0)?;
+        let commit_id = verify(&format!("{object_id}^{{commit}}"))?;
+        Ok(CommitId(commit_id))
     }
 
     fn ensure_ancestor(&self, good: &CommitId, bad: &CommitId) -> Result<()> {
@@ -393,35 +407,57 @@ impl HistoryPort for GitAdapter {
         let bad_resolved = self.resolve_revision(bad)?;
         self.ensure_ancestor(&good_resolved, &bad_resolved)?;
 
+        let traversal = match mode {
+            HistoryMode::AncestryPath => "--ancestry-path",
+            HistoryMode::FirstParent => "--first-parent",
+        };
         let range = format!("{}..{}", good_resolved.0, bad_resolved.0);
-        let mut args = vec![OsString::from("rev-list"), OsString::from("--reverse")];
-        match mode {
-            HistoryMode::AncestryPath => {
-                args.push(OsString::from("--ancestry-path"));
-            }
-            HistoryMode::FirstParent => {
-                args.push(OsString::from("--ancestry-path"));
-                args.push(OsString::from("--first-parent"));
-            }
-        }
-        args.push(OsString::from(range));
+        // Read each commit's own parent IDs. Asking rev-list for --parents
+        // enables parent rewriting, which can hide gaps in a filtered walk.
+        let args = [
+            "rev-list",
+            "--reverse",
+            "--topo-order",
+            "--no-commit-header",
+            "--format=%H %P",
+            traversal,
+            &range,
+            "--",
+        ]
+        .into_iter()
+        .map(OsString::from)
+        .collect();
 
         let output = self.git_output(args)?;
         let mut revisions = vec![good_resolved.clone()];
+        let mut previous = good_resolved.0.as_str();
         for line in output.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() {
+            let mut fields = line.split_whitespace();
+            let Some(commit) = fields.next() else {
                 continue;
+            };
+            match mode {
+                HistoryMode::AncestryPath if !fields.any(|parent| parent == previous) => {
+                    return Err(FaultlineError::InvalidInput(format!(
+                        "ambiguous ancestry path: {previous} is not a parent of {commit}. \
+                         Use --first-parent with a good revision on that chain."
+                    )));
+                }
+                HistoryMode::FirstParent if fields.next() != Some(previous) => {
+                    return Err(FaultlineError::InvalidInput(format!(
+                        "good revision {} must be on the first-parent chain of bad revision {}",
+                        good_resolved.0, bad_resolved.0
+                    )));
+                }
+                _ => {}
             }
-            revisions.push(CommitId(trimmed.to_string()));
-        }
-        if revisions.last() != Some(&bad_resolved) {
-            revisions.push(bad_resolved);
+            revisions.push(CommitId(commit.to_string()));
+            previous = commit;
         }
 
-        if revisions.len() < 2 {
+        if revisions.len() < 2 || previous != bad_resolved.0 {
             return Err(FaultlineError::InvalidInput(
-                "history range must contain at least a good and bad revision".to_string(),
+                "history range must contain distinct good and bad endpoints".to_string(),
             ));
         }
 
@@ -755,6 +791,50 @@ mod tests {
     }
 
     #[test]
+    fn canonical_root_and_checkout_from_nested_paths()
+    -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let cwd = std::env::current_dir()?;
+        let tmp = tempfile::Builder::new()
+            .prefix("git root ")
+            .tempdir_in(&cwd)?;
+        let root = tmp.path().canonicalize()?;
+        let nested = tmp.path().join("one").join("two");
+        fs::create_dir_all(&nested)?;
+        git_cmd(tmp.path(), &["init"])?;
+        fs::write(tmp.path().join("marker"), "tracked")?;
+        git_cmd(tmp.path(), &["add", "marker"])?;
+        git_cmd(
+            tmp.path(),
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=test@example.invalid",
+                "commit",
+                "-m",
+                "initial",
+            ],
+        )?;
+        let head = CommitId(git_cmd(tmp.path(), &["rev-parse", "HEAD"])?);
+        for input in [
+            tmp.path().strip_prefix(&cwd)?,
+            nested.strip_prefix(&cwd)?,
+            tmp.path(),
+            nested.as_path(),
+        ] {
+            let adapter = GitAdapter::new(input)?;
+            assert_eq!(adapter.repo_root, root);
+            let checkout = adapter.checkout_revision(&head)?;
+            assert!(checkout.path.is_absolute());
+            assert!(checkout.path.starts_with(root.join(".faultline/scratch")));
+            assert_eq!(fs::read_to_string(checkout.path.join("marker"))?, "tracked");
+            adapter.cleanup_checkout(&checkout)?;
+            assert!(!checkout.path.exists());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn changed_paths_detects_add_modify_delete_rename() -> TestResult {
         let tmp = tempfile::tempdir()?;
         let repo = tmp.path();
@@ -1036,21 +1116,42 @@ mod fixture_scenario_tests {
 
         assert_eq!(repo.commits.len(), 5);
 
-        // Use GitAdapter to linearize the history from commit 0 (good) to commit 4 (bad).
-        let adapter = GitAdapter::new(repo.dir.path())?;
-        let good = RevisionSpec(repo.commits[0].0.clone());
-        let bad = RevisionSpec(repo.commits[4].0.clone());
+        // Use both tag kinds as endpoints and expect the underlying commits.
+        let repo_path = repo.dir.path();
+        git_cmd(repo_path, &["tag", "good", &repo.commits[0].0])?;
+        git_cmd(repo_path, &["tag", "-a", "bad", "-m", "known bad"])?;
+        let adapter = GitAdapter::new(repo_path)?;
+        let good = RevisionSpec("good".to_string());
+        let bad = RevisionSpec("bad".to_string());
         let sequence = adapter.linearize(&good, &bad, HistoryMode::AncestryPath)?;
 
         // The sequence should contain all 5 commits in order.
-        assert_eq!(
-            sequence.revisions.len(),
-            5,
-            "expected 5 revisions, got {}",
-            sequence.revisions.len()
-        );
-        assert_eq!(sequence.revisions[0], repo.commits[0]);
-        assert_eq!(sequence.revisions[4], repo.commits[4]);
+        assert_eq!(sequence.revisions, repo.commits);
+
+        let searched = adapter.linearize(
+            &RevisionSpec(":/^commit-1:".into()),
+            &RevisionSpec(":/^commit-3:".into()),
+            HistoryMode::AncestryPath,
+        )?;
+        assert_eq!(searched.revisions, repo.commits[1..=3]);
+
+        for spec in [
+            "HEAD^{tree}",
+            "HEAD:src/main.rs",
+            ":/^no such commit$",
+            "--all",
+        ] {
+            assert!(
+                adapter
+                    .linearize(
+                        &good,
+                        &RevisionSpec(spec.to_string()),
+                        HistoryMode::AncestryPath
+                    )
+                    .is_err(),
+                "only a commit revision may be used as an endpoint: {spec}"
+            );
+        }
 
         // Create a LocalizationSession and simulate probing.
         let policy = SearchPolicy::default();
@@ -1087,9 +1188,8 @@ mod fixture_scenario_tests {
     }
 
     /// Fixture scenario: first-parent-merge-history (real Git)
-    /// A repository with merge commits where `--first-parent` produces a different
-    /// linearization than ancestry-path. The feature branch commits appear in
-    /// ancestry-path but are excluded by first-parent.
+    /// A merge diamond is ambiguous in ancestry-path mode. First-parent mode
+    /// can use the main chain but requires its known-good commit to be on it.
     /// **Validates: Requirements 7.8**
     #[test]
     fn first_parent_merge_history_real_git() -> TestResult {
@@ -1116,12 +1216,14 @@ mod fixture_scenario_tests {
         std::fs::write(repo_path.join("feature.txt"), "feature-2")?;
         git_cmd(repo_path, &["add", "."])?;
         git_cmd(repo_path, &["commit", "-m", "feature commit 2"])?;
+        let feature_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
         // Switch back to main and add a commit so the merge is non-trivial.
         git_cmd(repo_path, &["checkout", "main"])?;
         std::fs::write(repo_path.join("main.txt"), "v1")?;
         git_cmd(repo_path, &["add", "."])?;
         git_cmd(repo_path, &["commit", "-m", "main commit after branch"])?;
+        let main_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
         // Merge feature into main with --no-ff to force a merge commit.
         git_cmd(
@@ -1130,37 +1232,55 @@ mod fixture_scenario_tests {
         )?;
         let merge_sha = git_cmd(repo_path, &["rev-parse", "HEAD"])?;
 
-        // Linearize with both modes.
         let adapter = GitAdapter::new(repo_path)?;
-        let good = RevisionSpec(initial_sha);
-        let bad = RevisionSpec(merge_sha);
+        let good = RevisionSpec(initial_sha.clone());
+        let bad = RevisionSpec(merge_sha.clone());
+        let side_good = RevisionSpec(feature_sha.clone());
 
-        let ancestry = adapter.linearize(&good, &bad, HistoryMode::AncestryPath)?;
+        let ancestry = adapter
+            .linearize(&good, &bad, HistoryMode::AncestryPath)
+            .expect_err("ancestry-path must reject the merge diamond before search");
+        assert!(
+            matches!(&ancestry, FaultlineError::InvalidInput(message) if message.contains("ambiguous ancestry path")),
+            "expected an ambiguity diagnostic, got {ancestry}"
+        );
 
         let first_parent = adapter.linearize(&good, &bad, HistoryMode::FirstParent)?;
-
-        // Ancestry-path includes the feature branch commits; first-parent does not.
-        // Therefore the two linearizations must differ.
-        assert_ne!(
-            ancestry.revisions.len(),
-            first_parent.revisions.len(),
-            "ancestry-path ({} commits) and first-parent ({} commits) should produce \
-             different linearizations for a repo with merge commits",
-            ancestry.revisions.len(),
-            first_parent.revisions.len(),
+        assert_eq!(
+            first_parent.revisions,
+            [
+                CommitId(initial_sha),
+                CommitId(main_sha),
+                CommitId(merge_sha.clone())
+            ]
         );
 
-        // Ancestry-path should have more commits (includes feature branch commits).
+        let side_first_parent = adapter
+            .linearize(&side_good, &bad, HistoryMode::FirstParent)
+            .expect_err("a side-branch good commit must not start a first-parent chain");
         assert!(
-            ancestry.revisions.len() > first_parent.revisions.len(),
-            "ancestry-path should include more commits than first-parent: {} vs {}",
-            ancestry.revisions.len(),
-            first_parent.revisions.len(),
+            matches!(&side_first_parent, FaultlineError::InvalidInput(message) if message.contains("first-parent chain")),
+            "expected a first-parent diagnostic, got {side_first_parent}"
         );
 
-        // Both should share the same good and bad boundaries.
-        assert_eq!(ancestry.revisions.first(), first_parent.revisions.first());
-        assert_eq!(ancestry.revisions.last(), first_parent.revisions.last());
+        let side_ancestry = adapter.linearize(&side_good, &bad, HistoryMode::AncestryPath)?;
+        assert_eq!(
+            side_ancestry.revisions,
+            [CommitId(feature_sha), CommitId(merge_sha)]
+        );
+
+        // With no intervening main commit, the bounded first-parent walk lists
+        // just the merge. Its second parent is good, but its first parent is not.
+        git_cmd(repo_path, &["checkout", "--detach", &good.0])?;
+        git_cmd(
+            repo_path,
+            &["merge", "--no-ff", "-m", "merge at branch point", "feature"],
+        )?;
+        let tip = RevisionSpec(git_cmd(repo_path, &["rev-parse", "HEAD"])?);
+        assert!(matches!(
+            adapter.linearize(&side_good, &tip, HistoryMode::FirstParent),
+            Err(FaultlineError::InvalidInput(message)) if message.contains("first-parent chain")
+        ));
         Ok(())
     }
 

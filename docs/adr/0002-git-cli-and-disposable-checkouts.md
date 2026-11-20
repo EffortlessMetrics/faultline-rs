@@ -13,9 +13,9 @@ Each probe must run in isolation so the operator's working copy is never mutated
 
 The v0.1 Git adapter shells out to the system `git` binary and uses disposable linked worktrees per probe.
 
-- History linearization via `git rev-list --reverse --ancestry-path [--first-parent]`
-- Revision resolution via `git rev-parse --verify`
-- Ancestry validation via `git merge-base --is-ancestor`
+- History linearization via a bounded, oldest-first `git rev-list` walk. Each returned commit must name the preceding commit as a direct parent.
+- First-parent mode follows the first parent of each commit and requires the known-good commit on that chain. Ancestry-path mode refuses a range with incomparable commits.
+- Revision resolution uses `git rev-parse --verify --end-of-options <revision>^{commit}`. Endpoint ancestry is checked with `git merge-base --is-ancestor`.
 - Checkout via `git worktree add --detach --force` under `.faultline/scratch/`
 - Cleanup via `git worktree remove --force` with fallback to directory deletion
 - Diff computation via `git diff --name-status`
