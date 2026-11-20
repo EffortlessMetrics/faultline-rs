@@ -7,7 +7,6 @@
 
 use std::collections::BTreeSet;
 use std::path::Path;
-use std::sync::LazyLock;
 
 use regex::Regex;
 
@@ -40,6 +39,30 @@ impl TestPatterns {
             inner_fn: Regex::new(r"fn\s+(\w+)\s*\(")?,
         })
     }
+
+    fn extract(&self, source: &str) -> BTreeSet<String> {
+        let mut names = BTreeSet::new();
+        for cap in self.test_fn.captures_iter(source) {
+            if let Some(m) = cap.get(1) {
+                names.insert(m.as_str().to_string());
+            }
+        }
+
+        // Match fn <name> inside proptest! blocks — these look like:
+        //   fn name(  (inside a proptest! { ... } macro)
+        // We detect proptest blocks and extract fn names within them.
+        for block in self.proptest_block.captures_iter(source) {
+            if let Some(body) = block.get(1) {
+                for cap in self.inner_fn.captures_iter(body.as_str()) {
+                    if let Some(m) = cap.get(1) {
+                        names.insert(m.as_str().to_string());
+                    }
+                }
+            }
+        }
+
+        names
+    }
 }
 
 /// Extract `#[test]` function names from Rust source content.
@@ -48,40 +71,8 @@ impl TestPatterns {
 ///   `fn some_test_name(`  preceded by `#[test]` (possibly with other attributes in between)
 ///
 /// Also extracts test names from `proptest! { ... #[test] fn name(` blocks.
-pub fn extract_test_names(source: &str) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-
-    static PATTERNS: LazyLock<Result<TestPatterns, regex::Error>> =
-        LazyLock::new(TestPatterns::compile);
-    // This xtask helper returns the set directly. A broken built-in pattern
-    // must fail the command even when the scenario index is empty.
-    let patterns = match &*PATTERNS {
-        Ok(patterns) => patterns,
-        Err(error) => {
-            eprintln!("error compiling scenario patterns: {error}");
-            std::process::exit(1);
-        }
-    };
-    for cap in patterns.test_fn.captures_iter(source) {
-        if let Some(m) = cap.get(1) {
-            names.insert(m.as_str().to_string());
-        }
-    }
-
-    // Match fn <name> inside proptest! blocks — these look like:
-    //   fn name(  (inside a proptest! { ... } macro)
-    // We detect proptest blocks and extract fn names within them.
-    for block in patterns.proptest_block.captures_iter(source) {
-        if let Some(body) = block.get(1) {
-            for cap in patterns.inner_fn.captures_iter(body.as_str()) {
-                if let Some(m) = cap.get(1) {
-                    names.insert(m.as_str().to_string());
-                }
-            }
-        }
-    }
-
-    names
+pub fn extract_test_names(source: &str) -> Result<BTreeSet<String>, regex::Error> {
+    Ok(TestPatterns::compile()?.extract(source))
 }
 
 /// Extract scenario names from the scenario index markdown content.
@@ -143,19 +134,20 @@ pub fn check_consistency(
 }
 
 /// Scan all Rust source files under a directory for test function names.
-pub fn scan_workspace_tests(root: &Path) -> BTreeSet<String> {
+pub fn scan_workspace_tests(root: &Path) -> Result<BTreeSet<String>, regex::Error> {
+    let patterns = TestPatterns::compile()?;
     let mut all_tests = BTreeSet::new();
     let crates_dir = root.join("crates");
 
     if !crates_dir.is_dir() {
-        return all_tests;
+        return Ok(all_tests);
     }
 
-    scan_dir_recursive(&crates_dir, &mut all_tests);
-    all_tests
+    scan_dir_recursive(&crates_dir, &mut all_tests, &patterns);
+    Ok(all_tests)
 }
 
-fn scan_dir_recursive(dir: &Path, tests: &mut BTreeSet<String>) {
+fn scan_dir_recursive(dir: &Path, tests: &mut BTreeSet<String>, patterns: &TestPatterns) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -169,11 +161,11 @@ fn scan_dir_recursive(dir: &Path, tests: &mut BTreeSet<String>) {
             if name == "target" || name.starts_with('.') || name == "snapshots" {
                 continue;
             }
-            scan_dir_recursive(&path, tests);
+            scan_dir_recursive(&path, tests, patterns);
         } else if path.extension().and_then(|e| e.to_str()) == Some("rs")
             && let Ok(content) = std::fs::read_to_string(&path)
         {
-            let names = extract_test_names(&content);
+            let names = patterns.extract(&content);
             tests.extend(names);
         }
     }

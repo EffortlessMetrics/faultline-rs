@@ -132,7 +132,7 @@ pub fn ci_full() -> Result<()> {
 /// Verify the scenario atlas is consistent with workspace test functions.
 pub fn check_scenarios() -> Result<()> {
     let root = crate::scaffold::workspace_root()?;
-    let workspace_tests = crate::scenarios::scan_workspace_tests(&root);
+    let workspace_tests = crate::scenarios::scan_workspace_tests(&root)?;
     let index_entries = crate::scenarios::read_scenario_index(&root);
     let result = crate::scenarios::check_consistency(&workspace_tests, &index_entries);
 

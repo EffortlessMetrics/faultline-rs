@@ -14,7 +14,7 @@ use xtask::scenarios::{check_consistency, extract_index_entries, extract_test_na
 // ---------------------------------------------------------------------------
 
 #[test]
-fn extract_test_names_finds_standard_tests() {
+fn extract_test_names_finds_standard_tests() -> Result<(), regex::Error> {
     let source = r#"
 #[test]
 fn my_test_one() {
@@ -26,14 +26,15 @@ fn my_test_two() {
     assert!(true);
 }
 "#;
-    let names = extract_test_names(source);
+    let names = extract_test_names(source)?;
     assert!(names.contains("my_test_one"));
     assert!(names.contains("my_test_two"));
     assert_eq!(names.len(), 2);
+    Ok(())
 }
 
 #[test]
-fn extract_test_names_finds_proptest_fns() {
+fn extract_test_names_finds_proptest_fns() -> Result<(), regex::Error> {
     let source = r#"
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(100))]
@@ -44,8 +45,9 @@ proptest! {
     }
 }
 "#;
-    let names = extract_test_names(source);
+    let names = extract_test_names(source)?;
     assert!(names.contains("prop_something"));
+    Ok(())
 }
 
 #[test]
@@ -186,7 +188,7 @@ proptest! {
             index.push_str(&format!("| `{name}` | desc | fix | c | — | inv | — |\n"));
         }
 
-        let extracted_tests = extract_test_names(&source);
+        let extracted_tests = extract_test_names(&source)?;
         let extracted_index = extract_index_entries(&index);
         let result = check_consistency(&extracted_tests, &extracted_index);
 
