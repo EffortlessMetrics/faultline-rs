@@ -735,48 +735,6 @@ container = "*"
 callee = "*"
 
 [[allow]]
-id = "panic-baseline-0059"
-path = "crates/faultline-loader/src/lib.rs"
-family = "expect"
-classification = "baseline"
-owner = "unassigned"
-explanation = "7 expect call site(s) in faultline-loader (1 in report_to_json production path, 6 in property tests) added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0060"
-path = "crates/faultline-loader/src/lib.rs"
-family = "unwrap"
-classification = "baseline"
-owner = "unassigned"
-explanation = "5 unwrap call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
-id = "panic-baseline-0061"
-path = "crates/faultline-loader/src/lib.rs"
-family = "unreachable"
-classification = "baseline"
-owner = "unassigned"
-explanation = "2 unreachable call site(s) in faultline-loader property tests added by v01-artifact-hardening; burn down by Q3 2026."
-expires = "2026-11-14"
-
-[allow.selector]
-kind = "baseline_glob"
-container = "*"
-callee = "*"
-
-[[allow]]
 id = "panic-baseline-0062"
 path = "crates/faultline-localization/tests/bdd_narrowing.rs"
 family = "unwrap"
