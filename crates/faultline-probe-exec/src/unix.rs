@@ -91,7 +91,15 @@ impl Pipes {
             stderr: Pipe::new(stderr)?,
         })
     }
+}
 
+trait DrainOutput {
+    fn drain_chunk(&mut self) -> io::Result<bool>;
+    fn wait_for_output(&self, remaining: Duration) -> io::Result<()>;
+    fn finished(&self) -> bool;
+}
+
+impl DrainOutput for Pipes {
     fn drain_chunk(&mut self) -> io::Result<bool> {
         let stdout_progress = self.stdout.drain_chunk()?;
         let stderr_progress = self.stderr.drain_chunk()?;
@@ -174,7 +182,7 @@ fn kill_group(child: &Child) -> io::Result<()> {
 
 fn shutdown(
     child: &mut Child,
-    mut pipes: Option<&mut Pipes>,
+    mut pipes: Option<&mut dyn DrainOutput>,
     terminate_group: impl FnOnce(&Child) -> io::Result<()>,
     limit: Duration,
 ) -> io::Result<ExitStatus> {
@@ -191,9 +199,13 @@ fn shutdown(
     });
 
     let mut status = None;
+    let mut abandoned = false;
     loop {
         if status.is_none() {
-            status = child.try_wait()?;
+            status = match child.try_wait() {
+                Ok(status) => status,
+                Err(err) => return Err(with_abandoned_output(failure.unwrap_or(err), abandoned)),
+            };
         }
         let mut progress = false;
         if let Some(active) = pipes.as_mut() {
@@ -202,20 +214,29 @@ fn shutdown(
                 Err(err) => {
                     failure.get_or_insert(err);
                     pipes = None;
+                    abandoned = true;
                 }
             }
         }
         if let Some(status) = status
             && pipes.as_ref().is_none_or(|pipes| pipes.finished())
         {
-            return failure.map_or(Ok(status), Err);
+            return match failure {
+                Some(err) => Err(with_abandoned_output(err, abandoned)),
+                None => Ok(status),
+            };
         }
         let remaining = limit.saturating_sub(started.elapsed());
         if remaining.is_zero() {
+            let output = match pipes.as_ref() {
+                Some(pipes) if pipes.finished() => "drained",
+                Some(_) => "incomplete",
+                None if abandoned => "abandoned",
+                None => "unavailable",
+            };
             return Err(io::Error::other(format!(
-                "shutdown deadline elapsed (child reaped: {}, output drained: {}, error: {failure:?})",
-                status.is_some(),
-                pipes.as_ref().is_none_or(|pipes| pipes.finished())
+                "shutdown deadline elapsed (child reaped: {}, output: {output}, error: {failure:?})",
+                status.is_some()
             )));
         }
         if !progress {
@@ -223,11 +244,20 @@ fn shutdown(
                 if let Err(err) = active.wait_for_output(remaining) {
                     failure.get_or_insert(err);
                     pipes = None;
+                    abandoned = true;
                 }
             } else {
                 thread::sleep(POLL_INTERVAL.min(remaining));
             }
         }
+    }
+}
+
+fn with_abandoned_output(err: io::Error, abandoned: bool) -> io::Error {
+    if abandoned {
+        io::Error::other(format!("{err}; output abandoned before EOF"))
+    } else {
+        err
     }
 }
 
@@ -303,7 +333,7 @@ fn start_reaper() -> io::Result<(Sender<Child>, JoinHandle<io::Result<()>>)> {
 
 fn finish_shutdown(
     mut child: Child,
-    pipes: Option<&mut Pipes>,
+    pipes: Option<&mut dyn DrainOutput>,
     terminate_group: impl FnOnce(&Child) -> io::Result<()>,
     limit: Duration,
     reaper: Sender<Child>,
@@ -325,7 +355,7 @@ fn finish_shutdown(
 
 fn cleanup(
     child: Child,
-    pipes: Option<&mut Pipes>,
+    pipes: Option<&mut dyn DrainOutput>,
     reason: &str,
     reaper: Sender<Child>,
 ) -> Result<ExitStatus> {
@@ -409,6 +439,61 @@ mod tests {
         }
         reaped?;
         assert!(matches!(result, Err(err) if err.to_string().contains("child reaped: false")));
+        Ok(())
+    }
+
+    struct BrokenOutput {
+        fail_on_read: bool,
+    }
+
+    impl DrainOutput for BrokenOutput {
+        fn drain_chunk(&mut self) -> io::Result<bool> {
+            if self.fail_on_read {
+                Err(io::Error::other("fixture read error"))
+            } else {
+                Ok(false)
+            }
+        }
+
+        fn wait_for_output(&self, _: Duration) -> io::Result<()> {
+            Err(io::Error::other("fixture poll error"))
+        }
+
+        fn finished(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn shutdown_distinguishes_abandoned_output_from_eof() -> io::Result<()> {
+        let mut child = Command::new("sh").args(["-c", "exit 0"]).spawn()?;
+        child.wait()?;
+        let mut output = BrokenOutput {
+            fail_on_read: false,
+        };
+        let result = shutdown(&mut child, Some(&mut output), |_| Ok(()), SHUTDOWN_LIMIT);
+        assert!(matches!(
+            result,
+            Err(err) if err.to_string() == "fixture poll error; output abandoned before EOF"
+        ));
+
+        let mut child = Command::new("sh")
+            .args(["-c", "read line"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        let input = child
+            .stdin
+            .take()
+            .ok_or_else(|| io::Error::other("fixture stdin missing"))?;
+        let mut output = BrokenOutput { fail_on_read: true };
+        let result = shutdown(&mut child, Some(&mut output), |_| Ok(()), Duration::ZERO);
+        drop(input);
+        child.wait()?;
+        assert!(matches!(
+            result,
+            Err(err) if err.to_string().contains("output: abandoned")
+                && err.to_string().contains("fixture read error")
+        ));
         Ok(())
     }
 }

@@ -251,6 +251,7 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `timeout_and_cancellation_reap_owned_nested_probes` | Timeout and cancellation terminate owned descendants and bound pipe drainage | Native Linux shell and nested subprocesses | faultline-probe-exec | — | Group shutdown and reaping | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 | `shutdown_reports_failed_group_signal` | Group signal errors are surfaced and the direct child is reaped | Native quiet child and injected group error | faultline-probe-exec | — | Incomplete shutdown | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 | `incomplete_shutdown_transfers_child_to_reaper` | A child still alive at the shutdown deadline is kept until reaped | Native child blocked on a test-owned pipe | faultline-probe-exec | — | Bounded shutdown and late reap | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
+| `shutdown_distinguishes_abandoned_output_from_eof` | Read and polling errors report abandoned output | Injected pipe errors and native child fixtures | faultline-probe-exec | — | Honest shutdown diagnostics | #59 | adapter | #59 | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
 
 ### faultline-store
 
