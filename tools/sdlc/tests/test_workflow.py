@@ -31,6 +31,18 @@ class WorkflowContractTests(unittest.TestCase):
         preflight_job = workflow.split("\n  preflight:\n")[1].split("\n  qualify:\n")[0]
         self.assertIn("PR_NUMBER: ${{ steps.context.outputs.pr_number }}", preflight_job)
         self.assertIn("EXPECTED_SHA: ${{ steps.context.outputs.expected_sha }}", preflight_job)
+        # The route fixtures below must match the inputs GitHub passes to the resolver.
+        context_step = preflight_job.split("        id: context\n", 1)[1]
+        context_env = context_step.split("        env:\n", 1)[1].split("        run: |", 1)[0]
+        bindings = {line.strip() for line in context_env.splitlines()}
+        for binding in (
+            "EVENT_NAME: ${{ github.event_name }}",
+            "EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}",
+            "EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+            "INPUT_PR_NUMBER: ${{ inputs.pr_number }}",
+            "INPUT_HEAD_SHA: ${{ inputs.expected_head_sha }}",
+        ):
+            self.assertIn(binding, bindings)
         # Exercise the two Bash steps used on the Ubuntu runner.
         run_block = r"^        run: \|\n((?:^          .*\n|^\n)+)"
         resolve, verify = [
