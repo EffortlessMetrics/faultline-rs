@@ -32,6 +32,10 @@ the official `latest` channel for the newest final release. That release
 may already have entered LTS.
 [Late qualification](.github/workflows/late-qualification.yml) · [Node.js releases](https://nodejs.org/en/about/previous-releases) · [uv installer options](https://docs.astral.sh/uv/reference/installer/)
 
+Official Linux Node.js binaries from version 25 onward require libatomic at
+runtime (`libatomic1` on Debian and Ubuntu). Choose a Cloud image that provides
+it. [Node.js binary requirements](https://github.com/nodejs/node/blob/v26.x/BUILDING.md#official-binary-platforms-and-toolchains)
+
 ```bash
 set -euo pipefail
 download() { curl --proto "=https" --tlsv1.2 -fsSL "$@"; }
@@ -71,6 +75,7 @@ esac
   ln -sfnT -- "$node_dir" "$tools_dir/node-current"
 )
 
+"$tools_dir/node-current/bin/node" --version
 download https://astral.sh/uv/install.sh | UV_UNMANAGED_INSTALL="$tools_dir/uv" sh
 ```
 
