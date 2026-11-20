@@ -296,6 +296,7 @@ dependencies = [
  "faultline-codes",
  "faultline-ports",
  "faultline-types",
+ "libc",
  "proptest",
  "tempfile",
 ]

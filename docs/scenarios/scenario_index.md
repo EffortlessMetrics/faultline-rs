@@ -248,6 +248,8 @@ _No dedicated tests. Enum types are exercised transitively through `faultline-ty
 | `truncate_output_empty_string` | Empty string is unchanged | Empty string | faultline-probe-exec | — | Edge case | — | adapter | — | — | faultline-probe-exec | P2 | faultline-probe-exec | no |
 | `signal_termination_sets_signal_number` | Signal-killed process sets signal_number field | Shell probe with self-SIGTERM | faultline-probe-exec | — | Signal detection | Req 5.1 | adapter | Req 5.1 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 | `probe_output_exceeding_limit_is_truncated` | Real probe output exceeding limit is truncated | Shell probe with large output | faultline-probe-exec | — | Integration truncation | — | adapter | — | — | faultline-probe-exec | P1 | faultline-probe-exec | no |
+| `timeout_and_cancellation_reap_owned_nested_probes` | Timeout and cancellation terminate owned descendants and bound pipe drainage | Native Linux shell and nested subprocesses | faultline-probe-exec | — | Group shutdown and reaping | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
+| `shutdown_reports_failed_group_signal` | Group signal errors are surfaced and the direct child is reaped | Native quiet child and injected group error | faultline-probe-exec | — | Incomplete shutdown | #59 | adapter | #59 | — | faultline-probe-exec | P0 | faultline-probe-exec | no |
 
 ### faultline-store
 
